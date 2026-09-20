@@ -113,6 +113,8 @@ memory
 
 ## 4.1 `verification`
 
+> Estado: implementada como `src/capabilities/verification/` con `andmar_suggest_checks`, `andmar_record_receipt` y `andmar_verify_revision`. Los checks se ejecutan por herramientas nativas de OpenCode; la capability solo sugiere (por señales deterministas), registra y evalúa receipts ligados a revisión exacta.
+
 ### Objetivo
 
 Convertir “el agente dice que terminó” en evidencia verificable.

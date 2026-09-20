@@ -59,6 +59,11 @@ Provides deterministic checks for:
 - version impact (`none`, `patch`, `minor`, `major`);
 - completion evidence bound to the exact current revision.
 
+### `verification`
+Records revision-bound verification receipts (`tests`, `lint`, `typecheck`, `build`, `custom`).
+
+The capability never executes commands itself: checks run through native OpenCode shell/tools (preserving permissions) and only their outcomes are stored under `verification/<revision>/<check>`. Any revision change invalidates earlier receipts.
+
 ## Architecture in one picture
 
 ```text
@@ -75,10 +80,11 @@ User / methodology / skill
           v
    generated capability manifest
       /      |       |        \
- system   routing  delegation  lifecycle
-             |          |          |
-         model tier   workers   docs/version/
-                                completion gates
+ system   routing  delegation  lifecycle  verification
+             |          |          |            |
+         model tier   workers   docs/version/  check
+                                completion     receipts
+                                gates
 ```
 
 The core does not know ODD, Product Plan, request-refiner, Jev, Lane or Herdr. Those can consume or extend the primitives later.
@@ -119,6 +125,9 @@ The namespace is `andmar`:
 - `andmar_resume` — continue a child by handle.
 - `andmar_change_impact` — docs/version impact.
 - `andmar_completion_gate` — exact-revision completion check.
+- `andmar_record_receipt` — store one verification check outcome for an exact revision.
+- `andmar_suggest_checks` — suggest verification commands from deterministic project signals.
+- `andmar_verify_revision` — check stored receipts against the exact current revision.
 
 Names are primitives, not methodologies. A future ODD skill can use these without AndMar AI knowing what ODD is.
 
@@ -183,7 +192,7 @@ See [`docs/EXTENDING.md`](docs/EXTENDING.md).
 
 ## Checks
 
-The project includes pure deterministic tests for routing, path mapping, semver impact and exact-revision completion.
+The project includes pure deterministic tests for routing, path mapping, semver impact, exact-revision completion and verification receipts.
 
 ```bash
 npm run check
@@ -218,6 +227,7 @@ These are omissions by design, not missing TODOs.
 - [`docs/OPENCODE-V2.md`](docs/OPENCODE-V2.md) — V2 API assumptions used by this MVP.
 - [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) — validated plugin options.
 - [`docs/STATE.md`](docs/STATE.md) — durable operational state contract.
+- [`docs/VERIFICATION.md`](docs/VERIFICATION.md) — what the verification capability does, in plain language.
 - [`docs/VERSIONING.md`](docs/VERSIONING.md) — single-source version/changelog policy.
 
 ## License

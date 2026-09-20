@@ -95,3 +95,13 @@ This is a compact decision log, not a process-heavy ADR system. Add an entry onl
 **Decision:** No Lane or Herdr dependency in core.
 
 **Why:** OpenCode already exposes worktrees/sessions/events. Alternative worktree strategies and UI should be adapters.
+
+---
+
+## D-011 — Verification records receipts, never executes checks
+
+**Decision:** The verification capability stores revision-bound check outcomes but does not run shell commands itself. Checks execute through native OpenCode shell/tools; only their results are recorded via `andmar_record_receipt` and evaluated via `andmar_verify_revision`.
+
+**Why:** Executing subprocesses from the harness would bypass OpenCode permission hooks. Recording keeps verification deterministic while preserving the user's permission model.
+
+**Consequence:** A receipt is only as trustworthy as the OpenCode-mediated execution that produced it; the harness guarantees revision binding, not test honesty.

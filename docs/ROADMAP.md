@@ -50,11 +50,9 @@ Potential uses:
 
 Jev must not become an agent or general reasoning substitute.
 
-## Candidate: verification receipts
+## Implemented: verification receipts
 
-**Trigger:** completion gate inputs become repeatedly manual.
-
-Add structured receipts captured from native OpenCode shell/tool/VCS events. Preserve exact-revision semantics.
+Previous trigger was "completion gate inputs become repeatedly manual". The `verification` capability now provides structured receipts (`andmar_record_receipt` / `andmar_verify_revision`) captured from native OpenCode shell/tool execution, with exact-revision semantics. Revision capture itself still takes the revision as explicit input; automating it from native VCS events remains a candidate.
 
 ## Candidate: worktree strategy adapter
 

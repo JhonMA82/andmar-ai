@@ -60,6 +60,7 @@ system
 routing
 delegation
 lifecycle
+verification
 ```
 
 Future examples may include `workflow`, `context-projection`, `jev-decisions`, or `worktree-provider`, but they are not part of the current MVP.
