@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@opencode/plugin": ["./test-support/opencode-plugin-shim.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "test-support/**/*.d.ts"]
+}

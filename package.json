@@ -1,0 +1,40 @@
+{
+  "name": "andmar-ai",
+  "version": "0.1.0",
+  "description": "A thin, deterministic-first harness for OpenCode V2.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "docs",
+    "examples",
+    "README.md",
+    "AGENTS.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "generate": "node scripts/generate-capability-manifest.mjs",
+    "check": "npm run generate && node scripts/check-architecture.mjs && tsc -p tsconfig.check.json --noEmit && node --experimental-strip-types --test tests/*.test.ts",
+    "prepublishOnly": "npm run check"
+  },
+  "dependencies": {
+    "@opencode/plugin": "latest"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-v2",
+    "ai-harness",
+    "agents",
+    "deterministic"
+  ],
+  "license": "MIT"
+}

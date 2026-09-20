@@ -1,0 +1,51 @@
+import type { ChangeKind, DocumentationRule, CompletionEvidence } from "./contracts.ts"
+import { matchesAny } from "./glob.ts"
+
+export interface DocumentationImpact {
+  status: "clean" | "stale" | "not-applicable"
+  affectedRuleIDs: string[]
+  expectedDocs: string[]
+}
+
+export function analyzeDocumentationImpact(changedPaths: string[], rules: DocumentationRule[]): DocumentationImpact {
+  const affected = rules.filter((rule) => changedPaths.some((path) => matchesAny(rule.code, path)))
+  if (affected.length === 0) return { status: "not-applicable", affectedRuleIDs: [], expectedDocs: [] }
+
+  const expectedDocs = [...new Set(affected.flatMap((rule) => rule.docs))]
+  const docsChanged = affected.every((rule) =>
+    changedPaths.some((path) => matchesAny(rule.docs, path)),
+  )
+
+  return {
+    status: docsChanged ? "clean" : "stale",
+    affectedRuleIDs: affected.map((rule) => rule.id),
+    expectedDocs,
+  }
+}
+
+export type VersionImpact = "none" | "patch" | "minor" | "major"
+
+export function inferVersionImpact(input: {
+  kind: ChangeKind
+  touchesPublicSurface: boolean
+  breaking?: boolean
+}): VersionImpact {
+  if (!input.touchesPublicSurface) return "none"
+  if (input.breaking) return "major"
+  if (input.kind === "feature") return "minor"
+  if (["bugfix", "refactor", "security", "migration"].includes(input.kind)) return "patch"
+  return "none"
+}
+
+export function evaluateCompletion(currentRevision: string, evidence: CompletionEvidence): {
+  ok: boolean
+  reasons: string[]
+} {
+  const reasons: string[] = []
+  if (evidence.revision !== currentRevision) reasons.push("verification evidence is stale for the current revision")
+  if (!evidence.testsPassed) reasons.push("tests have not passed")
+  if (evidence.reviewPassed === false) reasons.push("review did not pass")
+  if (evidence.docsStatus === "stale") reasons.push("documentation is potentially stale")
+  if (evidence.versionStatus === "required") reasons.push("version/changelog update is still required")
+  return { ok: reasons.length === 0, reasons }
+}
