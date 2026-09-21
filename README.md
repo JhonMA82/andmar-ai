@@ -27,6 +27,22 @@ The project follows this order of preference:
 
 The MVP implements step 1 and leaves a documented extension point for step 2. It does **not** add Jev yet.
 
+
+## Primary agents: Build, Plan, AndMar
+
+AndMar AI does not replace OpenCode's built-in agents.
+
+```text
+Build  -> plain OpenCode development
+Plan   -> analysis/planning with restricted mutation
+AndMar -> OpenCode development + AndMar routing, evidence and completion rules
+```
+
+The repository ships a model-agnostic `AndMar` primary agent in `assets/agents/andmar.md`. It uses native OpenCode tools for normal development and calls the existing AndMar capabilities only where they add deterministic value. It does not add another agent runtime.
+
+For local development, the same agent is also present under `.opencode/agents/andmar.md`, so this repository can discover it project-locally.
+
+
 ## MVP capabilities
 
 ### `system`
@@ -91,29 +107,34 @@ The core does not know ODD, Product Plan, request-refiner, Jev, Lane or Herdr. T
 
 ## Installation for local development
 
-OpenCode V2 can load local plugins. Clone/extract this project and point `opencode.jsonc` at it:
+For real-world testing from this checkout:
 
-```jsonc
-{
-  "$schema": "https://opencode.ai/config.json",
-  "plugins": [
-    {
-      "package": "./path/to/andmar-ai",
-      "options": {
-        "models": {
-          "fast": { "providerID": "YOUR_PROVIDER", "id": "YOUR_FAST_MODEL" },
-          "standard": { "providerID": "YOUR_PROVIDER", "id": "YOUR_STANDARD_MODEL" },
-          "frontier": { "providerID": "YOUR_PROVIDER", "id": "YOUR_FRONTIER_MODEL" }
-        }
-      }
-    }
-  ]
-}
+```bash
+npm install
+npm run check
+npm run install:dev
+npm run doctor
+opencode service restart
 ```
 
-Use model IDs exactly as OpenCode exposes them. If a profile is omitted, delegated work inherits the parent session model rather than guessing a model ID.
+`install:dev` uses OpenCode V2's global discovery locations and does **not** rewrite your `opencode.json(c)`:
 
-See [`examples/opencode.jsonc`](examples/opencode.jsonc).
+```text
+~/.config/opencode/plugins/andmar-ai -> this checkout
+~/.config/opencode/agents/andmar.md
+```
+
+`npm run doctor` validates the OpenCode major version, plugin link, installed agent, and exact plugin-API dependency before the test.
+
+Start OpenCode in any project and use **Tab** to select the `AndMar` primary agent. `Build` and `Plan` remain available.
+
+To remove only the development links/files owned by this checkout:
+
+```bash
+npm run uninstall:dev
+```
+
+If you prefer explicit plugin configuration or need model-profile mappings, see [`examples/opencode.jsonc`](examples/opencode.jsonc). Missing model profiles inherit the parent session model rather than guessing an ID.
 
 ## Tools exposed by the MVP
 
@@ -228,6 +249,7 @@ These are omissions by design, not missing TODOs.
 - [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) — validated plugin options.
 - [`docs/STATE.md`](docs/STATE.md) — durable operational state contract.
 - [`docs/VERIFICATION.md`](docs/VERIFICATION.md) — what the verification capability does, in plain language.
+- [`docs/TESTING.md`](docs/TESTING.md) — first real-world test matrix and current limitations.
 - [`docs/VERSIONING.md`](docs/VERSIONING.md) — single-source version/changelog policy.
 
 ## License

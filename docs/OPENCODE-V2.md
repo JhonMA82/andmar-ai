@@ -2,6 +2,8 @@
 
 This file records the OpenCode V2 primitives the MVP intentionally relies on, so future upgrades can audit compatibility without reading the entire repository.
 
+Validated package target for this test build: `@opencode/plugin@2.0.4`.
+
 Reference documentation used during the MVP design:
 
 - https://opencode.ai/v2/docs/build/plugins
@@ -98,3 +100,8 @@ When targeting a newer OpenCode V2 release, verify:
 7. model ref shape.
 
 Run the repository checks after any API update and test the installed package, not only a workspace-linked copy.
+
+
+## Type validation policy
+
+CI and the authoritative `npm run check` must typecheck against the installed `@opencode/plugin` dependency. `tsconfig.check.json` and the local shim are retained only for explicit offline structural checks (`npm run check:offline`) and are not runtime/API proof.

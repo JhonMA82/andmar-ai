@@ -26,6 +26,7 @@ Validate the architecture of AndMar AI with enough working behavior to prove the
 
 ### User-visible primitives
 
+- AndMar custom primary agent as an optional user-facing entrypoint;
 - status;
 - route;
 - delegate;
@@ -83,7 +84,8 @@ The MVP is successful when:
 5. documentation mappings can flag likely stale docs;
 6. stale-revision evidence blocks completion;
 7. a new capability can be added without modifying the root plugin/core;
-8. human and agent documentation explain the architecture without relying on prior chat context.
+8. human and agent documentation explain the architecture without relying on prior chat context;
+9. the AndMar primary agent can be installed without replacing Build/Plan or editing user config.
 
 ## What should trigger the next capability
 

@@ -48,9 +48,6 @@ const NODE_MANAGERS: NodeManager[] = [
   { id: "yarn", lockfiles: ["yarn.lock"], dlx: "yarn dlx" },
 ]
 
-// package.json script name -> receipt check kind. "check" is a full-pipeline
-// script by convention (like this repo's own `npm run check`), so it maps to
-// custom rather than to any single check kind.
 const SCRIPT_TO_CHECK: Record<string, VerificationCheck> = {
   test: "tests",
   lint: "lint",

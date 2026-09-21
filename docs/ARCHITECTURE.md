@@ -79,6 +79,18 @@ ODD
 
 AndMar core must not know the name `ODD`.
 
+## 2.1 Primary-agent surface
+
+The optional `AndMar` Markdown agent is a user-facing OpenCode profile, not a capability and not another runtime.
+
+```text
+Build  -> native OpenCode execution
+Plan   -> native OpenCode planning
+AndMar -> native OpenCode execution + harness completion policy
+```
+
+The agent may call `routing`, `verification`, `lifecycle`, and `delegation` primitives, but the actual implementation work remains native OpenCode tool execution. Removing the agent must not break the harness capabilities, and removing the harness must not alter Build/Plan behavior.
+
 ## 3. Determinism boundary
 
 Every decision should be classified as one of:

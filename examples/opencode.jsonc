@@ -7,44 +7,19 @@
         // Use exact IDs shown by your OpenCode /models catalog.
         // Omit any profile to inherit the parent session model.
         "models": {
-          "fast": {
-            "providerID": "YOUR_PROVIDER",
-            "id": "YOUR_FAST_MODEL"
-          },
-          "standard": {
-            "providerID": "YOUR_PROVIDER",
-            "id": "YOUR_STANDARD_MODEL"
-          },
-          "frontier": {
-            "providerID": "YOUR_PROVIDER",
-            "id": "YOUR_FRONTIER_MODEL"
-          }
+          "fast": { "providerID": "YOUR_PROVIDER", "id": "YOUR_FAST_MODEL" },
+          "standard": { "providerID": "YOUR_PROVIDER", "id": "YOUR_STANDARD_MODEL" },
+          "frontier": { "providerID": "YOUR_PROVIDER", "id": "YOUR_FRONTIER_MODEL" }
         },
-        "delegation": {
-          "maxDepth": 3,
-          "maxResultChars": 4000
-        },
-        "shell": {
-          "maxTimeoutMs": 120000
-        },
+        "delegation": { "maxDepth": 3, "maxResultChars": 4000 },
+        "shell": { "maxTimeoutMs": 120000 },
         "documentation": {
           "rules": [
-            {
-              "id": "public-api",
-              "code": ["src/api/**"],
-              "docs": ["docs/api/**", "README.md"]
-            },
-            {
-              "id": "scaffolding",
-              "code": ["src/scaffolding/**", "templates/**"],
-              "docs": ["docs/scaffolding/**"]
-            }
+            { "id": "public-api", "code": ["src/api/**"], "docs": ["docs/api/**", "README.md"] },
+            { "id": "scaffolding", "code": ["src/scaffolding/**", "templates/**"], "docs": ["docs/scaffolding/**"] }
           ]
         },
-        "versioning": {
-          "enabled": true,
-          "publicPaths": ["src/**", "packages/**", "apps/**"]
-        }
+        "versioning": { "enabled": true, "publicPaths": ["src/**", "packages/**", "apps/**"] }
       }
     }
   ]

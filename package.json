@@ -1,13 +1,15 @@
 {
   "name": "andmar-ai",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A thin, deterministic-first harness for OpenCode V2.",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
   },
   "files": [
+    "index.ts",
     "src",
+    "assets",
     "docs",
     "examples",
     "README.md",
@@ -17,17 +19,24 @@
   ],
   "scripts": {
     "generate": "node scripts/generate-capability-manifest.mjs",
-    "check": "npm run generate && node scripts/check-architecture.mjs && tsc -p tsconfig.check.json --noEmit && node --experimental-strip-types --test tests/*.test.ts",
-    "prepublishOnly": "npm run check"
+    "check": "bun run generate && node scripts/check-architecture.mjs && bun run typecheck && bun run test",
+    "check:offline": "bun run generate && node scripts/check-architecture.mjs && tsc -p tsconfig.check.json --noEmit && bun run test",
+    "install:dev": "node scripts/install-dev.mjs",
+    "uninstall:dev": "node scripts/uninstall-dev.mjs",
+    "prepublishOnly": "bun run check",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "doctor": "node scripts/doctor.mjs"
   },
   "dependencies": {
-    "@opencode/plugin": "latest"
+    "@opencode/plugin": "2.0.4"
   },
   "devDependencies": {
     "typescript": "^5.8.3"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22",
+    "opencode": ">=2.0.0 <3"
   },
   "keywords": [
     "opencode",

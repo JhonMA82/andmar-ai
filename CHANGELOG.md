@@ -2,6 +2,24 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
+## [Unreleased]
+
+## [0.3.0] - 2026-09-21
+
+### Added
+
+- `AndMar` custom primary agent for OpenCode V2, kept model-agnostic so it inherits the active/default model.
+- Safe development installer/uninstaller using OpenCode's global plugin and agent discovery directories without rewriting user config.
+- Read-only `npm run doctor` for OpenCode v2, plugin-link, agent-integrity, and API-pin diagnostics before real tests.
+- Agent contract tests and `docs/TESTING.md` for real-world Build/Plan/AndMar comparison.
+- Minimal GitHub Actions CI running `bun run check`.
+
+### Changed
+
+- Development installs now refuse to overwrite an existing modified global `andmar.md`.
+- `@opencode/plugin` is pinned to `2.0.4` for reproducible OpenCode V2 testing; CI typechecks against the installed package instead of the local API shim.
+- Real-world completion guidance now requires a working-state fingerprint when the Git tree is dirty and stronger upstream/runtime evidence for migrations and integrations.
+
 ## [0.2.0] - 2026-09-20
 
 ### Added

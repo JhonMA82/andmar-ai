@@ -60,11 +60,7 @@ test("the latest receipt wins when a check is recorded twice", () => {
 })
 
 test("custom required check sets are honored", () => {
-  const summary = summarizeVerification(
-    "rev-a",
-    [receipt({ revision: "rev-a", check: "build" })],
-    ["build"],
-  )
+  const summary = summarizeVerification("rev-a", [receipt({ revision: "rev-a", check: "build" })], ["build"])
   assert.equal(summary.ok, true)
 })
 
@@ -99,10 +95,7 @@ test("detection falls back to npm when only package.json exists", () => {
 })
 
 test("detection maps package scripts deterministically", () => {
-  const result = detectProjectChecks(
-    ["package.json", "package-lock.json"],
-    ["test", "lint", "typecheck", "build", "check"],
-  )
+  const result = detectProjectChecks(["package.json", "package-lock.json"], ["test", "lint", "typecheck", "build", "check"])
   const commands = Object.fromEntries(
     (result.ecosystems[0]?.checks ?? []).map((check) => [`${check.check}:${check.source}`, check.command]),
   )
