@@ -4,6 +4,9 @@
 
 A normal capability should be added without modifying the core or several unrelated files.
 
+The binding rules live in [CAPABILITY-CONTRACT.md](CAPABILITY-CONTRACT.md).
+This guide is the practical walkthrough; the contract wins on any disagreement.
+
 ## Minimal process
 
 ### 1. Create a folder
@@ -32,10 +35,11 @@ export default capability
 ### 3. Regenerate the manifest
 
 ```bash
-npm run generate
+bun run generate
 ```
 
-Do not manually edit `src/generated/capabilities.ts`.
+Do not manually edit `src/generated/capabilities.ts` or the generated
+`docs/CAPABILITIES.md` index.
 
 ### 4. Add deterministic tests
 
@@ -43,7 +47,12 @@ If the capability contains policy/decision logic, extract that logic into a pure
 
 ### 5. Update documentation only where behavior/contracts changed
 
-Do not update every document for every internal refactor.
+Do not update every document for every internal refactor. The required
+per-change documentation is listed in
+[CAPABILITY-CONTRACT.md](CAPABILITY-CONTRACT.md) section 9; at minimum the
+canonical `### \`<id>\`` section in
+[ANDMAR-AI-CAPABILITIES.md](ANDMAR-AI-CAPABILITIES.md) must exist
+(`check-architecture.mjs` enforces it).
 
 ## When a core change is acceptable
 

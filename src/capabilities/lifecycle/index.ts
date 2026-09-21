@@ -1,12 +1,87 @@
 import type { Capability, ChangeKind, CompletionEvidence } from "../../core/contracts.ts"
-import { analyzeDocumentationImpact, evaluateCompletion, inferVersionImpact } from "../../core/lifecycle.ts"
+import {
+  analyzeDocumentationImpact,
+  evaluateCompletionWithVerification,
+  inferVersionImpact,
+  type VerificationGateStatus,
+} from "../../core/lifecycle.ts"
 import { matchesAny } from "../../core/glob.ts"
+
+const CHECKS = ["tests", "lint", "typecheck", "build", "custom"] as const
+const DEFAULT_GATE_CHECKS: readonly string[] = ["tests", "typecheck"]
+const RECEIPT_COLLECTION_PREFIX = "verification/"
+const OBSERVED_EVIDENCE_PREFIX = "verification-evidence/"
+
+interface StoredReceiptLike {
+  revision: string
+  check: string
+  passed: boolean
+  at: number
+  executionId?: string
+}
+
+interface StoredEvidenceLike {
+  executionId: string
+  status: string
+  revision?: string
+}
+
+function encodeSegment(value: string): string {
+  return encodeURIComponent(value)
+}
+
+async function readVerificationStatus(
+  state: { scan<T>(prefix: string): Promise<Array<{ key: string; value: T }>> },
+  currentRevision: string,
+  requiredChecks: readonly string[],
+): Promise<VerificationGateStatus> {
+  const receiptEntries = await state.scan<StoredReceiptLike>(`${RECEIPT_COLLECTION_PREFIX}${encodeSegment(currentRevision)}/`)
+  const evidenceEntries = await state.scan<StoredEvidenceLike>(OBSERVED_EVIDENCE_PREFIX)
+  const byId = new Map<string, StoredEvidenceLike>()
+  for (const entry of evidenceEntries) {
+    if (entry.value && typeof entry.value.executionId === "string") byId.set(entry.value.executionId, entry.value)
+  }
+  const latest = new Map<string, StoredReceiptLike>()
+  for (const entry of receiptEntries) {
+    const receipt = entry.value
+    if (!receipt || receipt.revision !== currentRevision || typeof receipt.check !== "string") continue
+    const existing = latest.get(receipt.check)
+    if (!existing || receipt.at >= existing.at) latest.set(receipt.check, receipt)
+  }
+  const missing: string[] = []
+  const failed: string[] = []
+  const unverified: string[] = []
+  for (const check of requiredChecks) {
+    const receipt = latest.get(check)
+    if (!receipt) {
+      missing.push(check)
+      continue
+    }
+    if (receipt.passed) {
+      const execution = receipt.executionId ? byId.get(receipt.executionId) : undefined
+      const bound = execution !== undefined && (execution.revision === undefined || execution.revision === currentRevision)
+      if (!receipt.executionId || !execution || execution.status !== "completed" || !bound) {
+        unverified.push(check)
+        continue
+      }
+    } else {
+      failed.push(check)
+    }
+  }
+  const reasons: string[] = []
+  if (missing.length > 0) reasons.push(`missing receipts for: ${missing.join(", ")}`)
+  if (failed.length > 0) reasons.push(`failed checks: ${failed.join(", ")}`)
+  if (unverified.length > 0) {
+    reasons.push(`unverified receipts (no valid completed same-revision execution): ${unverified.join(", ")}`)
+  }
+  return { ok: reasons.length === 0, missing, failed, unverified, reasons }
+}
 
 export const lifecycleCapability: Capability = {
   id: "lifecycle",
-  version: 1,
+  version: 2,
   description: "Deterministic documentation, versioning and completion gates.",
-  async setup({ ctx, config }) {
+  async setup({ ctx, config, state }) {
     const registration = await ctx.tool.transform((editor: any) => {
       editor.namespace({ name: "andmar", description: "AndMar AI harness primitives" })
       editor.add({
@@ -38,7 +113,8 @@ export const lifecycleCapability: Capability = {
 
       editor.add({
         name: "completion_gate",
-        description: "Accept completion only when evidence belongs to the exact current revision and lifecycle gates are clean.",
+        description:
+          "Accept completion only when evidence belongs to the exact current revision, lifecycle gates are clean, and required verification receipts are satisfied. A manual testsPassed flag alone can never formally verify a revision with missing verification; pass requiredChecks: [] only for tasks that genuinely require no checks.",
         input: {
           type: "object",
           properties: {
@@ -55,14 +131,30 @@ export const lifecycleCapability: Capability = {
               required: ["revision", "testsPassed", "docsStatus", "versionStatus"],
               additionalProperties: false,
             },
+            requiredChecks: { type: "array", items: { type: "string", enum: [...CHECKS] } },
           },
           required: ["currentRevision", "evidence"],
           additionalProperties: false,
         },
         options: { namespace: "andmar", codemode: true },
-        execute: async (input: { currentRevision: string; evidence: CompletionEvidence }) => ({
-          content: JSON.stringify(evaluateCompletion(input.currentRevision, input.evidence), null, 2),
-        }),
+        execute: async (input: {
+          currentRevision: string
+          evidence: CompletionEvidence
+          requiredChecks?: string[]
+        }) => {
+          const required = input.requiredChecks ?? [...DEFAULT_GATE_CHECKS]
+          const verification =
+            required.length === 0
+              ? { ok: true, missing: [], failed: [], unverified: [], reasons: [] }
+              : await readVerificationStatus(state, input.currentRevision, required)
+          return {
+            content: JSON.stringify(
+              evaluateCompletionWithVerification(input.currentRevision, input.evidence, verification, required),
+              null,
+              2,
+            ),
+          }
+        },
       })
     })
     return registration?.dispose ? () => void registration.dispose() : undefined

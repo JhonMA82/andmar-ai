@@ -80,7 +80,7 @@ Provides deterministic checks for:
 ### `verification`
 Records revision-bound verification receipts (`tests`, `lint`, `typecheck`, `build`, `custom`) backed by observed execution evidence.
 
-The capability never executes commands itself: checks run through native OpenCode shell/tools (preserving permissions), AndMar observes each real outcome via the stable `execute.after` hook into `verification-evidence/<executionId>` (metadata only), and approved receipts reference that evidence. `passed: true` alone is never evidence; failed executions can never become passed receipts. Any revision change invalidates earlier receipts.
+The capability never executes commands itself: checks run through native OpenCode shell/tools (preserving permissions), AndMar observes each real outcome via the stable `execute.after` hook into `verification-evidence/<executionId>` (minimal metadata only: session, tool, command, status, timestamp, optional digest), and `andmar_record_receipt` resolves the compatible execution internally by current session plus normalized command — the agent never supplies a `callID`/`executionId`. `passed: true` alone is never evidence; failed executions can never become passed receipts; other-session or different-command executions are refused. Any revision change invalidates earlier receipts, and the completion gate cannot be formally satisfied while required verification is missing.
 
 ### `intake`
 Request-refinement pilot: deterministic-first classification with one
@@ -121,10 +121,10 @@ The core does not know ODD, Product Plan, Lane or Herdr. Request-refinement and 
 For real-world testing from this checkout:
 
 ```bash
-npm install
-npm run check
-npm run install:dev
-npm run doctor
+bun install
+bun run check
+bun run install:dev
+bun run doctor
 opencode service restart
 ```
 
@@ -135,14 +135,14 @@ opencode service restart
 ~/.config/opencode/agents/andmar.md
 ```
 
-`npm run doctor` validates the OpenCode major version, plugin link, installed agent, and exact plugin-API dependency before the test.
+`bun run doctor` validates the OpenCode major version, plugin link, installed agent, and exact plugin-API dependency before the test.
 
 Start OpenCode in any project and use **Tab** to select the `AndMar` primary agent. `Build` and `Plan` remain available.
 
 To remove only the development links/files owned by this checkout:
 
 ```bash
-npm run uninstall:dev
+bun run uninstall:dev
 ```
 
 If you prefer explicit plugin configuration or need model-profile mappings, see [`examples/opencode.jsonc`](examples/opencode.jsonc). Missing model profiles inherit the parent session model rather than guessing an ID.
@@ -217,7 +217,7 @@ src/capabilities/my-capability/index.ts
 Export a `Capability`, then run:
 
 ```bash
-npm run generate
+bun run generate
 ```
 
 The manifest is generated automatically. You should not need to edit the core, root plugin, model policy or other capabilities.
@@ -229,7 +229,7 @@ See [`docs/EXTENDING.md`](docs/EXTENDING.md).
 The project includes pure deterministic tests for routing, path mapping, semver impact, exact-revision completion and verification receipts.
 
 ```bash
-npm run check
+bun run check
 ```
 
 The repository uses Bun/OpenCode at runtime, but the deterministic core is intentionally plain TypeScript and has no framework dependency.
@@ -253,6 +253,9 @@ These are omissions by design, not missing TODOs.
 
 - [`AGENTS.md`](AGENTS.md) — mandatory guidance for coding agents.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system boundaries and data flow.
+- [`docs/CAPABILITY-CONTRACT.md`](docs/CAPABILITY-CONTRACT.md) — canonical contract for adding or changing a capability.
+- [`docs/ANDMAR-AI-CAPABILITIES.md`](docs/ANDMAR-AI-CAPABILITIES.md) — canonical per-capability reference.
+- [`docs/CAPABILITIES.md`](docs/CAPABILITIES.md) — generated objective index (id, version, tools); do not edit manually.
 - [`docs/MVP-SCOPE.md`](docs/MVP-SCOPE.md) — what the current MVP promises and does not promise.
 - [`docs/EXTENDING.md`](docs/EXTENDING.md) — how to add capabilities safely.
 - [`docs/DECISIONS.md`](docs/DECISIONS.md) — architectural decisions and rationale.

@@ -1,6 +1,11 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { analyzeDocumentationImpact, evaluateCompletion, inferVersionImpact } from "../src/core/lifecycle.ts"
+import {
+  analyzeDocumentationImpact,
+  evaluateCompletion,
+  evaluateCompletionWithVerification,
+  inferVersionImpact,
+} from "../src/core/lifecycle.ts"
 
 const rules = [
   { id: "api", code: ["src/api/**"], docs: ["docs/api/**", "README.md"] },
@@ -34,4 +39,89 @@ test("completion evidence is invalidated by revision changes", () => {
   })
   assert.equal(result.ok, false)
   assert.match(result.reasons.join(" "), /stale/)
+})
+
+test("completion gate cannot formally verify when required verification is missing", () => {
+  const evidence = {
+    revision: "rev-a",
+    testsPassed: true,
+    reviewPassed: true,
+    docsStatus: "clean" as const,
+    versionStatus: "clean" as const,
+  }
+  const missing = {
+    ok: false,
+    missing: ["tests", "typecheck"],
+    failed: [],
+    unverified: [],
+    reasons: ["missing receipts for: tests, typecheck"],
+  }
+  const gated = evaluateCompletionWithVerification("rev-a", evidence, missing, ["tests", "typecheck"])
+  assert.equal(gated.ok, false)
+  assert.match(gated.reasons.join(" "), /required verification/)
+  assert.match(gated.reasons.join(" "), /missing receipts/)
+})
+
+test("completion gate cannot be bypassed with manual testsPassed when verification failed", () => {
+  const evidence = {
+    revision: "rev-a",
+    testsPassed: true,
+    docsStatus: "clean" as const,
+    versionStatus: "clean" as const,
+  }
+  const failed = {
+    ok: false,
+    missing: [],
+    failed: ["tests"],
+    unverified: [],
+    reasons: ["failed checks: tests"],
+  }
+  assert.equal(evaluateCompletionWithVerification("rev-a", evidence, failed, ["tests"]).ok, false)
+})
+
+test("completion gate cannot be bypassed when receipts are unverified", () => {
+  const evidence = {
+    revision: "rev-a",
+    testsPassed: true,
+    docsStatus: "clean" as const,
+    versionStatus: "clean" as const,
+  }
+  const unverified = {
+    ok: false,
+    missing: [],
+    failed: [],
+    unverified: ["tests"],
+    reasons: ["unverified receipts (no valid completed same-revision execution): tests"],
+  }
+  const gated = evaluateCompletionWithVerification("rev-a", evidence, unverified, ["tests"])
+  assert.equal(gated.ok, false)
+  assert.match(gated.reasons.join(" "), /unverified/)
+})
+
+test("completion gate passes when required verification is satisfied", () => {
+  const evidence = {
+    revision: "rev-a",
+    testsPassed: true,
+    docsStatus: "clean" as const,
+    versionStatus: "clean" as const,
+  }
+  const clean = { ok: true, missing: [], failed: [], unverified: [], reasons: [] }
+  assert.equal(evaluateCompletionWithVerification("rev-a", evidence, clean, ["tests", "typecheck"]).ok, true)
+})
+
+test("completion gate stays proportional when no checks are genuinely required", () => {
+  const evidence = {
+    revision: "rev-a",
+    testsPassed: true,
+    docsStatus: "not-applicable" as const,
+    versionStatus: "not-applicable" as const,
+  }
+  const missing = {
+    ok: false,
+    missing: ["tests"],
+    failed: [],
+    unverified: [],
+    reasons: ["missing receipts for: tests"],
+  }
+  assert.equal(evaluateCompletionWithVerification("rev-a", evidence, missing, []).ok, true)
 })

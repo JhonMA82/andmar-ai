@@ -12,8 +12,11 @@ import {
   buildExecutionEvidence,
   executionEvidenceKey,
   EXECUTION_EVIDENCE_PREFIX,
+  extractCommand,
   isAndMarTool,
   isValidExecutionId,
+  normalizeCommand,
+  resolveCompatibleExecution,
   validateReceiptEvidence,
   type ExecutionEvidence,
 } from "../src/capabilities/verification/evidence.ts"
@@ -238,4 +241,212 @@ test("the observer ignores AndMar self-attestation and requires the stable id fi
   assert.equal(isValidExecutionId(""), false)
   assert.equal(isValidExecutionId("exec-1"), true)
   assert.ok(executionEvidenceKey("a/b").startsWith(EXECUTION_EVIDENCE_PREFIX))
+})
+
+test("execute.after captures a real execution with minimal metadata only", () => {
+  const observed = buildExecutionEvidence(
+    {
+      id: "exec-real-1",
+      tool: "bash",
+      sessionID: "ses-1",
+      status: "completed",
+      input: { command: "bun test", description: "run tests" },
+      result: { output: "42 passed", content: "42 passed" },
+    },
+    1_700_000_000_100,
+  )
+  assert.ok(observed)
+  assert.equal(observed?.executionId, "exec-real-1")
+  assert.equal(observed?.tool, "bash")
+  assert.equal(observed?.sessionID, "ses-1")
+  assert.equal(observed?.status, "completed")
+  assert.equal(observed?.command, "bun test")
+  assert.equal(observed?.commandNormalized, "bun test")
+  assert.ok(typeof observed?.outputDigest === "string" && observed.outputDigest.length === 64)
+  // No full output is stored on evidence.
+  assert.equal((observed as Record<string, unknown>)["output"], undefined)
+  assert.equal((observed as Record<string, unknown>)["result"], undefined)
+  assert.equal((observed as Record<string, unknown>)["content"], undefined)
+})
+
+test("command extraction stays simple and fails closed on unknown shapes", () => {
+  assert.equal(extractCommand({ command: "bun test" }), "bun test")
+  assert.equal(extractCommand("bun test"), "bun test")
+  assert.equal(extractCommand({ cmd: "bun test" }), undefined)
+  assert.equal(extractCommand({}), undefined)
+  assert.equal(extractCommand(undefined), undefined)
+  assert.equal(normalizeCommand("  bun   test\n--coverage  "), "bun test --coverage")
+})
+
+test("record_receipt resolves without an agent-supplied executionId", () => {
+  const observed = buildExecutionEvidence(
+    { id: "exec-1", tool: "bash", sessionID: "ses-1", status: "completed", input: { command: "bun test" } },
+    100,
+  )!
+  // Resolution criteria carry no executionId: only session, command, result and revision.
+  const criteria = { sessionID: "ses-1", command: "bun test", passed: true, revision: "rev-a" } as const
+  assert.ok(!("executionId" in criteria))
+  const resolved = resolveCompatibleExecution([observed], criteria)
+  assert.equal(resolved.ok, true)
+  assert.equal(resolved.ok ? resolved.execution.executionId : "", "exec-1")
+})
+
+test("successful same-session same-command execution produces a receipt", () => {
+  const observed = buildExecutionEvidence(
+    { id: "exec-1", tool: "bash", sessionID: "ses-1", status: "completed", input: { command: "bun test" } },
+    100,
+  )!
+  const resolved = resolveCompatibleExecution([observed], {
+    sessionID: "ses-1",
+    command: "bun test",
+    passed: true,
+    revision: "rev-a",
+  })
+  assert.equal(resolved.ok, true)
+  const summary = summarizeVerification(
+    "rev-a",
+    [receipt({ revision: "rev-a", check: "tests", executionId: "exec-1" })],
+    ["tests"],
+    { "exec-1": observed },
+  )
+  assert.equal(summary.ok, true)
+})
+
+test("nonexistent execution is rejected without creating a receipt", () => {
+  const resolved = resolveCompatibleExecution([], {
+    sessionID: "ses-1",
+    command: "bun test",
+    passed: true,
+    revision: "rev-a",
+  })
+  assert.equal(resolved.ok, false)
+  assert.match((resolved.ok ? "" : resolved.reason), /no observed OpenCode execution/)
+})
+
+test("failed execution cannot become a passing receipt via internal resolution", () => {
+  const failed = buildExecutionEvidence(
+    { id: "exec-fail", tool: "bash", sessionID: "ses-1", status: "error", input: { command: "bun test" } },
+    100,
+  )!
+  assert.equal(failed.status, "error")
+  const resolved = resolveCompatibleExecution([failed], {
+    sessionID: "ses-1",
+    command: "bun test",
+    passed: true,
+    revision: "rev-a",
+  })
+  assert.equal(resolved.ok, false)
+  assert.match((resolved.ok ? "" : resolved.reason), /failed execution|cannot become|did not complete/)
+  // The same failed execution can still back a failed receipt.
+  const failedReceipt = resolveCompatibleExecution([failed], {
+    sessionID: "ses-1",
+    command: "bun test",
+    passed: false,
+    revision: "rev-a",
+  })
+  assert.equal(failedReceipt.ok, true)
+})
+
+test("execution from another session is rejected", () => {
+  const foreign = buildExecutionEvidence(
+    { id: "exec-1", tool: "bash", sessionID: "ses-other", status: "completed", input: { command: "bun test" } },
+    100,
+  )!
+  const resolved = resolveCompatibleExecution([foreign], {
+    sessionID: "ses-1",
+    command: "bun test",
+    passed: true,
+    revision: "rev-a",
+  })
+  assert.equal(resolved.ok, false)
+  assert.match((resolved.ok ? "" : resolved.reason), /another session|current session/)
+})
+
+test("different command is rejected even in the same session", () => {
+  const observed = buildExecutionEvidence(
+    { id: "exec-1", tool: "bash", sessionID: "ses-1", status: "completed", input: { command: "bun test" } },
+    100,
+  )!
+  const resolved = resolveCompatibleExecution([observed], {
+    sessionID: "ses-1",
+    command: "bunx tsc --noEmit",
+    passed: true,
+    revision: "rev-a",
+  })
+  assert.equal(resolved.ok, false)
+  assert.match((resolved.ok ? "" : resolved.reason), /command mismatch|no observed/)
+})
+
+test("whitespace-only representation differences still match, real differences fail closed", () => {
+  const observed = buildExecutionEvidence(
+    { id: "exec-1", tool: "bash", sessionID: "ses-1", status: "completed", input: { command: "bun   test" } },
+    100,
+  )!
+  const same = resolveCompatibleExecution([observed], {
+    sessionID: "ses-1",
+    command: "bun test",
+    passed: true,
+    revision: "rev-a",
+  })
+  assert.equal(same.ok, true)
+  const different = resolveCompatibleExecution([observed], {
+    sessionID: "ses-1",
+    command: "bun test --coverage",
+    passed: true,
+    revision: "rev-a",
+  })
+  assert.equal(different.ok, false)
+})
+
+test("resolved receipts stay revision-bound", () => {
+  const observed = buildExecutionEvidence(
+    { id: "exec-1", tool: "bash", sessionID: "ses-1", status: "completed", input: { command: "bun test" } },
+    100,
+  )!
+  const bound = bindExecutionToRevision(observed, "rev-a")
+  const stale = resolveCompatibleExecution([bound], {
+    sessionID: "ses-1",
+    command: "bun test",
+    passed: true,
+    revision: "rev-b",
+  })
+  assert.equal(stale.ok, false)
+  assert.match((stale.ok ? "" : stale.reason), /bound to revision/)
+})
+
+test("verify_revision passes after valid observed checks", () => {
+  const testsExec = buildExecutionEvidence(
+    { id: "exec-tests", tool: "bash", sessionID: "ses-1", status: "completed", input: { command: "bun test" } },
+    100,
+  )!
+  const typeExec = buildExecutionEvidence(
+    { id: "exec-type", tool: "bash", sessionID: "ses-1", status: "completed", input: { command: "bunx tsc --noEmit" } },
+    200,
+  )!
+  const testsResolved = resolveCompatibleExecution([testsExec], {
+    sessionID: "ses-1",
+    command: "bun test",
+    passed: true,
+    revision: "rev-a",
+  })
+  const typeResolved = resolveCompatibleExecution([typeExec], {
+    sessionID: "ses-1",
+    command: "bunx tsc --noEmit",
+    passed: true,
+    revision: "rev-a",
+  })
+  assert.equal(testsResolved.ok, true)
+  assert.equal(typeResolved.ok, true)
+  const summary = summarizeVerification(
+    "rev-a",
+    [
+      receipt({ revision: "rev-a", check: "tests", executionId: "exec-tests" }),
+      receipt({ revision: "rev-a", check: "typecheck", executionId: "exec-type" }),
+    ],
+    ["tests", "typecheck"],
+    { "exec-tests": testsExec, "exec-type": typeExec },
+  )
+  assert.equal(summary.ok, true)
+  assert.deepEqual(summary.missing, [])
+  assert.deepEqual(summary.unverified, [])
 })

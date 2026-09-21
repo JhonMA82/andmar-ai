@@ -32,7 +32,10 @@ Validate the architecture of AndMar AI with enough working behavior to prove the
 - delegate;
 - resume;
 - change impact;
-- completion gate.
+- completion gate;
+- verification receipts (`andmar_record_receipt`, `andmar_verify_revision`)
+  and check suggestions (`andmar_suggest_checks`);
+- request refinement (`andmar_intake`, `andmar_intake_trace`).
 
 ### Documentation
 
@@ -53,9 +56,9 @@ repeat
 
 before considering anything more expressive.
 
-### Context projection / Jev
+### Context projection / broader Jev use
 
-The architecture allows a future context capability, but the MVP first needs real token/context measurements. Adding a semantic classifier now would violate the “demonstrated friction first” rule.
+The architecture allows a future context capability, but the MVP first needs real token/context measurements beyond the narrow `intake` pilot. The pilot answers six typed Jev questions per request; any broader semantic classifier still waits for real context-cost measurements and a measured set of decisions that structured rules cannot classify reliably enough.
 
 ### Memory
 
@@ -93,6 +96,6 @@ Only measured friction. Examples:
 
 - repeated manual orchestration -> workflow capability;
 - recurring context waste -> context projection;
-- ambiguous routing large enough to matter -> Jev decision adapter;
+- decisions beyond intake that structured rules cannot classify reliably -> broader Jev decision use;
 - expensive parallel worktree creation -> Lane adapter;
 - poor visibility into workers -> optional Herdr adapter.

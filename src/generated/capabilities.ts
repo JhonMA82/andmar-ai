@@ -1,4 +1,4 @@
-// GENERATED FILE. Run `npm run generate`. Do not edit manually.
+// GENERATED FILE. Run `bun run generate`. Do not edit manually.
 import delegation from "../capabilities/delegation/index.ts"
 import intake from "../capabilities/intake/index.ts"
 import lifecycle from "../capabilities/lifecycle/index.ts"

@@ -9,7 +9,10 @@ This is not a promised feature list. Each item has a trigger. Do not implement a
 - deterministic model profiles;
 - delegation/resume;
 - documentation/version impact;
-- exact-revision completion gate.
+- exact-revision completion gate;
+- verification receipts bound to observed execution evidence;
+- intake request-refinement pilot (deterministic-first, one typed Jev
+  decision, explicit non-blocking fallback).
 
 ## Candidate: workflow capability
 
@@ -38,9 +41,9 @@ Order:
 4. cache classification decisions;
 5. fail open to full context.
 
-## Candidate: Jev decisions
+## Candidate: broader Jev decisions
 
-**Trigger:** a measurable set of decisions that structured rules cannot classify reliably enough.
+**Trigger:** a measurable set of decisions beyond intake that structured rules cannot classify reliably enough.
 
 Potential uses:
 
@@ -53,6 +56,10 @@ Jev must not become an agent or general reasoning substitute.
 ## Implemented: verification receipts
 
 Previous trigger was "completion gate inputs become repeatedly manual". The `verification` capability now provides structured receipts (`andmar_record_receipt` / `andmar_verify_revision`) captured from native OpenCode shell/tool execution, with exact-revision semantics. Revision capture itself still takes the revision as explicit input; automating it from native VCS events remains a candidate.
+
+## Implemented (pilot): intake request refinement
+
+Previous trigger was "a measurable set of decisions that structured rules cannot classify reliably enough" for one narrow question: whether a request needs refinement before execution. The `intake` capability answers it with deterministic checks first and a single typed Jev call second (`andmar_intake` / `andmar_intake_trace`), with an explicit non-blocking fallback. Broader Jev uses below remain candidates.
 
 ## Candidate: worktree strategy adapter
 

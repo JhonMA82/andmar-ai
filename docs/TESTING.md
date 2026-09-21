@@ -1,6 +1,6 @@
 # Real-world testing
 
-Base snapshot: `JhonMA82/andmar-ai` main at commit `2f50effef624570b6e686d71caa6d430f77a467f`, plus the test-readiness changes documented under `[Unreleased]`.
+Base snapshot: `JhonMA82/andmar-ai` main at commit `2f50effef624570b6e686d71caa6d430f77a467f`, plus the intake pilot, the `AndMar` primary agent, and the verification-evidence changes documented in the changelog.
 
 This package is intentionally at the point where real use should drive the next capability.
 
@@ -9,14 +9,14 @@ This package is intentionally at the point where real use should drive the next 
 From this repository:
 
 ```bash
-npm install
-npm run check
-npm run install:dev
-npm run doctor
+bun install
+bun run check
+bun run install:dev
+bun run doctor
 opencode service restart
 ```
 
-`npm run doctor` is read-only and fails if OpenCode v2 is missing, the plugin link points elsewhere, the agent differs from this checkout, or the plugin API dependency is not exactly pinned.
+`bun run doctor` is read-only and fails if OpenCode v2 is missing, the plugin link points elsewhere, the agent differs from this checkout, or the plugin API dependency is not exactly pinned.
 
 The installer does not edit your OpenCode JSON configuration. It uses OpenCode V2's global discovery locations:
 
@@ -30,14 +30,14 @@ Start OpenCode in the project you want to test and use **Tab** to select the `An
 To remove this development install:
 
 ```bash
-npm run uninstall:dev
+bun run uninstall:dev
 ```
 
 The uninstaller only removes the plugin symlink when it still points to this checkout, and only removes the agent file when it still matches the repository copy.
 
 ## What the first tests should answer
 
-Do not add Workflow, Jev, context projection, memory, or more agents before these tests produce evidence that they are needed.
+Do not add Workflow, context projection, memory, or more agents before these tests produce evidence that they are needed. (The narrow `intake` Jev pilot is already implemented; broader semantic uses still wait for evidence.)
 
 | Scenario | Example | What to observe |
 |---|---|---|
@@ -58,7 +58,7 @@ For every scenario record:
 
 ## Current limitation being measured
 
-AndMar AI v0.3.0 has durable verification and child-worker state, but it does **not** yet have a project-level active-task/workflow record.
+AndMar AI v0.4.0 has durable verification and child-worker state, but it does **not** yet have a project-level active-task/workflow record.
 
 `andmar_resume` intentionally enforces parent-session ownership for delegated child sessions. A brand-new parent session therefore must not silently take ownership of an old child.
 
@@ -91,6 +91,6 @@ A green self-authored mock is evidence about the mock, not proof of an external 
 
 ## Real API typecheck vs offline check
 
-`npm run check` is the authoritative repository check. After `npm install`, it typechecks against the pinned real `@opencode/plugin` package.
+`bun run check` is the authoritative repository check. After `bun install`, it typechecks against the pinned real `@opencode/plugin` package.
 
-For environments without registry/network access, `npm run check:offline` exists only as a structural fallback and uses the local type shim. A passing offline check is **not** evidence of OpenCode API compatibility and must never replace `npm run check` in CI or release validation.
+For environments without registry/network access, `bun run check:offline` exists only as a structural fallback and uses the local type shim. A passing offline check is **not** evidence of OpenCode API compatibility and must never replace `bun run check` in CI or release validation.

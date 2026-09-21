@@ -13,7 +13,7 @@ import {
   buildExecutionEvidence,
   EXECUTION_EVIDENCE_PREFIX,
   executionEvidenceKey,
-  validateReceiptEvidence,
+  resolveCompatibleExecution,
   type ExecutionEvidence,
 } from "./evidence.ts"
 import { detectProjectChecks } from "./detect.ts"
@@ -36,10 +36,15 @@ async function readEvidenceMap(state: StateStore): Promise<Record<string, Execut
   return map
 }
 
+async function readEvidenceList(state: StateStore): Promise<ExecutionEvidence[]> {
+  const entries = await state.scan<ExecutionEvidence>(EXECUTION_EVIDENCE_PREFIX)
+  return entries.map((entry) => entry.value)
+}
+
 export const verificationCapability: Capability = {
   id: "verification",
-  version: 2,
-  description: "Revision-bound verification receipts backed by observed OpenCode execution evidence.",
+  version: 3,
+  description: "Revision-bound verification receipts resolved internally from observed OpenCode execution evidence.",
   async setup({ ctx, state }) {
     const disposers: Array<() => void> = []
 
@@ -48,18 +53,17 @@ export const verificationCapability: Capability = {
       editor.add({
         name: "record_receipt",
         description:
-          "Record the outcome of one verification check for an exact revision. Execute the command first through native OpenCode shell/tools (this tool never runs commands itself), then record the result here with the observed executionId. Passed receipts require a completed same-revision execution; failed executions can never become passed receipts.",
+          "Record the outcome of one verification check for an exact revision. Run the command first through native OpenCode shell/tools (this tool never runs commands itself), then record it here with the same revision, check, passed flag and exact command. AndMar resolves the observed execution internally by current session plus normalized command; no executionId is needed. Passed receipts require a completed same-session same-command execution; failed executions can never become passed receipts.",
         input: {
           type: "object",
           properties: {
             revision: { type: "string", minLength: 1, maxLength: 200 },
             check: { type: "string", enum: [...CHECKS] },
             passed: { type: "boolean" },
-            command: { type: "string" },
+            command: { type: "string", minLength: 1, maxLength: 4000 },
             output: { type: "string" },
-            executionId: { type: "string", minLength: 1, maxLength: 200 },
           },
-          required: ["revision", "check", "passed"],
+          required: ["revision", "check", "passed", "command"],
           additionalProperties: false,
         },
         options: { namespace: "andmar", codemode: true },
@@ -68,38 +72,45 @@ export const verificationCapability: Capability = {
             revision: string
             check: VerificationCheck
             passed: boolean
-            command?: string
+            command: string
             output?: string
-            executionId?: string
           },
           toolContext: any,
         ) => {
           if (input.revision.trim() === "") return { content: "revision must be a non-empty string" }
-          const executionId = input.executionId?.trim() ?? ""
-          const supplied = executionId !== "" ? executionId : undefined
-          const stored = supplied ? await state.get<ExecutionEvidence>(executionEvidenceKey(supplied)) : undefined
-          const validation = validateReceiptEvidence(
-            { revision: input.revision, passed: input.passed, ...(supplied === undefined ? {} : { executionId: supplied }) },
-            stored,
-          )
-          if (!validation.ok) {
+          if (typeof input.command !== "string" || input.command.trim() === "") {
             return {
-              content: `refused: ${validation.reason}`,
+              content:
+                "refused: command is required to resolve observed execution: run the check first through native OpenCode shell/tools, then record it with the exact same command",
             }
           }
-          if (stored && stored.revision === undefined) {
-            await state.set(executionEvidenceKey(stored.executionId), bindExecutionToRevision(stored, input.revision))
-          }
           const sessionID = sessionIDFrom(toolContext)
+          if (typeof sessionID !== "string" || sessionID === "") {
+            return { content: "refused: cannot resolve observed execution without the current sessionID" }
+          }
+          const evidences = await readEvidenceList(state)
+          const resolution = resolveCompatibleExecution(evidences, {
+            sessionID,
+            command: input.command,
+            passed: input.passed,
+            revision: input.revision,
+          })
+          if (!resolution.ok) {
+            return { content: `refused: ${resolution.reason}` }
+          }
+          const resolved = resolution.execution
+          if (resolved.revision === undefined) {
+            await state.set(executionEvidenceKey(resolved.executionId), bindExecutionToRevision(resolved, input.revision))
+          }
           const receipt: VerificationReceipt = {
             revision: input.revision,
             check: input.check,
             passed: input.passed,
             at: Date.now(),
-            ...(input.command === undefined ? {} : { command: input.command }),
+            command: input.command,
             ...(input.output === undefined ? {} : { output: truncateOutput(input.output) }),
-            ...(sessionID === undefined ? {} : { sessionID }),
-            ...(supplied === undefined ? {} : { executionId: supplied }),
+            sessionID,
+            executionId: resolved.executionId,
           }
           const key = receiptKey(input.revision, input.check)
           await state.set(key, receipt)
@@ -155,7 +166,9 @@ export const verificationCapability: Capability = {
     // Observe real tool executions via the official stable OpenCode V2 hook.
     // `ctx.shell` only offers `create.before` (no result), so `execute.after`
     // is the correct contract for observed outcomes. AndMar never runs
-    // subprocesses itself; it only stores minimal metadata (no full output).
+    // subprocesses itself; it only stores minimal metadata (session,
+    // internal call id, tool, command + normalized form, status, timestamp
+    // and an optional output digest — never full output).
     const evidenceHook = await ctx.tool.hook("execute.after", async (event: any) => {
       const evidence = buildExecutionEvidence(event, Date.now())
       if (!evidence) return

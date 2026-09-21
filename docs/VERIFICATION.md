@@ -25,10 +25,14 @@ El flujo normal tiene tres pasos:
    (ej. npm run check, tsc, tests...)
    -> AndMar observa el resultado real vía el hook estable
       execute.after y guarda una evidencia mínima de ejecución
-      (solo metadata: executionId, herramienta, estado, sesión)
+      (solo metadata: sesión, id interno, herramienta, comando
+      y forma normalizada, estado, timestamp y digest opcional;
+      nunca output completo)
 
-2. Guardas el resultado con andmar_record_receipt indicando el
-   executionId observado
+2. Guardas el resultado con andmar_record_receipt indicando
+   revisión, check, passed y el comando exacto
+   (sin executionId: AndMar lo resuelve internamente por
+   sesión actual + comando normalizado)
    -> queda archivado bajo verification/<revisión>/<check>
       y la evidencia queda ligada a esa revisión
 
@@ -38,11 +42,11 @@ El flujo normal tiene tres pasos:
 ```
 
 Ejemplo: terminaste un cambio en la revisión `abc123` y corriste tests y
-typecheck. Los registras uno por uno con su ejecución observada:
+typecheck. Los registras uno por uno con el mismo comando que corrió:
 
 ```text
-andmar_record_receipt(revision: "abc123", check: "tests", passed: true, executionId: "<id-observado-1>")
-andmar_record_receipt(revision: "abc123", check: "typecheck", passed: true, executionId: "<id-observado-2>")
+andmar_record_receipt(revision: "abc123", check: "tests", passed: true, command: "bun test")
+andmar_record_receipt(revision: "abc123", check: "typecheck", passed: true, command: "bunx tsc --noEmit")
 ```
 
 Después verificas:
@@ -114,23 +118,33 @@ herramientas normales, y después guardas el resultado con
 - `ok: true` — todos los checks requeridos pasaron en esta revisión exacta con ejecución observada válida. Puedes continuar hacia el cierre.
 - `missing: [...]` — esos checks no tienen resultado registrado para esta revisión. Hay que correrlos.
 - `failed: [...]` — esos checks corrieron y fallaron. Hay que arreglar y volver a correr.
-- `unverified: [...]` — esos checks tienen un receipt aprobado pero sin evidencia de ejecución válida (sin `executionId`, ejecución desconocida o fallida, o evidencia ligada a otra revisión). Hay que correr el check de verdad y registrarlo con su `executionId`.
+- `unverified: [...]` — esos checks tienen un receipt aprobado pero sin evidencia de ejecución válida (sin ejecución observada compatible, ejecución fallida, ejecución de otra sesión, comando distinto o evidencia ligada a otra revisión). Hay que correr el check de verdad en la sesión actual con el mismo comando y volver a registrarlo.
 
 ## Por qué `passed: true` solo no basta
 
-Un receipt aprobado exige el `executionId` de la ejecución real observada
-por OpenCode para ese comando. Sin ejecución válida no se guarda nada; una
-ejecución fallida jamás puede convertirse en receipt aprobado; y una
-evidencia ligada a otra revisión no sirve para la actual. Si el código
-cambia después del check, hay que volver a correrlo: la evidencia anterior
-queda automáticamente invalidada.
+Un receipt aprobado exige una ejecución real observada por OpenCode para ese
+mismo comando en la sesión actual. El agente solo indica revisión, check,
+passed y comando; AndMar resuelve internamente la ejecución compatible
+(sesión + comando normalizado) y la liga al receipt con su `executionId`
+interno para auditoría. La normalización es solo de espacios (trim + colapsar
+espacios); cualquier otra diferencia de representación se rechaza en cerrado
+y hay que volver a correr el comando exacto. Sin ejecución válida no se guarda
+nada; una ejecución fallida jamás puede convertirse en receipt aprobado; una
+ejecución de otra sesión o con otro comando tampoco sirve; y una evidencia
+ligada a otra revisión no sirve para la actual. Si el código cambia
+después del check, hay que volver a correrlo: la evidencia anterior queda
+automáticamente invalidada.
 
 ## Cómo encaja con el resto
 
 `andmar_verify_revision` es el paso previo natural de `andmar_completion_gate`
 (de la capability `lifecycle`). La verificación dice "los checks pasaron";
 el completion gate además revisa documentación y versionado antes de aceptar
-el cierre.
+el cierre. El gate no puede declararse formalmente verificado con
+verificación requerida incompleta: un `testsPassed: true` manual nunca basta
+cuando `verify_revision` reporta faltantes para la misma revisión. Para tareas
+que genuinamente no requieren checks, el gate acepta `requiredChecks: []`
+explícito.
 
 ```text
 implementación
@@ -156,3 +170,7 @@ terminado de verdad
   buenos tests sigue siendo trabajo humano (o del agente que implementa).
 - **No publica ni versiona nada.** Solo detecta y archiva. Publicar es
   decisión de otra capability futura (`release`).
+- **No automatiza la captura de la revisión.** La revisión se pasa como input
+  explícito (normalmente un fingerprint del working state, no solo `HEAD`).
+- **No poda el almacenamiento.** Evidencias y receipts se acumulan sin límite
+  actual; solo el trace de intake está acotado (20 entradas).

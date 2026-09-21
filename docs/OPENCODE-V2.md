@@ -64,16 +64,19 @@ Event shape relied upon:
 {
   tool: string,          // e.g. "bash"; AndMar-owned tools are skipped
   sessionID: Session.ID,
+  agent: Agent.ID,
+  messageID: SessionMessage.ID,
   id: Tool.CallID,       // stable call id — NOT `callID` (never existed)
-  input: unknown,        // observed but never stored
+  input: unknown,        // observed arguments (bash: { command }); command extracted, never stored whole
   status: "completed" | "error",
-  result?: Tool.Result,  // completed — observed but never stored
-  error?: Tool.Error,    // error — observed but never stored
+  result?: Tool.Result,  // completed — digested, never stored whole
+  error?: Tool.Error,    // error — digested, never stored whole
 }
 ```
 
-AndMar stores only minimal metadata (`executionId`, tool, status,
-session, timestamp) under `verification-evidence/<executionId>` plus the
+AndMar stores only minimal metadata (`executionId` as internal call id,
+tool, session, command plus normalized form, status, timestamp and optional
+`outputDigest` sha256) under `verification-evidence/<executionId>` plus the
 diagnostic `journal/<sessionID>/<callID>` entry. Full inputs/outputs are
 never persisted by the observer.
 
@@ -101,7 +104,12 @@ Missing mappings inherit the parent's model.
 
 ## VCS
 
-The MVP core has revision-bound evidence semantics but does not yet automate revision capture. A future verification-receipt capability should use native:
+The core has revision-bound evidence semantics, and the `verification`
+capability implements receipts bound to an explicitly supplied revision
+(normally a working-state fingerprint covering HEAD plus staged, unstaged, and
+untracked changes — not `HEAD` alone when the tree is dirty).
+
+Automating revision capture from native VCS events remains a candidate:
 
 ```text
 ctx.vcs.get
@@ -132,4 +140,4 @@ Run the repository checks after any API update and test the installed package, n
 
 ## Type validation policy
 
-CI and the authoritative `npm run check` must typecheck against the installed `@opencode/plugin` dependency. `tsconfig.check.json` and the local shim are retained only for explicit offline structural checks (`npm run check:offline`) and are not runtime/API proof.
+CI and the authoritative `bun run check` must typecheck against the installed `@opencode/plugin` dependency. `tsconfig.check.json` and the local shim are retained only for explicit offline structural checks (`bun run check:offline`) and are not runtime/API proof.

@@ -4,7 +4,15 @@ This file is the authoritative implementation guidance for coding agents working
 
 ## Mission
 
-AndMar AI is a **thin, deterministic-first harness for OpenCode V2**. It extends OpenCode; it must not become a second runtime.
+AndMar AI is a **thin, deterministic-first harness for OpenCode V2**. It extends OpenCode; it must not become a second runtime
+
+Documentation is part of the architecture contract.
+
+Code, generated manifests, tests, configuration and documentation must describe the same system.
+
+Do not duplicate architectural truth across files when it can be generated or referenced from one canonical source.
+
+A capability change is incomplete when its public contract, state ownership, configuration, integrations or verification behavior changed without the corresponding documentation update.
 
 ## Non-negotiable architecture rules
 
@@ -17,7 +25,7 @@ AndMar AI is a **thin, deterministic-first harness for OpenCode V2**. It extends
 7. **Unknown mutation result is not permission to retry.** Reconcile external reality before repeating side effects.
 8. **State != context != memory.** Operational state belongs in `ctx.storage`; do not create memory machinery to solve execution-state problems.
 9. **Capabilities are isolated.** Normal features live under `src/capabilities/<id>/` and communicate through core contracts, not imports from sibling capabilities.
-10. **Do not edit generated manifests manually.** Run `npm run generate`.
+10. **Do not edit generated manifests manually.** Run `bun run generate`.
 11. **Do not bypass OpenCode shell/permission primitives.** If execution would evade OpenCode permission hooks, redesign it.
 12. **No speculative infrastructure.** Add a capability only for a demonstrated problem or an explicit current requirement.
 
@@ -85,7 +93,45 @@ The current deterministic policy is intentionally conservative:
 - ordinary bounded work is `standard`;
 - architecture, security, migrations, hard debugging, high reasoning and repeated failure are `frontier`.
 
-Do not add a semantic router until real ambiguous routing cases demonstrate the need. The intended future extension point is a small classifier such as Jev, not a frontier-model router.
+Do not add a semantic router until real ambiguous routing cases demonstrate the need. The narrow implemented slice is the `intake` pilot (one typed Jev decision on whether a request needs refinement), not a frontier-model router.
+
+## Documentation map (read before changing)
+
+`AGENTS.md` is the operational contract, not the architecture. Consult the
+canonical source for the area you touch:
+
+```text
+architecture / boundaries / data flow  -> docs/ARCHITECTURE.md
+adding or changing a capability        -> docs/CAPABILITY-CONTRACT.md
+  + canonical per-capability reference -> docs/ANDMAR-AI-CAPABILITIES.md
+  + generated id/version/tool index    -> docs/CAPABILITIES.md (never edit)
+state keys / ownership / lifecycle     -> docs/STATE.md
+options / environment variables        -> docs/CONFIGURATION.md
+receipts / evidence / revision binding -> docs/VERIFICATION.md
+intake / Jev / trace / fallback        -> docs/INTAKE.md
+request flow / completion policy       -> assets/agents/andmar.md
+why the architecture is this way       -> docs/DECISIONS.md
+what is in / out of the MVP            -> docs/MVP-SCOPE.md
+real-world testing (Bun flow)          -> docs/TESTING.md
+version / changelog policy             -> docs/VERSIONING.md
+OpenCode V2 API assumptions            -> docs/OPENCODE-V2.md
+```
+
+Before changing architecture, read `ARCHITECTURE.md`,
+`CAPABILITY-CONTRACT.md`, the affected capability documentation, and the
+relevant decisions.
+
+When changing a capability:
+
+- preserve capability isolation (no sibling imports);
+- update tests alongside the behavior they verify;
+- update manifest metadata (`id`/`version`/`description`) when applicable and
+  regenerate (`bun run generate`);
+- update `STATE.md` / `CONFIGURATION.md` when state or options are affected;
+- update the canonical `### \`<id>\`` section in
+  `docs/ANDMAR-AI-CAPABILITIES.md`;
+- update `CHANGELOG.md` when the change is user-visible;
+- run the complete project gate (`bun run check`).
 
 ## Documentation/versioning
 

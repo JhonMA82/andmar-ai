@@ -5,6 +5,12 @@ to work with consistent quality. It is not a prompt enhancer: it discovers
 the missing technical layer from repo context and a small structured
 decision, then lets the primary model do the reasoning only when necessary.
 
+Jev is an optional decision primitive here, not a requirement: without a key,
+on timeout, or on any failure, intake degrades to an explicit non-blocking
+`fallback` and AndMar continues with current capabilities. This pilot is
+experimental — questions, thresholds, and heuristics are tuning candidates
+driven by trace data, not settled policy.
+
 ```text
 User request
      ↓
@@ -151,7 +157,9 @@ ANDMAR_INTAKE_TRACE=1
 ANDMAR_INTAKE_TRACE_CONTENT=1
 ```
 
-Plugin options (optional, same keys under `intake`):
+Plugin options (optional, same keys under `intake`). An explicitly set plugin
+option wins over the environment variable; otherwise the environment applies;
+otherwise the default:
 
 ```jsonc
 { "intake": { "model": "typesafe/jev-1.13", "timeoutMs": 8000 } }

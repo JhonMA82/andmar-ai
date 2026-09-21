@@ -28,7 +28,7 @@ This is a compact decision log, not a process-heavy ADR system. Add an entry onl
 
 **Why:** It avoids a handwritten registry without introducing runtime filesystem scanning or bundler-specific magic.
 
-**Consequence:** New capability = folder + `npm run generate`.
+**Consequence:** New capability = folder + `bun run generate`.
 
 ---
 
@@ -48,7 +48,9 @@ This is a compact decision log, not a process-heavy ADR system. Add an entry onl
 
 **Why:** Using a frontier model to decide whether a frontier model is needed is wasteful; a semantic classifier is not justified until ambiguous routing becomes a measured problem.
 
-**Consequence:** Jev is an intended extension, not an MVP dependency.
+**Consequence:** Jev was an intended extension, not an MVP dependency. The
+narrow slice is now implemented as the `intake` pilot (D-013); broader
+semantic uses still wait for measured friction.
 
 ---
 
@@ -125,3 +127,24 @@ This is a compact decision log, not a process-heavy ADR system. Add an entry onl
 **Why:** Natural-language requests arrive underspecified; a senior-developer rewrite cannot scale. A typed decision focuses the primary model on an Internal Task Brief only when needed, while `routeSignals` reuse the existing `ChangeKind`/`Risk` taxonomy instead of a second classifier.
 
 **Consequence:** Core stays free of Jev/OpenRouter specifics; `andmar_intake`/`andmar_intake_trace` are the only new tools; trace is off by default and never stores prompts, secrets, or the API key.
+
+---
+
+## D-014 — Internal execution resolution without agent-supplied call IDs
+
+**Decision:** `andmar_record_receipt` no longer accepts an agent-supplied `executionId`/`callID`. It requires `(revision, check, passed, command)` and resolves a compatible observed execution internally by current `sessionID` plus deterministically normalized command (`trim` + collapse whitespace, no shell parsing). Matching is fail-closed: nonexistent execution, different command, failed-as-passing, other-session execution and revision-bound evidence are all refused without creating a receipt. Evidence stores only minimal metadata (session, internal call id, tool, command + normalized form, status, timestamp, optional output digest); the resolved internal `executionId` stays for audit. `andmar_completion_gate` additionally enforces `required verification missing ⇒ gate cannot be formally satisfied`: with non-empty `requiredChecks` (default `tests, typecheck`) a manual `testsPassed: true` can never bypass missing/failed/unverified receipts; `requiredChecks: []` remains the explicit proportional opt-out for tasks that genuinely require no checks.
+
+**Why:** Real usage showed the `executionId` belongs to the internal OpenCode hook and is not operative data for the agent, so verified work ended as `missing receipts`. The guarantee stays (receipts derive only from OpenCode-observed executions, never from LLM claims) while the association moves inside Verification.
+
+**Consequence:** Agent flow is `run check via native shell → record with same revision/command → verify_revision → completion_gate`; revision binding and fingerprint semantics are unchanged.
+
+---
+
+## D-015 — No Workflow engine yet
+
+**Decision:** AndMar AI ships no generic workflow capability (no DAG, sequence/parallel/gate DSL, or orchestration board), even though delegation, verification, and the completion gate already compose a linear request flow (see `ARCHITECTURE.md` 2.2).
+
+**Why:** The observed friction so far is single-task completion with evidence, which explicit primitive calls plus the completion gate already solve. A workflow engine would add coordination machinery before repeated orchestration pain has been measured in real use (`docs/TESTING.md` restart scenario is the instrument for this).
+
+**Consequence:** Orchestration stays in the `AndMar` agent's completion policy and in methodology consumers. The first workflow slice, if ever triggered, is only `sequence / parallel / gate / repeat(maxRounds)` for the demonstrated problem — never a general DSL upfront. The `intake` pilot (D-013) is not a precedent for building engines without triggers.
+

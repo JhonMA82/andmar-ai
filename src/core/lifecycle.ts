@@ -49,3 +49,39 @@ export function evaluateCompletion(currentRevision: string, evidence: Completion
   if (evidence.versionStatus === "required") reasons.push("version/changelog update is still required")
   return { ok: reasons.length === 0, reasons }
 }
+
+export interface VerificationGateStatus {
+  ok: boolean
+  missing: string[]
+  failed: string[]
+  unverified: string[]
+  reasons: string[]
+}
+
+/**
+ * Completion gate with required-verification invariant.
+ *
+ * When `requiredChecks` is non-empty, stored verification for the exact
+ * current revision must also be satisfied: a manual `testsPassed: true`
+ * flag alone can never represent the revision as formally verified.
+ * Pass `requiredChecks: []` only for tasks that genuinely require no
+ * checks (proportional escape hatch, explicit and observable).
+ */
+export function evaluateCompletionWithVerification(
+  currentRevision: string,
+  evidence: CompletionEvidence,
+  verification: VerificationGateStatus,
+  requiredChecks: readonly string[] = ["tests", "typecheck"],
+): { ok: boolean; reasons: string[] } {
+  const base = evaluateCompletion(currentRevision, evidence)
+  if (requiredChecks.length === 0) return base
+  if (verification.ok) return base
+  const detail = verification.reasons.length > 0 ? verification.reasons.join("; ") : "required verification is incomplete"
+  return {
+    ok: false,
+    reasons: [
+      ...base.reasons,
+      `required verification (${requiredChecks.join(", ")}) is not satisfied for revision "${currentRevision}": ${detail}`,
+    ],
+  }
+}

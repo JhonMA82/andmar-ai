@@ -6,7 +6,38 @@ AndMar AI should remain a **policy + capability layer** over OpenCode V2.
 
 OpenCode owns execution mechanics. AndMar AI owns a small set of constraints and reusable primitives that are difficult to enforce reliably with prompts alone.
 
+Documentation is part of the architecture contract.
+
+Code, generated manifests, tests, configuration and documentation must describe the same system.
+
+Do not duplicate architectural truth across files when it can be generated or referenced from one canonical source.
+
+A capability change is incomplete when its public contract, state ownership, configuration, integrations or verification behavior changed without the corresponding documentation update.
+
 ```text
+```text
+OpenCode V2
+    ↓
+AndMar primary agent (optional user-facing profile, not a runtime)
+    ↓
+AndMar capabilities (thin policy + evidence primitives)
+    ↓
+OpenCode native execution (shell, tools, sessions, permissions, VCS)
+```
+
+AndMar never replaces OpenCode machinery. Concretely, AndMar does **not**
+replace or re-implement:
+
+```text
+runtime            (sessions, tool execution, event delivery)
+shell              (AndMar runs no subprocesses; it only caps timeouts)
+permissions        (OpenCode permission hooks stay authoritative)
+sessions           (delegation creates native child sessions)
+VCS                (revision capture uses explicit fingerprints, no parallel VCS)
+models             (OpenCode owns the provider/model catalog)
+native execution   (checks run through OpenCode tools; AndMar only observes)
+```
+
 Methodologies / skills / user intent
                 |
                 v
@@ -92,6 +123,33 @@ AndMar -> native OpenCode execution + harness completion policy
 
 The agent may call `routing`, `verification`, `lifecycle`, and `delegation` primitives, but the actual implementation work remains native OpenCode tool execution. Removing the agent must not break the harness capabilities, and removing the harness must not alter Build/Plan behavior.
 
+## 2.2 Current request flow (real contracts, not a future Workflow)
+
+For a non-trivial request handled by the `AndMar` agent today:
+
+```text
+Request
+   ↓
+Intake (`andmar_intake`: deterministic first, one typed Jev
+   ↓    decision when useful, explicit non-blocking fallback;
+        `needsRefinement=true` → Internal Task Brief by the primary model)
+Routing (`andmar_route`: deterministic minimum profile from
+   ↓     TaskSignals; intake `routeSignals` reused, same taxonomy)
+Execution / Delegation (native OpenCode tools; `andmar_delegate`
+   ↓     only for bounded child tasks, `andmar_resume` by handle)
+Verification (`andmar_suggest_checks` → run via native shell
+   ↓     → `andmar_record_receipt` bound to observed execution
+     → `andmar_verify_revision` for the exact revision)
+Lifecycle (`andmar_change_impact` for docs/version obligations)
+   ↓
+Completion (`andmar_completion_gate`: exact-revision evidence +
+   clean lifecycle gates + satisfied required verification)
+```
+
+There is intentionally no generic Workflow engine between these steps: each
+transition is an explicit primitive call by the agent, and the completion gate
+is the only composition point. See D-015 for why Workflow stays deferred.
+
 ## 3. Determinism boundary
 
 Every decision should be classified as one of:
@@ -117,7 +175,9 @@ Examples:
 - whether a semantic API change is breaking;
 - whether old context still matters.
 
-A future small classifier may help, but deterministic constraints still validate the result.
+The narrowest slice of this is implemented: the `intake` pilot answers six
+typed Jev questions per request, and deterministic constraints still validate
+the result. Broader semantic classification still waits for measured friction.
 
 ### Semantic/frontier
 

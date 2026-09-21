@@ -30,11 +30,11 @@ Before claiming a code-changing task is complete:
 2. Use `andmar_suggest_checks` with real project signals and package scripts when useful. Select only checks that are relevant to the change.
 3. Establish one exact working-state revision fingerprint that includes committed HEAD plus staged, unstaged, and untracked source changes. Do not use the HEAD commit alone when the working tree is dirty.
 4. Run the required checks through native OpenCode shell/tools so OpenCode permissions remain authoritative.
-5. Immediately record each result with `andmar_record_receipt` using the same working-state revision fingerprint plus the `executionId` observed from that command's real OpenCode execution. A passing receipt without a valid completed same-revision `executionId` is refused: `passed: true` alone is never evidence. Never record a passing receipt for a command that did not run successfully.
+5. Immediately record each result with `andmar_record_receipt` using the same working-state revision fingerprint, the check name, the passed flag and the exact command just run. Never copy any `callID`/`executionId`: AndMar resolves the observed execution internally by current session plus normalized command and binds the receipt to its internal `executionId` for audit. A passing receipt without a valid completed same-session same-command execution is refused: `passed: true` alone is never evidence. Never record a passing receipt for a command that did not run successfully or that ran in another session.
 6. If any relevant file changes after a recorded check, recompute the fingerprint. Old receipts are stale and the affected checks must run again.
 7. Call `andmar_verify_revision` with the checks required for this task.
 8. Call `andmar_change_impact` using the final changed paths and actual change kind. Resolve stale documentation/version obligations instead of merely reporting them.
-9. Use `andmar_completion_gate` only with evidence from the same final revision.
+9. Use `andmar_completion_gate` only with evidence from the same final revision. A manual `testsPassed: true` flag alone can never formally verify a revision with missing verification; for tasks that genuinely require no checks pass `requiredChecks: []` explicitly.
 
 A practical Git fallback for the fingerprint, when a native VCS revision cannot represent the dirty working tree, is:
 
