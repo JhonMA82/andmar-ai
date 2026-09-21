@@ -12,6 +12,10 @@ const DEFAULT_GATE_CHECKS: readonly string[] = ["tests", "typecheck"]
 const RECEIPT_COLLECTION_PREFIX = "verification/"
 const OBSERVED_EVIDENCE_PREFIX = "verification-evidence/"
 
+function sessionIDFrom(toolContext: any): string | undefined {
+  return toolContext?.sessionID ?? toolContext?.session?.id ?? toolContext?.metadata?.sessionID
+}
+
 interface StoredReceiptLike {
   revision: string
   check: string
@@ -81,7 +85,7 @@ export const lifecycleCapability: Capability = {
   id: "lifecycle",
   version: 2,
   description: "Deterministic documentation, versioning and completion gates.",
-  async setup({ ctx, config, state }) {
+  async setup({ ctx, config, state, observability }) {
     const registration = await ctx.tool.transform((editor: any) => {
       editor.namespace({ name: "andmar", description: "AndMar AI harness primitives" })
       editor.add({
@@ -137,22 +141,45 @@ export const lifecycleCapability: Capability = {
           additionalProperties: false,
         },
         options: { namespace: "andmar", codemode: true },
-        execute: async (input: {
-          currentRevision: string
-          evidence: CompletionEvidence
-          requiredChecks?: string[]
-        }) => {
+        execute: async (
+          input: {
+            currentRevision: string
+            evidence: CompletionEvidence
+            requiredChecks?: string[]
+          },
+          toolContext: any,
+        ) => {
           const required = input.requiredChecks ?? [...DEFAULT_GATE_CHECKS]
           const verification =
             required.length === 0
               ? { ok: true, missing: [], failed: [], unverified: [], reasons: [] }
               : await readVerificationStatus(state, input.currentRevision, required)
+          const result = evaluateCompletionWithVerification(
+            input.currentRevision,
+            input.evidence,
+            verification,
+            required,
+          )
+          observability?.emit({
+            type: "andmar.completion",
+            sessionID: sessionIDFrom(toolContext),
+            payload: {
+              ok: result.ok,
+              testsPassed: input.evidence.testsPassed,
+              reviewPassed: input.evidence.reviewPassed ?? null,
+              docsStatus: input.evidence.docsStatus,
+              versionStatus: input.evidence.versionStatus,
+              requiredChecks: [...required],
+              verificationOk: verification.ok,
+              missingCount: verification.missing.length,
+              failedCount: verification.failed.length,
+              unverifiedCount: verification.unverified.length,
+              verificationPreventedCompletion:
+                required.length > 0 && input.evidence.testsPassed && !verification.ok,
+            },
+          })
           return {
-            content: JSON.stringify(
-              evaluateCompletionWithVerification(input.currentRevision, input.evidence, verification, required),
-              null,
-              2,
-            ),
+            content: JSON.stringify(result, null, 2),
           }
         },
       })

@@ -84,6 +84,8 @@ known limitations.
   one than the deterministic minimum.
 - **Testing contract:** pure `minimumProfile`/`clampRequestedProfile` unit
   tests (`tests/model-policy.test.ts`).
+- **Observability:** emits `andmar.routing` with the selected/minimum
+  profile and bounded task signals; never task text or model output.
 - **Known limitations:** coarse by design; genuinely ambiguous semantic
   routing waits for measured friction before any classifier is added.
 
@@ -119,6 +121,9 @@ known limitations.
   stays in the child session and the parent receives only a bounded result.
 - **Testing contract:** deterministic unit tests for truncation/depth helpers
   where isolated; real session behavior is manual (see [TESTING.md](TESTING.md)).
+- **Observability:** emits `andmar.delegation` for delegate/resume
+  started/completed/failed/denied lifecycle metadata; child task/result text
+  is never emitted.
 - **Known limitations:** no project-level active-task record: after an
   OpenCode restart there is deliberately no cross-session takeover. If that
   becomes repeated friction, it is evidence for a minimal `workflow`
@@ -159,6 +164,9 @@ known limitations.
 - **Testing contract:** deterministic unit tests for path mapping, SemVer
   classification, and exact-revision completion (`tests/lifecycle.test.ts`,
   `tests/glob.test.ts`).
+- **Observability:** emits `andmar.completion` with the final gate verdict,
+  lifecycle statuses and verification counts, including whether required
+  verification prevented an otherwise claimed completion.
 - **Known limitations:** mapping quality depends on configured rules; semantic
   breaking-change detection beyond explicit `breaking` is out of scope.
 
@@ -207,6 +215,8 @@ known limitations.
   resolution, and toolchain detection (`tests/verification.test.ts`,
   `tests/verification-flow.test.ts`); mocked shapes prove parsing, never live
   hook behavior.
+- **Observability:** emits `andmar.verification` for stored receipt outcomes
+  and revision-summary counts; commands, revisions and outputs are not sent.
 - **Known limitations:** revision capture takes the revision as explicit
   input (no VCS automation yet); evidence and receipt stores are unbounded
   (no pruning yet); only the latest same-session same-command execution wins.

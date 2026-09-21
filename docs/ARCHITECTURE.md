@@ -339,10 +339,15 @@ The intended future shape is:
                          |
        ODD / Product Plan / other skills
 
-Optional adapters:
-context projection | Lane | Herdr
+Optional adapters / sinks:
+context projection | Lane | Herdr | semantic observability (/events)
 
 Jev is not an adapter: one typed Decisions call lives inside `intake`.
 ```
+
+The semantic observability sink is best-effort and content-free: routing,
+delegation, verification and completion may emit bounded metadata to a local
+`POST /events` endpoint, but no capability depends on delivery succeeding.
+OpenCode runtime events remain owned by OpenCode/its observability plugin.
 
 The optional pieces must remain removable without breaking the core.

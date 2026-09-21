@@ -45,7 +45,7 @@ export const verificationCapability: Capability = {
   id: "verification",
   version: 3,
   description: "Revision-bound verification receipts resolved internally from observed OpenCode execution evidence.",
-  async setup({ ctx, state }) {
+  async setup({ ctx, state, observability }) {
     const disposers: Array<() => void> = []
 
     const registration = await ctx.tool.transform((editor: any) => {
@@ -114,6 +114,16 @@ export const verificationCapability: Capability = {
           }
           const key = receiptKey(input.revision, input.check)
           await state.set(key, receipt)
+          observability?.emit({
+            type: "andmar.verification",
+            sessionID,
+            payload: {
+              action: "receipt",
+              check: input.check,
+              passed: input.passed,
+              stored: true,
+            },
+          })
           return { content: JSON.stringify({ stored: true, key, receipt }, null, 2) }
         },
       })
@@ -132,13 +142,29 @@ export const verificationCapability: Capability = {
           additionalProperties: false,
         },
         options: { namespace: "andmar", codemode: true },
-        execute: async (input: { currentRevision: string; requiredChecks?: VerificationCheck[] }) => {
+        execute: async (
+          input: { currentRevision: string; requiredChecks?: VerificationCheck[] },
+          toolContext: any,
+        ) => {
           const required = input.requiredChecks ?? DEFAULT_REQUIRED_CHECKS
           const [receipts, evidence] = await Promise.all([
             readReceipts(state, input.currentRevision),
             readEvidenceMap(state),
           ])
-          return { content: JSON.stringify(summarizeVerification(input.currentRevision, receipts, required, evidence), null, 2) }
+          const summary = summarizeVerification(input.currentRevision, receipts, required, evidence)
+          observability?.emit({
+            type: "andmar.verification",
+            sessionID: sessionIDFrom(toolContext),
+            payload: {
+              action: "verify_revision",
+              ok: summary.ok,
+              requiredChecks: [...required],
+              missingCount: summary.missing.length,
+              failedCount: summary.failed.length,
+              unverifiedCount: summary.unverified.length,
+            },
+          })
+          return { content: JSON.stringify(summary, null, 2) }
         },
       })
 

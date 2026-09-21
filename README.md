@@ -186,6 +186,25 @@ fast -> standard -> frontier
 
 There is no automatic downgrade loop.
 
+## Optional semantic observability
+
+AndMar can emit four content-free semantic signals to a compatible local
+`POST /events` endpoint such as
+`JhonMA82/opencodev2-observability`:
+
+```text
+andmar.routing
+andmar.delegation
+andmar.verification
+andmar.completion
+```
+
+This is a best-effort sink, not a dependency. If the observability server is
+offline, AndMar continues normally. Events contain structured outcome metadata
+only — never prompts, task text, commands, code, tool outputs or reasoning.
+The default endpoint is `http://localhost:4000`; set
+`ANDMAR_OBSERVABILITY_ENABLED=0` to disable it.
+
 ## Documentation integrity
 
 Documentation mappings are data, not hard-coded `if` statements:

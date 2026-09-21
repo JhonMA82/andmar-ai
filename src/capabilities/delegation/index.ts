@@ -21,7 +21,7 @@ export const delegationCapability: Capability = {
   id: "delegation",
   version: 1,
   description: "Bounded child-session delegation with model-profile routing and durable handles.",
-  async setup({ ctx, config, state }) {
+  async setup({ ctx, config, state, observability }) {
     const registration = await ctx.tool.transform((editor: any) => {
       editor.namespace({ name: "andmar", description: "AndMar AI harness primitives" })
       editor.add({
@@ -58,6 +58,17 @@ export const delegationCapability: Capability = {
           const parentRecord = await state.get<WorkerRecord>(`worker-by-session/${parentSessionID}`)
           const depth = (parentRecord?.depth ?? 0) + 1
           if (depth > config.delegation.maxDepth) {
+            observability?.emit({
+              type: "andmar.delegation",
+              sessionID: parentSessionID,
+              payload: {
+                operation: "delegate",
+                phase: "denied",
+                kind: input.kind,
+                depth,
+                maxDepth: config.delegation.maxDepth,
+              },
+            })
             return { content: `Delegation denied: maxDepth=${config.delegation.maxDepth}. Resolve this task directly.` }
           }
 
@@ -74,23 +85,49 @@ export const delegationCapability: Capability = {
             metadata: { andmar: { profile, depth, kind: input.kind } },
           })
 
+          const startedAt = Date.now()
           const record: WorkerRecord = {
             sessionID: child.id,
             parentSessionID,
             profile,
             depth,
             status: "running",
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
+            createdAt: startedAt,
+            updatedAt: startedAt,
           }
           await state.set(`workers/${parentSessionID}/${child.id}`, record)
           await state.set(`worker-by-session/${child.id}`, record)
+          observability?.emit({
+            type: "andmar.delegation",
+            sessionID: parentSessionID,
+            payload: {
+              operation: "delegate",
+              phase: "started",
+              childSessionID: child.id,
+              kind: input.kind,
+              profile,
+              depth,
+            },
+          })
 
           try {
             const result = await ctx.session.prompt({ sessionID: child.id, text: input.task })
             const finished = { ...record, status: "idle" as const, updatedAt: Date.now() }
             await state.set(`workers/${parentSessionID}/${child.id}`, finished)
             await state.set(`worker-by-session/${child.id}`, finished)
+            observability?.emit({
+              type: "andmar.delegation",
+              sessionID: parentSessionID,
+              payload: {
+                operation: "delegate",
+                phase: "completed",
+                childSessionID: child.id,
+                kind: input.kind,
+                profile,
+                depth,
+                durationMs: finished.updatedAt - startedAt,
+              },
+            })
             return {
               content: JSON.stringify({
                 sessionID: child.id,
@@ -102,6 +139,19 @@ export const delegationCapability: Capability = {
             const failed = { ...record, status: "failed" as const, updatedAt: Date.now() }
             await state.set(`workers/${parentSessionID}/${child.id}`, failed)
             await state.set(`worker-by-session/${child.id}`, failed)
+            observability?.emit({
+              type: "andmar.delegation",
+              sessionID: parentSessionID,
+              payload: {
+                operation: "delegate",
+                phase: "failed",
+                childSessionID: child.id,
+                kind: input.kind,
+                profile,
+                depth,
+                durationMs: failed.updatedAt - startedAt,
+              },
+            })
             throw error
           }
         },
@@ -125,13 +175,42 @@ export const delegationCapability: Capability = {
           if (!parentSessionID) return { content: "Cannot establish session ownership." }
           const record = await state.get<WorkerRecord>(`workers/${parentSessionID}/${input.sessionID}`)
           if (!record) return { content: "Resume denied: this session is not owned by the current parent session." }
-          const result = await ctx.session.prompt({ sessionID: input.sessionID, text: input.task })
-          return {
-            content: JSON.stringify({
-              sessionID: input.sessionID,
-              profile: record.profile,
-              result: truncate(resultText(result), config.delegation.maxResultChars),
-            }, null, 2),
+          const startedAt = Date.now()
+          try {
+            const result = await ctx.session.prompt({ sessionID: input.sessionID, text: input.task })
+            observability?.emit({
+              type: "andmar.delegation",
+              sessionID: parentSessionID,
+              payload: {
+                operation: "resume",
+                phase: "completed",
+                childSessionID: input.sessionID,
+                profile: record.profile,
+                depth: record.depth,
+                durationMs: Date.now() - startedAt,
+              },
+            })
+            return {
+              content: JSON.stringify({
+                sessionID: input.sessionID,
+                profile: record.profile,
+                result: truncate(resultText(result), config.delegation.maxResultChars),
+              }, null, 2),
+            }
+          } catch (error) {
+            observability?.emit({
+              type: "andmar.delegation",
+              sessionID: parentSessionID,
+              payload: {
+                operation: "resume",
+                phase: "failed",
+                childSessionID: input.sessionID,
+                profile: record.profile,
+                depth: record.depth,
+                durationMs: Date.now() - startedAt,
+              },
+            })
+            throw error
           }
         },
       })

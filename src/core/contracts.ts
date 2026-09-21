@@ -63,10 +63,13 @@ export interface HarnessConfig {
   }
 }
 
+import type { SemanticObservability } from "./observability.ts"
+
 export interface CapabilityRuntime {
   ctx: any
   config: HarnessConfig
   state: StateStore
+  observability?: SemanticObservability
 }
 
 export interface Capability {

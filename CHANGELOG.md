@@ -4,6 +4,15 @@ All notable changes to AndMar AI are recorded here. The package version in `pack
 
 ## [Unreleased]
 
+### Added
+
+- Optional fail-open semantic observability sink compatible with
+  `opencodev2-observability` `POST /events`, emitting only bounded
+  metadata for `andmar.routing`, `andmar.delegation`,
+  `andmar.verification` and `andmar.completion`. No prompts, commands,
+  code, tool outputs or reasoning are transmitted; delivery failure never
+  affects AndMar execution.
+
 ## [0.5.0] - 2026-09-21
 
 ### Added

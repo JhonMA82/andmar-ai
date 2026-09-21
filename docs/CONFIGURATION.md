@@ -121,6 +121,31 @@ maintained.
 }
 ```
 
+## Semantic observability (environment, fail open)
+
+### `ANDMAR_OBSERVABILITY_URL`
+
+- **Default:** `http://localhost:4000`.
+- **Purpose:** optional endpoint compatible with
+  `opencodev2-observability`'s `POST /events`.
+- **Scope:** semantic AndMar events only: routing, delegation, verification
+  and completion.
+- **Failure behavior:** 1 s timeout, no retries, maximum 8 concurrent sends;
+  failures are dropped and never affect AndMar execution.
+- **Privacy:** sends structured metadata only. It never sends prompts, task
+  text, commands, code, tool outputs, verification output or model reasoning.
+
+### `ANDMAR_OBSERVABILITY_ENABLED`
+
+- **Default:** enabled.
+- Set to `0` to disable semantic emission completely.
+- Observability is never required for AndMar to work.
+
+```bash
+ANDMAR_OBSERVABILITY_URL=http://localhost:4000
+ANDMAR_OBSERVABILITY_ENABLED=1
+```
+
 ## Intake options (capability-local, fail open)
 
 The `intake` capability reads its own keys so `src/core` stays free of
