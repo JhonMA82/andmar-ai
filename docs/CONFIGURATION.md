@@ -90,3 +90,30 @@ Keep mappings coarse and meaningful. Do not map every source file to a document 
 ```
 
 These paths tell the lifecycle primitive whether a change touches a release-visible surface. They do not publish releases.
+
+## Intake (request refinement pilot)
+
+Optional. Jev model resolution lives in the capability so core stays free of
+provider specifics. Environment variables win over nothing; plugin options win
+over environment only when explicitly set.
+
+```bash
+OPENROUTER_API_KEY=sk-or-v1-...   # required for live Jev; never stored or logged
+ANDMAR_INTAKE_MODEL=typesafe/jev-1.13
+ANDMAR_INTAKE_TIMEOUT_MS=8000
+ANDMAR_INTAKE_TRACE=1
+ANDMAR_INTAKE_TRACE_CONTENT=1
+```
+
+```jsonc
+{
+  "intake": {
+    "model": "typesafe/jev-1.13",
+    "timeoutMs": 8000
+  }
+}
+```
+
+Constraints: `model` non-empty string; `timeoutMs` clamped to 1000–60000ms.
+Trace flags are env-only and apply to `andmar_intake_trace`. See
+[`INTAKE.md`](INTAKE.md).

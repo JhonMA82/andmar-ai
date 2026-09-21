@@ -22,10 +22,12 @@ AndMar AI is not another agent runtime and it is not a port of Gentle-AI. OpenCo
 The project follows this order of preference:
 
 1. **Deterministic code** — schemas, metadata, Git/VCS state, hashes, events and explicit rules.
-2. **Small semantic decision model** — e.g. Jev, only when a rule cannot decide cleanly.
+2. **Small semantic decision model** — Jev, only when a rule cannot decide cleanly.
 3. **Frontier model** — reasoning, design, hard debugging, security and genuinely ambiguous work.
 
-The MVP implements step 1 and leaves a documented extension point for step 2. It does **not** add Jev yet.
+The `intake` pilot implements step 2 for one narrow purpose: deciding whether
+a natural-language request is sufficient or needs an Internal Task Brief
+before execution. See [`docs/INTAKE.md`](docs/INTAKE.md).
 
 
 ## Primary agents: Build, Plan, AndMar
@@ -80,6 +82,15 @@ Records revision-bound verification receipts (`tests`, `lint`, `typecheck`, `bui
 
 The capability never executes commands itself: checks run through native OpenCode shell/tools (preserving permissions), AndMar observes each real outcome via the stable `execute.after` hook into `verification-evidence/<executionId>` (metadata only), and approved receipts reference that evidence. `passed: true` alone is never evidence; failed executions can never become passed receipts. Any revision change invalidates earlier receipts.
 
+### `intake`
+Request-refinement pilot: deterministic-first classification with one
+structured Jev decision (`typesafe/jev-1.13` by default) over six questions
+(`task_kind`, `needs_refinement`, `specification_sufficiency`, `risk`,
+`external_contract`, `product_decision_missing`). Trivial requests bypass Jev;
+missing key, timeout, failure, or invalid payload degrades to an explicit
+`fallback` that never blocks. Structured dev trace via `andmar_intake_trace`
+(disabled by default). See [`docs/INTAKE.md`](docs/INTAKE.md).
+
 ## Architecture in one picture
 
 ```text
@@ -95,15 +106,15 @@ User / methodology / skill
           |
           v
    generated capability manifest
-      /      |       |        \
- system   routing  delegation  lifecycle  verification
-             |          |          |            |
-         model tier   workers   docs/version/  check
-                                completion     receipts
+      /       |       |        |         \
+ system   routing  delegation lifecycle verification intake
+             |          |          |            |          |
+         model tier   workers   docs/version/  check    request
+                                completion     receipts refinement
                                 gates
 ```
 
-The core does not know ODD, Product Plan, request-refiner, Jev, Lane or Herdr. Those can consume or extend the primitives later.
+The core does not know ODD, Product Plan, Lane or Herdr. Request-refinement and future skills consume the `intake`/`route` primitives; Jev lives only inside the `intake` capability, never in core.
 
 ## Installation for local development
 
@@ -149,6 +160,8 @@ The namespace is `andmar`:
 - `andmar_record_receipt` — store one verification check outcome for an exact revision.
 - `andmar_suggest_checks` — suggest verification commands from deterministic project signals.
 - `andmar_verify_revision` — check stored receipts against the exact current revision.
+- `andmar_intake` — classify one request as sufficient or needing refinement.
+- `andmar_intake_trace` — list recent structured intake decisions.
 
 Names are primitives, not methodologies. A future ODD skill can use these without AndMar AI knowing what ODD is.
 
@@ -227,7 +240,7 @@ The repository uses Bun/OpenCode at runtime, but the deterministic core is inten
 - no taxonomy of 10–20 agents;
 - no complex workflow engine yet;
 - no vector memory;
-- no Jev integration yet;
+- no Jev free-text generation (intake pilot answers typed questions only);
 - no file leases;
 - no custom dashboard;
 - no autonomous release/publish pipeline;
@@ -247,6 +260,7 @@ These are omissions by design, not missing TODOs.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — evidence-driven expansion path.
 - [`docs/OPENCODE-V2.md`](docs/OPENCODE-V2.md) — V2 API assumptions used by this MVP.
 - [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) — validated plugin options.
+- [`docs/INTAKE.md`](docs/INTAKE.md) — request-refinement pilot, Jev contract, trace.
 - [`docs/STATE.md`](docs/STATE.md) — durable operational state contract.
 - [`docs/VERIFICATION.md`](docs/VERIFICATION.md) — what the verification capability does, in plain language.
 - [`docs/TESTING.md`](docs/TESTING.md) — first real-world test matrix and current limitations.

@@ -1,6 +1,6 @@
 {
   "name": "andmar-ai",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "A thin, deterministic-first harness for OpenCode V2.",
   "type": "module",
   "exports": {

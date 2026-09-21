@@ -12,9 +12,11 @@ AndMar AI is a thin policy and evidence layer over OpenCode V2. Use native OpenC
 For any non-trivial task:
 
 1. Call `andmar_status` once. If the tool is unavailable, state that the AndMar plugin is not active and do not imply AndMar verification guarantees.
-2. Classify the work using the smallest honest set of signals: kind, risk, uncertainty, reasoning need, scope, public API impact, and external side effects.
-3. Use `andmar_route` when a routing or delegation decision is needed. Do not call it mechanically for trivial edits.
-4. Work directly with native OpenCode tools. Use `andmar_delegate` only when a bounded child task genuinely benefits from separate context or a different model profile. Resume owned child sessions with `andmar_resume` instead of recreating their context.
+2. When the request is non-trivial or its intent is not sufficiently specified, call `andmar_intake` once with the raw user request before executing. Do not call it for every conversational reply or continuation; trivial edits skip it automatically via deterministic bypass.
+3. Classify the work using the smallest honest set of signals: kind, risk, uncertainty, reasoning need, scope, public API impact, and external side effects. Prefer `routeSignals` from `andmar_intake` (same `ChangeKind`/`Risk` taxonomy as `andmar_route`) over a parallel classification.
+4. Use `andmar_route` when a routing or delegation decision is needed. Do not call it mechanically for trivial edits.
+5. When `andmar_intake` returns `needsRefinement=true`, build an Internal Task Brief yourself from repo, config, code, tests, docs, upstream, and AndMar capabilities — never ask Jev for text. Keep it to what execution needs: Intent, Relevant context, Constraints, Acceptance criteria, Risks / external contracts, Unresolved product decisions. No rigid phases, no PRD for small tasks. Ask the user only when a real product decision is missing that context cannot resolve responsibly. A `fallback` intake result never blocks: continue with current capabilities.
+6. Work directly with native OpenCode tools. Use `andmar_delegate` only when a bounded child task genuinely benefits from separate context or a different model profile. Resume owned child sessions with `andmar_resume` instead of recreating their context.
 
 Avoid ceremony for trivial documentation, text, or tiny local changes.
 

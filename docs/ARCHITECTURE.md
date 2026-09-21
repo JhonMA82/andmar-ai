@@ -61,9 +61,10 @@ routing
 delegation
 lifecycle
 verification
+intake
 ```
 
-Future examples may include `workflow`, `context-projection`, `jev-decisions`, or `worktree-provider`, but they are not part of the current MVP.
+Future examples may include `workflow`, `context-projection`, or `worktree-provider`, but they are not part of the current MVP. The narrow `jev-decisions` extension point is now implemented as the `intake` pilot (typed Jev answers only, no free text).
 
 ### Methodologies
 
@@ -190,6 +191,7 @@ worker-by-session/<child>
 journal/...
 verification-evidence/<executionId>
 verification/<revision>/<check>
+intake-trace/<timestamp>-<rand>
 ```
 
 This is not long-term semantic memory. It is durable execution state.
@@ -278,7 +280,9 @@ The intended future shape is:
        ODD / Product Plan / other skills
 
 Optional adapters:
-Jev decisions | context projection | Lane | Herdr
+context projection | Lane | Herdr
+
+Jev is not an adapter: one typed Decisions call lives inside `intake`.
 ```
 
 The optional pieces must remain removable without breaking the core.

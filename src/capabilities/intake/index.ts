@@ -1,0 +1,179 @@
+import type { Capability, StateStore } from "../../core/contracts.ts";
+import { callJev, readApiKey, resolveJevModel, resolveJevTimeout, type RawAnswers } from "./jev.ts";
+import {
+  decisionDeterministic,
+  decisionFallback,
+  decisionFromJev,
+  isTrivialBypass,
+  parseJevAnswers,
+  type IntakeDecision,
+} from "./decide.ts";
+import { buildTraceEntry, isTraceEnabled, listTraces, saveTrace } from "./trace.ts";
+
+const MAX_REQUEST_CHARS = 20_000;
+
+function sessionIDFrom(toolContext: unknown): string {
+  const ctx = toolContext as { sessionID?: unknown; session?: { id?: unknown }; metadata?: { sessionID?: unknown } } | undefined;
+  if (typeof ctx?.sessionID === "string" && ctx.sessionID !== "") return ctx.sessionID;
+  if (typeof ctx?.session?.id === "string" && ctx.session.id !== "") return ctx.session.id as string;
+  if (typeof ctx?.metadata?.sessionID === "string" && ctx.metadata.sessionID !== "") return ctx.metadata.sessionID as string;
+  return "unknown";
+}
+
+function intakeOptions(config: unknown): { model?: unknown; timeoutMs?: unknown } {
+  const intake = (config as { intake?: unknown })?.intake;
+  if (typeof intake !== "object" || intake === null) return {};
+  const record = intake as Record<string, unknown>;
+  return { model: record["model"], timeoutMs: record["timeoutMs"] };
+}
+
+function errorReason(error: unknown): string {
+  const code = (error as { code?: unknown })?.code;
+  if (code === "missing_api_key") return "missing_api_key";
+  if (code === "timeout") return "timeout";
+  if (code === "auth_failed") return "auth_failed";
+  if (code === "invalid_response") return "invalid_response";
+  if (typeof (error as Error)?.message === "string") {
+    const message = ((error as Error).message ?? "").split(":")[0] ?? "";
+    if (message === "timeout" || message === "missing_api_key" || message === "invalid_response" || message === "request_failed" || message === "auth_failed") return message;
+  }
+  return "request_failed";
+}
+
+export async function runIntake(
+  request: string,
+  toolContext: unknown,
+  config: unknown,
+  state: StateStore,
+): Promise<IntakeDecision> {
+  const started = Date.now();
+  const options = intakeOptions(config);
+  const jevModel = resolveJevModel(options.model);
+  const sessionID = sessionIDFrom(toolContext);
+
+  const tooLarge = request.length > MAX_REQUEST_CHARS;
+  if (request.trim() === "" || tooLarge) {
+    const reason = request.trim() === "" ? "invalid_request" : "request_too_large";
+    const invalid = decisionFallback({ request, jevModel, reason, jevCalled: false, latencyMs: Date.now() - started });
+    if (isTraceEnabled()) {
+      await saveTrace(state, buildTraceEntry({
+        sessionID, request, jevModel, jevCalled: false, jevAvailable: false,
+        source: invalid.source, reason: invalid.reason, latencyMs: Date.now() - started,
+        rawAnswers: {}, refine: invalid.needsRefinement, taskKind: invalid.taskKind,
+        needsRefinement: invalid.needsRefinement, externalContract: invalid.externalContract,
+        productDecisionMissing: invalid.productDecisionMissing,
+      }));
+    }
+    return invalid;
+  }
+
+  if (isTrivialBypass(request)) {
+    const decision = decisionDeterministic(request, jevModel);
+    if (isTraceEnabled()) {
+      await saveTrace(state, buildTraceEntry({
+        sessionID, request, jevModel, jevCalled: false, jevAvailable: true,
+        source: decision.source, reason: decision.reason, latencyMs: Date.now() - started,
+        rawAnswers: {}, refine: decision.needsRefinement, taskKind: decision.taskKind,
+        needsRefinement: decision.needsRefinement, externalContract: decision.externalContract,
+        productDecisionMissing: decision.productDecisionMissing,
+      }));
+    }
+    return decision;
+  }
+
+  const apiKey = readApiKey();
+  if (apiKey === "") {
+    const decision = decisionFallback({ request, jevModel, reason: "missing_api_key", jevCalled: false, latencyMs: Date.now() - started });
+    if (isTraceEnabled()) {
+      await saveTrace(state, buildTraceEntry({
+        sessionID, request, jevModel, jevCalled: false, jevAvailable: false,
+        source: decision.source, reason: decision.reason, latencyMs: Date.now() - started,
+        rawAnswers: {}, refine: decision.needsRefinement, taskKind: decision.taskKind,
+        needsRefinement: decision.needsRefinement, externalContract: decision.externalContract,
+        productDecisionMissing: decision.productDecisionMissing,
+      }));
+    }
+    return decision;
+  }
+
+  const timeoutMs = resolveJevTimeout(options.timeoutMs);
+  try {
+    const result = await callJev(request, { model: jevModel, apiKey, timeoutMs });
+    const parsed = parseJevAnswers(result.answers as RawAnswers);
+    const decision = decisionFromJev(parsed, { jevModel: result.modelReturned, latencyMs: result.latencyMs });
+    if (isTraceEnabled()) {
+      await saveTrace(state, buildTraceEntry({
+        sessionID, request, jevModel: result.modelReturned, jevCalled: true, jevAvailable: true,
+        source: decision.source, latencyMs: result.latencyMs, rawAnswers: result.answers as RawAnswers,
+        refine: decision.needsRefinement, taskKind: decision.taskKind,
+        needsRefinement: decision.needsRefinement, externalContract: decision.externalContract,
+        productDecisionMissing: decision.productDecisionMissing,
+      }));
+    }
+    return decision;
+  } catch (error) {
+    const reason = errorReason(error);
+    const decision = decisionFallback({ request, jevModel, reason, jevCalled: true, latencyMs: Date.now() - started });
+    if (isTraceEnabled()) {
+      await saveTrace(state, buildTraceEntry({
+        sessionID, request, jevModel, jevCalled: true, jevAvailable: false,
+        source: decision.source, reason, latencyMs: Date.now() - started,
+        rawAnswers: {}, refine: decision.needsRefinement, taskKind: decision.taskKind,
+        needsRefinement: decision.needsRefinement, externalContract: decision.externalContract,
+        productDecisionMissing: decision.productDecisionMissing,
+      }));
+    }
+    return decision;
+  }
+}
+
+export const intakeCapability: Capability = {
+  id: "intake",
+  version: 1,
+  description: "Request refinement intake: deterministic-first classification with a single structured Jev decision and explicit fallback.",
+  async setup({ ctx, config, state }) {
+    const registration = await ctx.tool.transform((editor: any) => {
+      editor.namespace({ name: "andmar", description: "AndMar AI harness primitives" });
+      editor.add({
+        name: "intake",
+        description: "Classify one user request as sufficient or needing internal refinement. Deterministic first, one structured Jev decision when useful, explicit fallback when Jev is unavailable. Feeds andmar_route via routeSignals; when needsRefinement is true build an Internal Task Brief from repo context and ask the user only for real product decisions.",
+        input: {
+          type: "object",
+          properties: {
+            request: { type: "string", minLength: 1, maxLength: MAX_REQUEST_CHARS },
+          },
+          required: ["request"],
+          additionalProperties: false,
+        },
+        options: { namespace: "andmar", codemode: true },
+        execute: async (input: { request: string }, toolContext: unknown) => {
+          const decision = await runIntake(input.request, toolContext, config, state);
+          return { content: JSON.stringify(decision, null, 2) };
+        },
+      });
+      editor.add({
+        name: "intake_trace",
+        description: "List recent structured intake decisions (request hash, Jev answers, refinement outcome, latency, fallback reason). No prompt content unless ANDMAR_INTAKE_TRACE_CONTENT=1. Never contains secrets.",
+        input: {
+          type: "object",
+          properties: {
+            limit: { type: "integer", minimum: 1, maximum: 20 },
+          },
+          additionalProperties: false,
+        },
+        options: { namespace: "andmar", codemode: true },
+        execute: async (input: { limit?: number }) => {
+          const entries = await listTraces(state, input.limit ?? 10);
+          return {
+            content: JSON.stringify({ enabled: isTraceEnabled(), count: entries.length, entries }, null, 2),
+          };
+        },
+      });
+    });
+    return registration && typeof (registration as { dispose?: unknown }).dispose === "function"
+      ? () => void (registration as { dispose: () => void }).dispose()
+      : undefined;
+  },
+};
+
+export default intakeCapability;

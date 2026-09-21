@@ -38,3 +38,11 @@ test("AndMar agent holds the reinforced migration/integration termination criter
   assert.match(agent, /explicitly.*limitation|limitation.*explicitly/i)
   assert.match(agent, /executionId/i)
 })
+
+test("AndMar agent uses intake before non-trivial execution", () => {
+  assert.match(agent, /andmar_intake\b/)
+  assert.match(agent, /needsRefinement/i)
+  assert.match(agent, /Internal Task Brief/i)
+  assert.match(agent, /routeSignals/i)
+  assert.match(agent, /fallback.*never blocks|never blocks.*fallback/i)
+})

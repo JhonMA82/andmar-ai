@@ -19,7 +19,8 @@
             { "id": "scaffolding", "code": ["src/scaffolding/**", "templates/**"], "docs": ["docs/scaffolding/**"] }
           ]
         },
-        "versioning": { "enabled": true, "publicPaths": ["src/**", "packages/**", "apps/**"] }
+        "versioning": { "enabled": true, "publicPaths": ["src/**", "packages/**", "apps/**"] },
+        "intake": { "model": "typesafe/jev-1.13", "timeoutMs": 8000 }
       }
     }
   ]

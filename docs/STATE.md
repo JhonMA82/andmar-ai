@@ -49,3 +49,11 @@ One receipt per verification check (`tests`, `lint`, `typecheck`, `build`, `cust
 - Do not store secrets unless OpenCode's storage contract explicitly makes that appropriate and a feature requires it.
 - New persistent shapes should include an obvious migration strategy before changing existing keys.
 - Do not introduce a migration framework until the project has real persisted-state migrations to manage.
+
+### `intake-trace/<timestamp>-<rand>`
+
+One structured intake decision for development tuning (max 20 entries).
+Stores `timestamp`, `sessionID`, `requestHash` (sha256), `requestLength`,
+`jevModel`, `jevCalled`, `jevAvailable`, `source`, `reason`, `latencyMs`,
+typed `answers`, and `decision.refine`. Full `request` text only when
+`ANDMAR_INTAKE_TRACE_CONTENT=1`. Never stores `OPENROUTER_API_KEY`.

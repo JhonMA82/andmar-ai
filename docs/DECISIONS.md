@@ -115,3 +115,13 @@ This is a compact decision log, not a process-heavy ADR system. Add an entry onl
 **Why:** Real-world testing showed receipts could be created from a bare agent claim. The smallest deterministic fix is to derive validity from OpenCode-observed execution metadata (id, tool, status) rather than LLM-declared fields, without running subprocesses from the harness, without storing full outputs, and without a provenance system.
 
 **Consequence:** `execute.after` (with its stable `event.id` field) is confirmed as the observation contract — `ctx.shell` only offers `create.before` with no result, so there is no better stable hook. The `journal/` key bug (`event.callID`, which never existed) is fixed as part of the same change.
+
+---
+
+## D-013 — Intake pilot with typed Jev decisions
+
+**Decision:** Add a small `intake` capability that classifies one user request with deterministic checks first and a single OpenRouter Decisions call (`typesafe/jev-1.13` by default, configurable) second. Six typed questions only (`task_kind` as `choice` over the existing 12 `ChangeKind` values, `needs_refinement`/`external_contract`/`product_decision_missing` as `noul`, `specification_sufficiency`/`risk` as `score`); no free-text generation, no SDK dependency (plain `fetch`), explicit `fallback` that never blocks, and a bounded opt-in structured trace under `intake-trace/`.
+
+**Why:** Natural-language requests arrive underspecified; a senior-developer rewrite cannot scale. A typed decision focuses the primary model on an Internal Task Brief only when needed, while `routeSignals` reuse the existing `ChangeKind`/`Risk` taxonomy instead of a second classifier.
+
+**Consequence:** Core stays free of Jev/OpenRouter specifics; `andmar_intake`/`andmar_intake_trace` are the only new tools; trace is off by default and never stores prompts, secrets, or the API key.

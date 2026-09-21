@@ -4,6 +4,13 @@ All notable changes to AndMar AI are recorded here. The package version in `pack
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-21
+
+### Added
+
+- `intake` request-refinement pilot: `andmar_intake` (deterministic-first, one structured Jev Decisions call over six questions, explicit non-blocking `fallback`) and `andmar_intake_trace` (bounded opt-in dev trace, no prompts or secrets by default). Internal Task Brief guidance in the `AndMar` primary agent; `routeSignals` reuse the existing `ChangeKind`/`Risk` taxonomy. See `docs/INTAKE.md`.
+
+
 ## [0.3.1] - 2026-09-22
 
 ### Fixed
