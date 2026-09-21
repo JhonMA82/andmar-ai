@@ -7,10 +7,24 @@ import {
   truncateOutput,
   type VerificationReceipt,
 } from "../src/capabilities/verification/receipts.ts"
+import {
+  bindExecutionToRevision,
+  buildExecutionEvidence,
+  executionEvidenceKey,
+  EXECUTION_EVIDENCE_PREFIX,
+  isAndMarTool,
+  isValidExecutionId,
+  validateReceiptEvidence,
+  type ExecutionEvidence,
+} from "../src/capabilities/verification/evidence.ts"
 import { detectProjectChecks } from "../src/capabilities/verification/detect.ts"
 
 function receipt(overrides: Partial<VerificationReceipt> & { revision: string; check: VerificationReceipt["check"] }): VerificationReceipt {
   return { passed: true, at: 1_700_000_000_000, ...overrides }
+}
+
+function evidence(overrides: Partial<ExecutionEvidence> & { executionId: string }): ExecutionEvidence {
+  return { tool: "bash", status: "completed", at: 1_700_000_000_000, ...overrides }
 }
 
 test("verification passes when every required check passed at the exact revision", () => {
@@ -117,4 +131,111 @@ test("detection prefers the first matching lockfile and matches basenames in sub
 test("detection reports unknown when no signal files exist", () => {
   assert.deepEqual(detectProjectChecks(["README.md", "src/main.ts"]), { ecosystems: [], unknown: true })
   assert.deepEqual(detectProjectChecks([]), { ecosystems: [], unknown: true })
+})
+
+test("a passed receipt without execution evidence is refused", () => {
+  assert.equal(validateReceiptEvidence({ revision: "rev-a", passed: true }, undefined).ok, false)
+  assert.equal(validateReceiptEvidence({ revision: "rev-a", passed: true, executionId: "  " }, undefined).ok, false)
+  assert.equal(validateReceiptEvidence({ revision: "rev-a", passed: true, executionId: "exec-1" }, undefined).ok, false)
+  const refused = validateReceiptEvidence({ revision: "rev-a", passed: true }, undefined)
+  assert.match((refused.ok ? "" : refused.reason), /executionId/)
+})
+
+test("a failed execution can never become a passed receipt", () => {
+  const failed = evidence({ executionId: "exec-fail", status: "error" })
+  const result = validateReceiptEvidence({ revision: "rev-a", passed: true, executionId: "exec-fail" }, failed)
+  assert.equal(result.ok, false)
+  assert.match((result.ok ? "" : result.reason), /failed execution|cannot become|did not complete/)
+})
+
+test("a valid completed execution produces acceptable evidence", () => {
+  const completed = evidence({ executionId: "exec-1" })
+  assert.equal(
+    validateReceiptEvidence({ revision: "rev-a", passed: true, executionId: "exec-1" }, completed).ok,
+    true,
+  )
+  const summary = summarizeVerification(
+    "rev-a",
+    [
+      receipt({ revision: "rev-a", check: "tests", executionId: "exec-1" }),
+      receipt({ revision: "rev-a", check: "typecheck", executionId: "exec-2" }),
+    ],
+    ["tests", "typecheck"],
+    { "exec-1": completed, "exec-2": evidence({ executionId: "exec-2" }) },
+  )
+  assert.equal(summary.ok, true)
+  assert.deepEqual(summary.unverified, [])
+})
+
+test("evidence bound to another revision cannot satisfy the current revision", () => {
+  const bound = evidence({ executionId: "exec-1", revision: "rev-a" })
+  const result = validateReceiptEvidence({ revision: "rev-b", passed: true, executionId: "exec-1" }, bound)
+  assert.equal(result.ok, false)
+  assert.match((result.ok ? "" : result.reason), /bound to revision/)
+  const summary = summarizeVerification(
+    "rev-b",
+    [receipt({ revision: "rev-b", check: "tests", executionId: "exec-1" })],
+    ["tests"],
+    { "exec-1": bound },
+  )
+  assert.equal(summary.ok, false)
+  assert.deepEqual(summary.unverified, ["tests"])
+  assert.match(summary.reasons.join(" "), /unverified/)
+})
+
+test("a later valid execution supersedes earlier evidence for the same check", () => {
+  const first = evidence({ executionId: "exec-1", at: 100 })
+  const second = evidence({ executionId: "exec-2", at: 200 })
+  const summary = summarizeVerification(
+    "rev-a",
+    [
+      receipt({ revision: "rev-a", check: "tests", passed: false, at: 100, executionId: "exec-1" }),
+      receipt({ revision: "rev-a", check: "tests", passed: true, at: 200, executionId: "exec-2" }),
+      receipt({ revision: "rev-a", check: "typecheck", executionId: "exec-3" }),
+    ],
+    ["tests", "typecheck"],
+    { "exec-1": first, "exec-2": second, "exec-3": evidence({ executionId: "exec-3" }) },
+  )
+  assert.equal(summary.ok, true)
+  assert.equal(summary.results["tests"]?.at, 200)
+})
+
+test("passed receipts without evidence are unverified when executions are loaded", () => {
+  const summary = summarizeVerification(
+    "rev-a",
+    [receipt({ revision: "rev-a", check: "tests" }), receipt({ revision: "rev-a", check: "typecheck" })],
+    ["tests", "typecheck"],
+    {},
+  )
+  assert.equal(summary.ok, false)
+  assert.deepEqual(summary.unverified, ["tests", "typecheck"])
+})
+
+test("legacy receipts still verify when no execution map is supplied", () => {
+  const summary = summarizeVerification("rev-a", [
+    receipt({ revision: "rev-a", check: "tests" }),
+    receipt({ revision: "rev-a", check: "typecheck" }),
+  ])
+  assert.equal(summary.ok, true)
+})
+
+test("execution evidence binds to one revision on first use", () => {
+  const unbound = evidence({ executionId: "exec-1" })
+  const bound = bindExecutionToRevision(unbound, "rev-a")
+  assert.equal(bound.revision, "rev-a")
+  assert.equal(unbound.revision, undefined)
+  assert.equal(bindExecutionToRevision(bound, "rev-b").revision, "rev-a")
+})
+
+test("the observer ignores AndMar self-attestation and requires the stable id field", () => {
+  assert.equal(buildExecutionEvidence({ id: "exec-1", tool: "andmar_record_receipt", status: "completed" }), undefined)
+  assert.equal(isAndMarTool("andmar_verify_revision"), true)
+  assert.equal(isAndMarTool("bash"), false)
+  const observed = buildExecutionEvidence({ id: "exec-1", tool: "bash", status: "completed" }, 123)
+  assert.equal(observed?.executionId, "exec-1")
+  assert.equal(observed?.status, "completed")
+  assert.equal(buildExecutionEvidence({ tool: "bash", status: "completed" }), undefined)
+  assert.equal(isValidExecutionId(""), false)
+  assert.equal(isValidExecutionId("exec-1"), true)
+  assert.ok(executionEvidenceKey("a/b").startsWith(EXECUTION_EVIDENCE_PREFIX))
 })

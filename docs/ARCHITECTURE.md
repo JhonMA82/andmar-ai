@@ -188,6 +188,8 @@ runtime/...
 workers/<parent>/<child>
 worker-by-session/<child>
 journal/...
+verification-evidence/<executionId>
+verification/<revision>/<check>
 ```
 
 This is not long-term semantic memory. It is durable execution state.
@@ -202,9 +204,10 @@ A worker saying “done” creates a **candidate completion**, not final complet
 implementation
      |
      v
-verification evidence
+verification evidence (observed execution + revision match)
      |
      +-- revision matches current revision?
+     +-- passed receipts backed by completed same-revision execution?
      +-- tests passed?
      +-- review passed if required?
      +-- docs clean/updated?
@@ -214,7 +217,9 @@ verification evidence
 completion gate
 ```
 
-Changing the revision makes earlier evidence stale.
+Changing the revision makes earlier evidence stale. A `passed: true` claim
+without observed execution evidence is reported as `unverified`, never as
+proof.
 
 ## 8. Documentation integrity
 

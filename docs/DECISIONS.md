@@ -105,3 +105,13 @@ This is a compact decision log, not a process-heavy ADR system. Add an entry onl
 **Why:** Executing subprocesses from the harness would bypass OpenCode permission hooks. Recording keeps verification deterministic while preserving the user's permission model.
 
 **Consequence:** A receipt is only as trustworthy as the OpenCode-mediated execution that produced it; the harness guarantees revision binding, not test honesty.
+
+---
+
+## D-012 — Passed receipts require observed execution evidence
+
+**Decision:** Since v0.3.1, `andmar_record_receipt` refuses `passed: true` unless it references an `executionId` previously observed by AndMar through the official stable `ctx.tool.hook("execute.after", ...)` hook with `completed` status. The evidence is bound to one working-state revision on first use and can never satisfy another revision; `andmar_verify_revision` reports unbacked approvals as `unverified`. AndMar-owned tool calls are never eligible as check evidence (no self-attestation).
+
+**Why:** Real-world testing showed receipts could be created from a bare agent claim. The smallest deterministic fix is to derive validity from OpenCode-observed execution metadata (id, tool, status) rather than LLM-declared fields, without running subprocesses from the harness, without storing full outputs, and without a provenance system.
+
+**Consequence:** `execute.after` (with its stable `event.id` field) is confirmed as the observation contract — `ctx.shell` only offers `create.before` with no result, so there is no better stable hook. The `journal/` key bug (`event.callID`, which never existed) is fixed as part of the same change.

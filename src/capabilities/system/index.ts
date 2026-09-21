@@ -43,11 +43,15 @@ export const systemCapability: Capability = {
     if (shellHook?.dispose) disposers.push(() => void shellHook.dispose())
 
     const afterHook = await ctx.tool.hook("execute.after", async (event: any) => {
-      const key = `journal/${event.sessionID ?? "unknown"}/${event.callID ?? `${Date.now()}-${event.tool ?? "tool"}`}`
+      // Official stable field is `event.id` (Tool.CallID). `event.callID`
+      // never existed on this hook and always fell back to a timestamp key.
+      const callID = typeof event.id === "string" && event.id !== "" ? event.id : event.callID
+      const key = `journal/${event.sessionID ?? "unknown"}/${callID ?? `${Date.now()}-${event.tool ?? "tool"}`}`
       await state.set(key, {
         tool: event.tool,
         status: event.status,
         sessionID: event.sessionID,
+        ...(typeof callID === "string" ? { callID } : {}),
         at: Date.now(),
       })
     })

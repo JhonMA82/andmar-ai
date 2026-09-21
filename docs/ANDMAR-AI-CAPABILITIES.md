@@ -44,9 +44,10 @@ Documentation impact, version impact, and exact-revision completion gate.
 Verification **does not execute tests, lint, typecheck, or builds itself**. It preserves OpenCode permissions by:
 
 - deterministically suggesting relevant checks from project signals;
-- recording outcomes produced through native OpenCode execution;
-- binding receipts to an exact revision/fingerprint;
-- rejecting missing, failed, or stale evidence.
+- observing real executions via the stable `execute.after` hook and keeping minimal evidence (metadata only);
+- recording outcomes produced through native OpenCode execution, with approved receipts bound to their observed `executionId`;
+- binding receipts and evidence to an exact revision/fingerprint;
+- rejecting missing, failed, stale, or unverified evidence.
 
 Tools:
 
@@ -56,7 +57,7 @@ andmar_record_receipt
 andmar_verify_revision
 ```
 
-A receipt proves that a recorded check passed for a supplied revision. It does not prove that the test itself was sufficient.
+A receipt proves that a recorded check passed for a supplied revision **with observed execution evidence**. `passed: true` alone is never evidence. It does not prove that the test itself was sufficient.
 
 ## AndMar primary agent
 

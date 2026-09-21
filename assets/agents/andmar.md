@@ -28,7 +28,7 @@ Before claiming a code-changing task is complete:
 2. Use `andmar_suggest_checks` with real project signals and package scripts when useful. Select only checks that are relevant to the change.
 3. Establish one exact working-state revision fingerprint that includes committed HEAD plus staged, unstaged, and untracked source changes. Do not use the HEAD commit alone when the working tree is dirty.
 4. Run the required checks through native OpenCode shell/tools so OpenCode permissions remain authoritative.
-5. Immediately record each result with `andmar_record_receipt` using the same working-state revision fingerprint. Never record a passing receipt for a command that did not run successfully.
+5. Immediately record each result with `andmar_record_receipt` using the same working-state revision fingerprint plus the `executionId` observed from that command's real OpenCode execution. A passing receipt without a valid completed same-revision `executionId` is refused: `passed: true` alone is never evidence. Never record a passing receipt for a command that did not run successfully.
 6. If any relevant file changes after a recorded check, recompute the fingerprint. Old receipts are stale and the affected checks must run again.
 7. Call `andmar_verify_revision` with the checks required for this task.
 8. Call `andmar_change_impact` using the final changed paths and actual change kind. Resolve stale documentation/version obligations instead of merely reporting them.
@@ -48,15 +48,20 @@ Run it through OpenCode's normal shell tool. Do not bypass permissions.
 
 ## Stronger verification for risky work
 
-For migrations, external integrations, security-sensitive changes, architecture changes, or work involving an evolving upstream API, verification must go beyond self-authored mocks:
+For changes classified as `migration` or `integration` (and for security-sensitive changes, architecture changes, or work involving an evolving upstream API), verification must go beyond self-authored mocks. The following external-contract checklist is part of the termination criteria whenever it applies:
 
-- verify the current upstream contract from authoritative/current sources;
-- preserve behavior, not merely compile-time API shape;
-- exercise at least one real runtime or integration boundary when it is reasonably available;
+- installed API/type shape — confirm what is actually installed, not only what docs claim;
+- current upstream source/documentation — verify the current upstream contract from authoritative/current sources;
+- deprecated/transitional API scan — check for stale/deprecated API use and transitional shims with a real replacement available;
+- migration notes/changelog when relevant — read the upstream migration notes/changelog and apply them;
+- real runtime/integration smoke when available — preserve behavior, not merely compile-time API shape, and exercise at least one real runtime or integration boundary when it is reasonably available.
+
+Additionally:
+
 - inspect whether CI actually runs the newly added checks;
 - perform an adversarial final review: assume the implementation is incomplete and look for unsupported assumptions, stale/deprecated API use, untested boundaries, and tests that only validate mocks.
 
-If a real runtime boundary is unavailable, say so explicitly and do not represent mock-only validation as runtime proof.
+If a real runtime boundary is unavailable, declare that explicitly as a limitation instead of simulating that it was tested, and do not represent mock-only validation as runtime proof.
 
 ## Completion behavior
 

@@ -40,7 +40,7 @@ Tool transforms must remain synchronous/replayable; async work belongs in the to
 
 ## Hooks
 
-MVP uses:
+AndMar AI uses (verified against `@opencode/plugin@2.0.4` `dist/promise/tool.d.ts` and `dist/promise/shell.d.ts`):
 
 ```text
 ctx.tool.hook("execute.after", ...)
@@ -48,6 +48,34 @@ ctx.shell.hook("create.before", ...)
 ```
 
 It intentionally does not use legacy V1 event/hook names.
+
+### `execute.after` is the observation contract (confirmed, not deprecated)
+
+The `execute.after` hook is the only stable hook that carries an observed
+outcome, and it exists identically in both the `promise` and `effect`
+variants (`ToolDomain.hook` over `ToolHooks`). There is no better stable
+alternative: `ctx.shell` exposes only `create.before` (timeout/cwd/command
+mutation, no result). Verified 2026-09-21 against the installed `2.0.4`
+type surface.
+
+Event shape relied upon:
+
+```text
+{
+  tool: string,          // e.g. "bash"; AndMar-owned tools are skipped
+  sessionID: Session.ID,
+  id: Tool.CallID,       // stable call id — NOT `callID` (never existed)
+  input: unknown,        // observed but never stored
+  status: "completed" | "error",
+  result?: Tool.Result,  // completed — observed but never stored
+  error?: Tool.Error,    // error — observed but never stored
+}
+```
+
+AndMar stores only minimal metadata (`executionId`, tool, status,
+session, timestamp) under `verification-evidence/<executionId>` plus the
+diagnostic `journal/<sessionID>/<callID>` entry. Full inputs/outputs are
+never persisted by the observer.
 
 ## Sessions
 

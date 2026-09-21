@@ -30,3 +30,11 @@ test("AndMar agent requires stronger evidence for migrations and integrations", 
   assert.match(agent, /real runtime or integration boundary/i)
   assert.match(agent, /tests that only validate mocks/i)
 })
+
+test("AndMar agent holds the reinforced migration/integration termination criteria", () => {
+  assert.match(agent, /installed API\/type shape/i)
+  assert.match(agent, /deprecated\/transitional API scan/i)
+  assert.match(agent, /migration notes\/changelog/i)
+  assert.match(agent, /explicitly.*limitation|limitation.*explicitly/i)
+  assert.match(agent, /executionId/i)
+})

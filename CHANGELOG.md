@@ -4,6 +4,19 @@ All notable changes to AndMar AI are recorded here. The package version in `pack
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-22
+
+### Fixed
+
+- Verification receipts no longer trust a bare agent claim: `andmar_record_receipt` refuses `passed: true` without an `executionId` previously observed via the official stable OpenCode `execute.after` hook with `completed` status. Failed executions can never become passed receipts, and evidence bound to one working-state revision can never satisfy another (`unverified` in `andmar_verify_revision`).
+- `system` journal keyed by the real stable `event.id` instead of the never-existing `event.callID`.
+- Only minimal execution metadata is stored (`verification-evidence/<executionId>`); AndMar still runs no subprocesses, uses native OpenCode shell/tools, and stores no full outputs in evidence. AndMar-owned tool calls are never eligible as check evidence.
+
+### Changed
+
+- `AndMar` primary agent holds the reinforced `migration`/`integration` termination checklist as part of its completion policy: installed API/type shape, current upstream source/documentation, deprecated/transitional API scan, migration notes/changelog when relevant, and real runtime/integration smoke when available — declaring the absence of a real runtime explicitly as a limitation instead of simulating it.
+- Docs updated accordingly (`VERIFICATION.md`, `STATE.md`, `OPENCODE-V2.md` hook contract, `ARCHITECTURE.md`, `ANDMAR-AI-CAPABILITIES.md`, `README.md`) plus D-012.
+
 ## [0.3.0] - 2026-09-21
 
 ### Added

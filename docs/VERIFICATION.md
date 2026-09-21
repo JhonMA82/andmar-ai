@@ -23,20 +23,26 @@ El flujo normal tiene tres pasos:
 ```text
 1. Corres el check con las herramientas normales de OpenCode
    (ej. npm run check, tsc, tests...)
+   -> AndMar observa el resultado real vía el hook estable
+      execute.after y guarda una evidencia mínima de ejecución
+      (solo metadata: executionId, herramienta, estado, sesión)
 
-2. Guardas el resultado con andmar_record_receipt
+2. Guardas el resultado con andmar_record_receipt indicando el
+   executionId observado
    -> queda archivado bajo verification/<revisión>/<check>
+      y la evidencia queda ligada a esa revisión
 
 3. Antes de dar algo por terminado, preguntas con andmar_verify_revision
-   -> responde ok, o te dice qué falta o qué falló
+   -> responde ok, o te dice qué falta, qué falló o qué está
+      sin verificar (unverified)
 ```
 
 Ejemplo: terminaste un cambio en la revisión `abc123` y corriste tests y
-typecheck. Los registras uno por uno:
+typecheck. Los registras uno por uno con su ejecución observada:
 
 ```text
-andmar_record_receipt(revision: "abc123", check: "tests", passed: true)
-andmar_record_receipt(revision: "abc123", check: "typecheck", passed: true)
+andmar_record_receipt(revision: "abc123", check: "tests", passed: true, executionId: "<id-observado-1>")
+andmar_record_receipt(revision: "abc123", check: "typecheck", passed: true, executionId: "<id-observado-2>")
 ```
 
 Después verificas:
@@ -105,9 +111,19 @@ herramientas normales, y después guardas el resultado con
 
 ## Qué significan las respuestas
 
-- `ok: true` — todos los checks requeridos pasaron en esta revisión exacta. Puedes continuar hacia el cierre.
+- `ok: true` — todos los checks requeridos pasaron en esta revisión exacta con ejecución observada válida. Puedes continuar hacia el cierre.
 - `missing: [...]` — esos checks no tienen resultado registrado para esta revisión. Hay que correrlos.
 - `failed: [...]` — esos checks corrieron y fallaron. Hay que arreglar y volver a correr.
+- `unverified: [...]` — esos checks tienen un receipt aprobado pero sin evidencia de ejecución válida (sin `executionId`, ejecución desconocida o fallida, o evidencia ligada a otra revisión). Hay que correr el check de verdad y registrarlo con su `executionId`.
+
+## Por qué `passed: true` solo no basta
+
+Un receipt aprobado exige el `executionId` de la ejecución real observada
+por OpenCode para ese comando. Sin ejecución válida no se guarda nada; una
+ejecución fallida jamás puede convertirse en receipt aprobado; y una
+evidencia ligada a otra revisión no sirve para la actual. Si el código
+cambia después del check, hay que volver a correrlo: la evidencia anterior
+queda automáticamente invalidada.
 
 ## Cómo encaja con el resto
 

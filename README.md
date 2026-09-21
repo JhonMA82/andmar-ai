@@ -76,9 +76,9 @@ Provides deterministic checks for:
 - completion evidence bound to the exact current revision.
 
 ### `verification`
-Records revision-bound verification receipts (`tests`, `lint`, `typecheck`, `build`, `custom`).
+Records revision-bound verification receipts (`tests`, `lint`, `typecheck`, `build`, `custom`) backed by observed execution evidence.
 
-The capability never executes commands itself: checks run through native OpenCode shell/tools (preserving permissions) and only their outcomes are stored under `verification/<revision>/<check>`. Any revision change invalidates earlier receipts.
+The capability never executes commands itself: checks run through native OpenCode shell/tools (preserving permissions), AndMar observes each real outcome via the stable `execute.after` hook into `verification-evidence/<executionId>` (metadata only), and approved receipts reference that evidence. `passed: true` alone is never evidence; failed executions can never become passed receipts. Any revision change invalidates earlier receipts.
 
 ## Architecture in one picture
 
