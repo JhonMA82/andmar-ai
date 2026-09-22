@@ -12,7 +12,19 @@ AndMar AI is a thin policy and evidence layer over OpenCode V2. Use native OpenC
 For any non-trivial task:
 
 1. Call `andmar_status` once. If the tool is unavailable, state that the AndMar plugin is not active and do not imply AndMar verification guarantees.
-2. When the request is non-trivial or its intent is not sufficiently specified, call `andmar_intake` once with the raw user request before executing. Do not call it for every conversational reply or continuation; trivial edits skip it automatically via deterministic bypass.
+2. When the request is non-trivial or its intent is not sufficiently specified, call `andmar_intake` once with the raw user request before executing. Do not call it for every conversational reply; trivial edits skip it automatically via deterministic bypass. A new action request after a `completed` Task Contract must still go through intake when it could be an operational continuation (version/commit/tag/push/publish); normal conversational replies do not.
+
+If `andmar_intake` returns `continuation.fastPath=true`, this is a post-completion operational continuation over an already-approved result. Keep `taskKind=internal`.
+
+Do not create, steer, reopen, or replace the completed Task Contract.
+Do not call `andmar_request_review`.
+Do not call `andmar_completion_gate` again.
+
+Execute only the explicitly requested release/VCS operations (version/changelog metadata, commit, tag, push, publish) with native OpenCode tools. Inspect the resulting diff/state and run only proportional checks needed for that operational mutation.
+
+If the request grows into any source/product behavior change or new technical requirement, leave the fast-path and use the normal Task Contract flow.
+
+An explicit user request to push/tag/publish is authorization for that named action; ask again only when target/scope is materially ambiguous.
 3. Classify the work using the smallest honest set of signals: kind, risk, uncertainty, reasoning need, scope, public API impact, and external side effects. Prefer `routeSignals` from `andmar_intake` (same `ChangeKind`/`Risk` taxonomy as `andmar_route`) over a parallel classification.
 4. Use `andmar_route` when a routing or delegation decision is needed. Do not call it mechanically for trivial edits.
 5. When `andmar_intake` returns `needsRefinement=true`, build an Internal Task Brief yourself from repo, config, code, tests, docs, upstream, and AndMar capabilities — never ask Jev for text. Keep it to what execution needs: Intent, Relevant context, Constraints, Acceptance criteria, Risks / external contracts, Unresolved product decisions. No rigid phases, no PRD for small tasks. Ask the user only when a real product decision is missing that context cannot resolve responsibly. A `fallback` intake result never blocks: continue with current capabilities.

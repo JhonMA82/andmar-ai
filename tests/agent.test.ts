@@ -63,6 +63,13 @@ test("AndMar agent reports change, verification, requirements and limitations on
   assert.match(agent, /two rejects the task is blocked|After two rejects/i)
 })
 
+test("AndMar agent handles post-completion operational continuations proportionally", () => {
+  assert.match(agent, /continuation\.fastPath=true/)
+  assert.match(agent, /Do not call `andmar_request_review`/)
+  assert.match(agent, /Do not call `andmar_completion_gate` again/)
+  assert.match(agent, /proportional checks/i)
+})
+
 test("AndMar agent passes taskKind through contract and completion boundaries", () => {
   assert.match(agent, /Task Contract.*taskKind|taskKind.*Task Contract/i)
   assert.match(agent, /completion_gate.*taskKind|taskKind.*completion_gate/i)

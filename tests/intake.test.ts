@@ -1,15 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { StateStore } from "../src/core/contracts.ts";
-import { INTAKE_QUESTIONS, INTAKE_QUESTION_IDS } from "../src/capabilities/intake/questions.ts";
+import { CONTINUATION_QUESTIONS, INTAKE_QUESTIONS, INTAKE_QUESTION_IDS } from "../src/capabilities/intake/questions.ts";
 import { callJev, DEFAULT_JEV_MODEL, readApiKey, resolveJevModel, truncateState } from "../src/capabilities/intake/jev.ts";
 import {
   decisionDeterministic,
   decisionFallback,
   decisionFromJev,
   deterministicClassify,
+  deterministicContinuation,
   isTrivialBypass,
+  parseContinuationAnswers,
   parseJevAnswers,
+  withContinuationDecision,
 } from "../src/capabilities/intake/decide.ts";
 import {
   buildTraceEntry,
@@ -332,3 +335,152 @@ test("fallback decision carries routing-compatible signals", () => {
   assert.equal(decision.routeSignals.kind, decision.taskKind);
   assert.ok(["low", "medium", "high", "critical"].includes(decision.routeSignals.risk));
 });
+
+test("continuation questions are conditional and not in the base six", () => {
+  assert.deepEqual([...INTAKE_QUESTION_IDS], ["task_kind", "needs_refinement", "specification_sufficiency", "risk", "external_contract", "product_decision_missing"]);
+  assert.ok(CONTINUATION_QUESTIONS.continuation_relation);
+  assert.ok(CONTINUATION_QUESTIONS.continuation_mutation);
+  assert.ok(CONTINUATION_QUESTIONS.continuation_new_requirement);
+  assert.equal(CONTINUATION_QUESTIONS.continuation_relation.type, "choice");
+  assert.equal(CONTINUATION_QUESTIONS.continuation_new_requirement.type, "noul");
+  assert.ok(!([...INTAKE_QUESTION_IDS] as string[]).some((id) => id.startsWith("continuation_")));
+});
+
+test("deterministicContinuation accepts obvious operational requests", () => {
+  for (const req of ["sube y versiona", "versiona y sube", "push", "haz commit", "commit y push", "actualiza la versión", "crea el tag"]) {
+    const c = deterministicContinuation(req);
+    assert.ok(c, req);
+    assert.equal(c?.relation, "operational_continuation");
+    assert.equal(c?.fastPath, true);
+    assert.equal(c?.source, "deterministic");
+  }
+  const main = deterministicContinuation("sube y versiona");
+  assert.deepEqual(main, {
+    previousTaskCompleted: true,
+    relation: "operational_continuation",
+    mutation: "metadata_and_operational",
+    newRequirement: false,
+    newRequirementProb: 0,
+    fastPath: true,
+    source: "deterministic",
+    confidence: 1,
+  });
+});
+
+test("deterministicContinuation rejects new-requirement wording", () => {
+  assert.equal(deterministicContinuation("antes de subir corrige también el login"), undefined);
+  assert.equal(deterministicContinuation("versiona pero arregla primero los tests"), undefined);
+  assert.equal(deterministicContinuation("haz cambios necesarios y publica"), undefined);
+});
+
+test("completed contract + obvious operational fast-paths without Jev", async () => {
+  await withEnv({ OPENROUTER_API_KEY: "test-key", ANDMAR_INTAKE_TRACE: undefined }, async () => {
+    const state = memoryState();
+    await state.set("task-contract/ses-op", {
+      id: "tc-ses-op", sessionID: "ses-op", goal: "done", requirements: [], constraints: [],
+      reviewRequired: false, status: "completed", createdAt: 1, updatedAt: 1,
+    });
+    let jevCalled = false;
+    const original = (globalThis as { fetch?: unknown }).fetch;
+    (globalThis as { fetch?: unknown }).fetch = (async () => { jevCalled = true; throw new Error("must not call Jev"); }) as never;
+    try {
+      const decision = await runIntake("sube y versiona", { sessionID: "ses-op" }, {}, state);
+      assert.equal(decision.continuation?.fastPath, true);
+      assert.equal(decision.taskKind, "internal");
+      assert.equal(decision.continuation?.source, "deterministic");
+      assert.equal(jevCalled, false);
+    } finally {
+      (globalThis as { fetch?: unknown }).fetch = original;
+    }
+  });
+});
+
+test("completed contract + ambiguous Jev operational uses one Jev call and fast-paths", async () => {
+  await withEnv({ OPENROUTER_API_KEY: "test-key", ANDMAR_INTAKE_TRACE: undefined }, async () => {
+    const state = memoryState();
+    await state.set("task-contract/ses-amb", {
+      id: "tc-ses-amb", sessionID: "ses-amb", goal: "done", requirements: [], constraints: [],
+      reviewRequired: false, status: "completed", createdAt: 1, updatedAt: 1,
+    });
+    let calls = 0;
+    let seenQuestions: string[] = [];
+    let seenState = "";
+    const original = (globalThis as { fetch?: unknown }).fetch;
+    (globalThis as { fetch?: unknown }).fetch = (async (_url: string, init: { body: string }) => {
+      calls += 1;
+      const body = JSON.parse(init.body);
+      seenQuestions = Object.keys(body.questions);
+      seenState = body.state;
+      return {
+        ok: true, status: 200,
+        json: async () => ({
+          model: "typesafe/jev-1.13-20260917",
+          answers: {
+            ...jevAnswers(),
+            continuation_relation: { type: "choice", choice: "operational_continuation", confidence: 0.9 },
+            continuation_mutation: { type: "choice", choice: "metadata_and_operational", confidence: 0.85 },
+            continuation_new_requirement: { type: "noul", noul: 0.05 },
+          },
+        }),
+        text: async () => "ok",
+      };
+    }) as never;
+    try {
+      const decision = await runIntake("podrías subir y versionar por favor", { sessionID: "ses-amb" }, {}, state);
+      assert.equal(calls, 1);
+      assert.ok(seenQuestions.includes("task_kind"));
+      assert.ok(seenQuestions.includes("continuation_relation"));
+      assert.ok(!seenState.includes("REQ-"));
+      assert.equal(decision.continuation?.fastPath, true);
+      assert.equal(decision.taskKind, "internal");
+    } finally {
+      (globalThis as { fetch?: unknown }).fetch = original;
+    }
+  });
+});
+
+test("completed contract + Jev task_extension does not fast-path", () => {
+  const cont = parseContinuationAnswers({
+    continuation_relation: { type: "choice", choice: "task_extension", confidence: 0.9 },
+    continuation_mutation: { type: "choice", choice: "code_or_behavior", confidence: 0.9 },
+    continuation_new_requirement: { type: "noul", noul: 0.9 },
+  });
+  assert.equal(cont.fastPath, false);
+  const base = decisionDeterministic("Cambia Save por Guardar", DEFAULT_JEV_MODEL);
+  const applied = withContinuationDecision(base, cont);
+  assert.equal(applied.continuation?.fastPath, false);
+  assert.notEqual(applied.taskKind, "internal");
+});
+
+test("no completed contract + operational wording does not silent fast-path", async () => {
+  await withEnv({ OPENROUTER_API_KEY: "test-key", ANDMAR_INTAKE_TRACE: undefined }, async () => {
+    const original = (globalThis as { fetch?: unknown }).fetch;
+    (globalThis as { fetch?: unknown }).fetch = mockFetchSuccessForContinuation() as never;
+    try {
+      const decision = await runIntake("sube y versiona", { sessionID: "ses-fresh" }, {}, memoryState());
+      assert.equal(decision.continuation, undefined);
+    } finally {
+      (globalThis as { fetch?: unknown }).fetch = original;
+    }
+  });
+});
+
+function mockFetchSuccessForContinuation() {
+  return async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      model: "typesafe/jev-1.13-20260917",
+      answers: {
+        task_kind: { type: "choice", choice: "internal", confidence: 0.8 },
+        needs_refinement: { type: "noul", noul: 0.1 },
+        specification_sufficiency: { type: "score", score: 3 },
+        risk: { type: "score", score: 1 },
+        external_contract: { type: "noul", noul: 0.2 },
+        product_decision_missing: { type: "noul", noul: 0.1 },
+      },
+      usage: { input_tokens: 10, output_tokens: 5 },
+    }),
+    text: async () => "ok",
+  });
+}

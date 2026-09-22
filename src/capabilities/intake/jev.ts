@@ -19,7 +19,7 @@
 // Decision: no @openrouter/sdk dependency. The contract is one fetch call
 // plus validation; an SDK would add a large dependency for no structural gain.
 
-import { INTAKE_QUESTIONS, type IntakeQuestionId } from "./questions.ts";
+import { INTAKE_QUESTIONS, type JevQuestion } from "./questions.ts";
 
 export const JEV_ENDPOINT = "https://openrouter.ai/api/alpha/decisions";
 export const DEFAULT_JEV_MODEL = "typesafe/jev-1.13";
@@ -38,6 +38,7 @@ export interface JevCallOptions {
   apiKey: string;
   timeoutMs?: number;
   fetchFn?: FetchFn;
+  questions?: Record<string, JevQuestion>;
 }
 
 export type RawAnswers = Record<string, Record<string, unknown>>;
@@ -107,7 +108,7 @@ export async function callJev(state: string, options: JevCallOptions): Promise<J
     const body = JSON.stringify({
       model,
       state: truncateState(state),
-      questions: INTAKE_QUESTIONS as Record<IntakeQuestionId, unknown>,
+      questions: options.questions ?? INTAKE_QUESTIONS,
     });
     let response: { ok: boolean; status: number; json(): Promise<unknown>; text(): Promise<string> };
     try {

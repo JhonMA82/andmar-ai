@@ -328,6 +328,12 @@ export const taskContractCapability: Capability = {
 
           const contract = await readContract(state, sessionID)
           if (!contract) return { content: "refused: no active Task Contract for this session; create one first" }
+          if (contract.status === "completed") {
+            return {
+              content:
+                "refused: this Task Contract is already completed. Do not re-review completed work for an operational continuation; create a new active contract only if the user introduced new code/product requirements.",
+            };
+          }
           await state.remove(completionSealKey(sessionID))
           const contractErrors = validateTaskContract(contract)
           if (contractErrors.length > 0) {

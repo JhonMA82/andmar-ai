@@ -243,7 +243,8 @@ known limitations.
 - **Public primitives:** `andmar_intake({ request })` (output: `taskKind`,
   `needsRefinement`, `specificationSufficiency`, `risk`/`riskLevel`,
   `externalContract`, `productDecisionMissing`, `source`, Jev metadata,
-  reusable `routeSignals`, brief sections); `andmar_intake_trace({ limit })`
+  reusable `routeSignals`, brief sections, optional `continuation`
+  `{ relation, mutation, newRequirement, fastPath, source }`); `andmar_intake_trace({ limit })`
   (recent structured decisions for tuning).
 - **Produces:** an `IntakeDecision` whose `routeSignals` feeds `andmar_route`
   directly. **Consumes:** repo context (via the primary model building the
@@ -269,6 +270,9 @@ known limitations.
   reasoning only when necessary. Empty/oversized requests and the trivial
   bypass (short UI/text change, no migration/security/external/bug signals)
   never call Jev. `routeSignals` reuse the `ChangeKind`/`Risk` taxonomy.
+  After a `completed` contract, obvious operational continuations bypass Jev
+  via `deterministicContinuation`; ambiguous ones use the same single Jev
+  call with three conditional continuation questions (D-021).
 - **Failure / fallback:** never blocks. Missing key, timeout, network failure,
   non-2xx, or invalid payload degrades to an explicit `fallback` with
   `needsRefinement=false` so AndMar continues with current capabilities. Jev is
@@ -328,7 +332,8 @@ known limitations.
 - **Failure / fallback:** duplicate active `create` refused (steer
   instead); absurd requirement transitions refused; `blocked`/`skipped`
   without reason refused; steering a `completed` contract refused; review
-  without a contract refused; rounds beyond two return `blocked`; invalid
+  without a contract refused; review on a `completed` contract refused (operational
+  continuations must not re-review approved work); rounds beyond two return `blocked`; invalid
   reviewer output is reported and consumes no round. Trivial tasks skip the
   contract entirely (proportional escape hatch).
 - **Security / trust:** review sessions inherit parent permissions like any

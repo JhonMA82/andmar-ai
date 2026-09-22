@@ -55,6 +55,29 @@ export interface IntakeDecision {
     sections: string[];
     askUserOnlyIf: string;
   };
+  continuation?: ContinuationDecision;
+}
+
+export type ContinuationRelation =
+  | "operational_continuation"
+  | "task_extension"
+  | "new_task";
+
+export type ContinuationMutation =
+  | "operational_only"
+  | "metadata_only"
+  | "metadata_and_operational"
+  | "code_or_behavior";
+
+export interface ContinuationDecision {
+  previousTaskCompleted: true;
+  relation: ContinuationRelation;
+  mutation: ContinuationMutation;
+  newRequirement: boolean;
+  newRequirementProb: number;
+  fastPath: boolean;
+  source: "deterministic" | "jev";
+  confidence?: number;
 }
 
 export const BRIEF_SECTIONS = [
@@ -119,6 +142,146 @@ export function deterministicClassify(request: string): DeterministicGuess {
 
 export function isTrivialBypass(request: string): boolean {
   return deterministicClassify(request).trivial;
+}
+
+const CONTINUATION_DENY_RE =
+  /corrige|correg|arregl|\bfix\b|bug|cambi|necesari|refactor|debug|login|test|implement|añad|agrega|modifica|mejora|funcion|error|fallo|falla|pero|antes|tambi[eé]n|primero/i;
+const CONTINUATION_VERSION_RE = /versiona|versi[oó]n|\bversion\b|bump|changelog/i;
+const CONTINUATION_OPS_RE = /\bpush\b|\bcommit\b|\btag\b|\bsube\b|publica|publish/i;
+
+function continuationMutationFor(text: string): ContinuationMutation {
+  const hasVersion = CONTINUATION_VERSION_RE.test(text);
+  const hasOps = CONTINUATION_OPS_RE.test(text);
+  if (hasVersion && hasOps) return "metadata_and_operational";
+  if (hasVersion) return "metadata_only";
+  return "operational_only";
+}
+
+const CONTINUATION_ALLOW_RES: RegExp[] = [
+  /^\s*(sube\s+y\s+versiona|versiona\s+y\s+sube)\s*[.!]*\s*$/i,
+  /^\s*(haz\s+)?commit(\s+y\s+push)?\s*[.!]*\s*$/i,
+  /^\s*(haz\s+)?push\s*[.!]*\s*$/i,
+  /actualiza\s+la\s+versi[oó]n/i,
+  /crea\s+el\s+tag/i,
+  /\bcommit\s+y\s+push\b/i,
+];
+
+export function deterministicContinuation(request: string): ContinuationDecision | undefined {
+  const trimmed = request.trim();
+  if (trimmed === "") return undefined;
+  const words = trimmed.split(/\s+/).length;
+  if (trimmed.length > 60 || words > 8) return undefined;
+  const lower = trimmed.toLowerCase();
+  if (CONTINUATION_DENY_RE.test(lower)) return undefined;
+  const allowed = CONTINUATION_ALLOW_RES.some((re) => re.test(trimmed));
+  if (!allowed) {
+    // Narrow generic fallback: short request with only version/ops vocabulary.
+    const tokens = lower.replace(/[.!]+$/g, "").split(/[\s_]+/);
+    const vocab = new Set(["sube", "y", "versiona", "version", "versión", "versionar", "actualiza", "la", "el", "haz", "hacer", "crea", "crear", "commit", "push", "tag", "bump", "changelog", "publica", "publish", "por", "favor"]);
+    const allKnown = tokens.every((t) => vocab.has(t));
+    if (!allKnown) return undefined;
+    if (!CONTINUATION_VERSION_RE.test(lower) && !CONTINUATION_OPS_RE.test(lower)) return undefined;
+  }
+  return {
+    previousTaskCompleted: true,
+    relation: "operational_continuation",
+    mutation: continuationMutationFor(lower),
+    newRequirement: false,
+    newRequirementProb: 0,
+    fastPath: true,
+    source: "deterministic",
+    confidence: 1,
+  };
+}
+
+const ALLOWED_RELATIONS: readonly string[] = [
+  "operational_continuation",
+  "task_extension",
+  "new_task",
+];
+const ALLOWED_MUTATIONS: readonly string[] = [
+  "operational_only",
+  "metadata_only",
+  "metadata_and_operational",
+  "code_or_behavior",
+];
+
+function choiceConfidence(entry: Record<string, unknown>, choice: string): number | undefined {
+  const conf = entry["confidence"];
+  if (typeof conf === "number" && Number.isFinite(conf)) return conf;
+  const probs = entry["probabilities"];
+  if (typeof probs === "object" && probs !== null && !Array.isArray(probs)) {
+    const v = (probs as Record<string, unknown>)[choice];
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+  }
+  return undefined;
+}
+
+export function parseContinuationAnswers(raw: RawAnswers): ContinuationDecision {
+  for (const id of ["continuation_relation", "continuation_mutation", "continuation_new_requirement"]) {
+    if (typeof raw[id] !== "object" || raw[id] === null) throw new Error(`invalid_response:missing:${id}`);
+  }
+  const relRaw = raw["continuation_relation"] as Record<string, unknown>;
+  if (relRaw["type"] !== "choice" || typeof relRaw["choice"] !== "string" || !ALLOWED_RELATIONS.includes(relRaw["choice"] as string)) {
+    throw new Error("invalid_response:continuation_relation");
+  }
+  const mutRaw = raw["continuation_mutation"] as Record<string, unknown>;
+  if (mutRaw["type"] !== "choice" || typeof mutRaw["choice"] !== "string" || !ALLOWED_MUTATIONS.includes(mutRaw["choice"] as string)) {
+    throw new Error("invalid_response:continuation_mutation");
+  }
+  const reqRaw = raw["continuation_new_requirement"] as Record<string, unknown>;
+  const reqProb = asNumber(reqRaw["noul"]);
+  if (reqRaw["type"] !== "noul" || reqProb === undefined || reqProb < 0 || reqProb > 1) {
+    throw new Error("invalid_response:continuation_new_requirement");
+  }
+  const relation = relRaw["choice"] as ContinuationRelation;
+  const mutation = mutRaw["choice"] as ContinuationMutation;
+  const confidences: number[] = [];
+  const relConf = choiceConfidence(relRaw, relation);
+  if (relConf !== undefined) confidences.push(relConf);
+  const mutConf = choiceConfidence(mutRaw, mutation);
+  if (mutConf !== undefined) confidences.push(mutConf);
+  const minConfidence = confidences.length > 0 ? Math.min(...confidences) : undefined;
+  const fastPath =
+    relation === "operational_continuation" &&
+    mutation !== "code_or_behavior" &&
+    reqProb < 0.25 &&
+    (minConfidence === undefined || minConfidence >= 0.7);
+  return {
+    previousTaskCompleted: true,
+    relation,
+    mutation,
+    newRequirement: reqProb >= 0.5,
+    newRequirementProb: reqProb,
+    fastPath,
+    source: "jev",
+    ...(minConfidence === undefined ? {} : { confidence: minConfidence }),
+  };
+}
+
+export function withContinuationDecision(
+  decision: IntakeDecision,
+  continuation: ContinuationDecision,
+): IntakeDecision {
+  if (!continuation.fastPath) return { ...decision, continuation };
+  const externalSideEffects =
+    continuation.mutation === "operational_only" ||
+    continuation.mutation === "metadata_and_operational";
+  return {
+    ...decision,
+    taskKind: "internal",
+    needsRefinement: false,
+    specificationSufficiency: 4,
+    routeSignals: {
+      ...decision.routeSignals,
+      kind: "internal",
+      uncertainty: "low",
+      reasoning: "low",
+      externalSideEffects,
+    },
+    brief: { ...decision.brief, required: false },
+    continuation,
+  };
 }
 
 function asNumber(value: unknown): number | undefined {

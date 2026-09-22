@@ -1,13 +1,19 @@
 import type { Capability, StateStore } from "../../core/contracts.ts";
+import { contractKey, type TaskContract } from "../../core/task-contract.ts";
 import { callJev, readApiKey, resolveJevModel, resolveJevTimeout, type RawAnswers } from "./jev.ts";
 import {
   decisionDeterministic,
   decisionFallback,
   decisionFromJev,
+  deterministicContinuation,
   isTrivialBypass,
+  parseContinuationAnswers,
   parseJevAnswers,
+  withContinuationDecision,
   type IntakeDecision,
 } from "./decide.ts";
+import { CONTINUATION_QUESTIONS } from "./questions.ts";
+import { INTAKE_QUESTIONS } from "./questions.ts";
 import { buildTraceEntry, isTraceEnabled, listTraces, saveTrace } from "./trace.ts";
 
 const MAX_REQUEST_CHARS = 20_000;
@@ -67,7 +73,39 @@ export async function runIntake(
     return invalid;
   }
 
-  if (isTrivialBypass(request)) {
+  const previousContract =
+    sessionID === "unknown"
+      ? undefined
+      : await state.get<TaskContract>(contractKey(sessionID));
+
+  const completedContract =
+    previousContract?.status === "completed" ? previousContract : undefined;
+
+  if (completedContract) {
+    const continuation = deterministicContinuation(request);
+    if (continuation) {
+      const decision = withContinuationDecision(
+        decisionDeterministic(request, jevModel),
+        continuation,
+      );
+      if (isTraceEnabled()) {
+        await saveTrace(state, buildTraceEntry({
+          sessionID, request, jevModel, jevCalled: false, jevAvailable: true,
+          source: decision.source, reason: decision.reason, latencyMs: Date.now() - started,
+          rawAnswers: {}, refine: decision.needsRefinement, taskKind: decision.taskKind,
+          needsRefinement: decision.needsRefinement, externalContract: decision.externalContract,
+          productDecisionMissing: decision.productDecisionMissing,
+          continuationFastPath: continuation.fastPath,
+          continuationRelation: continuation.relation,
+          continuationMutation: continuation.mutation,
+          continuationSource: continuation.source,
+        }));
+      }
+      return decision;
+    }
+  }
+
+  if (!completedContract && isTrivialBypass(request)) {
     const decision = decisionDeterministic(request, jevModel);
     if (isTraceEnabled()) {
       await saveTrace(state, buildTraceEntry({
@@ -98,9 +136,27 @@ export async function runIntake(
 
   const timeoutMs = resolveJevTimeout(options.timeoutMs);
   try {
-    const result = await callJev(request, { model: jevModel, apiKey, timeoutMs });
+    const questions = completedContract
+      ? { ...INTAKE_QUESTIONS, ...CONTINUATION_QUESTIONS }
+      : undefined;
+    const jevState = completedContract
+      ? JSON.stringify({
+        request,
+        previousTask: {
+          status: "completed",
+          taskKind: (completedContract as { taskKind?: unknown }).taskKind ?? "internal",
+        },
+      })
+      : request;
+    const result = await callJev(jevState, { model: jevModel, apiKey, timeoutMs, ...(questions === undefined ? {} : { questions }) });
     const parsed = parseJevAnswers(result.answers as RawAnswers);
-    const decision = decisionFromJev(parsed, { jevModel: result.modelReturned, latencyMs: result.latencyMs });
+    let decision = decisionFromJev(parsed, { jevModel: result.modelReturned, latencyMs: result.latencyMs });
+    if (completedContract) {
+      decision = withContinuationDecision(
+        decision,
+        parseContinuationAnswers(result.answers as RawAnswers),
+      );
+    }
     if (isTraceEnabled()) {
       await saveTrace(state, buildTraceEntry({
         sessionID, request, jevModel: result.modelReturned, jevCalled: true, jevAvailable: true,
@@ -108,6 +164,12 @@ export async function runIntake(
         refine: decision.needsRefinement, taskKind: decision.taskKind,
         needsRefinement: decision.needsRefinement, externalContract: decision.externalContract,
         productDecisionMissing: decision.productDecisionMissing,
+        ...(decision.continuation === undefined ? {} : {
+          continuationFastPath: decision.continuation.fastPath,
+          continuationRelation: decision.continuation.relation,
+          continuationMutation: decision.continuation.mutation,
+          continuationSource: decision.continuation.source,
+        }),
       }));
     }
     return decision;
