@@ -3,6 +3,7 @@ import assert from "node:assert/strict"
 import {
   MAX_REVIEW_ROUNDS,
   buildReviewPacket,
+  contractStateToken,
   createTaskContract,
   evaluateRequirementGate,
   evaluateReviewGate,
@@ -23,6 +24,7 @@ import { lifecycleCapability } from "../src/capabilities/lifecycle/index.ts"
 
 function makeContract(): TaskContract {
   const created = createTaskContract("ses-1", {
+    taskKind: "feature",
     goal: "Port observability to OpenCode V2 keeping behavior",
     requirements: ["OpenCode V2 native", "keep dashboard", "update tests", "run real smoke"],
     constraints: ["do not touch Persona"],
@@ -161,7 +163,7 @@ test("review rejection denies completion", () => {
   const contract = makeContract()
   const gate = evaluateReviewGate(contract, [reviewRecord(1, "reject", "rev-a")], "rev-a", true)
   assert.equal(gate.ok, false)
-  assert.match(gate.reasons.join(" "), /rejected/)
+  assert.match(gate.reasons.join(" "), /blocking finding/)
   assert.equal(gate.rejectCount, 1)
 })
 
@@ -347,14 +349,14 @@ test("task_contract tool: create refuses duplicate active contracts and status p
   assert.ok(tool)
 
   const created: any = await tool.execute(
-    { op: "create", goal: "Add --json flag", requirements: ["keep default output", "update tests"] },
+    { op: "create", taskKind: "feature", goal: "Add --json flag", requirements: ["keep default output", "update tests"] },
     { sessionID: "ses-1" },
   )
   assert.match(created.content, /"stored": true/)
   assert.match(created.content, /REQ-1/)
 
   const duplicate: any = await tool.execute(
-    { op: "create", goal: "Other goal", requirements: ["other"] },
+    { op: "create", taskKind: "feature", goal: "Other goal", requirements: ["other"] },
     { sessionID: "ses-1" },
   )
   assert.match(duplicate.content, /^refused:/)
@@ -393,7 +395,7 @@ test("request_review stores approve in a fresh session; second round uses anothe
   }
   await taskContractCapability.setup({ ctx, config: { models: {} } as any, state })
   const contract = tools.get("task_contract")
-  await contract.execute({ op: "create", goal: "Add --json flag", requirements: ["keep default output"] }, { sessionID: "ses-1" })
+  await contract.execute({ op: "create", taskKind: "feature", goal: "Add --json flag", requirements: ["keep default output"] }, { sessionID: "ses-1" })
   const review = tools.get("request_review")
 
   const first: any = await review.execute({ revision: "rev-a" }, { sessionID: "ses-1" })
@@ -411,8 +413,16 @@ test("request_review on a completed contract is refused", async () => {
   const { ctx, tools } = createToolHarness()
   await taskContractCapability.setup({ ctx, config: { models: {} } as any, state })
   const contract = tools.get("task_contract")
-  await contract.execute({ op: "create", goal: "Add --json flag", requirements: ["keep default output"] }, { sessionID: "ses-done" })
-  await contract.execute({ op: "close", outcome: "completed" }, { sessionID: "ses-done" })
+  await contract.execute({ op: "create", taskKind: "feature", goal: "Add --json flag", requirements: ["keep default output"] }, { sessionID: "ses-done" })
+  const status: any = await contract.execute({ op: "status" }, { sessionID: "ses-done" })
+  const current = JSON.parse(status.content).contract
+  await state.set("task-contract-completion/ses-done", {
+    revision: "rev-a",
+    taskKind: "feature",
+    contractStateToken: contractStateToken(current),
+    at: Date.now(),
+  })
+  await contract.execute({ op: "close", outcome: "completed", revision: "rev-a" }, { sessionID: "ses-done" })
   const refused: any = await tools.get("request_review").execute({ revision: "rev-a" }, { sessionID: "ses-done" })
   assert.match(refused.content, /^refused: this Task Contract is already completed/)
 })
@@ -435,7 +445,7 @@ test("request_review reads the reviewer answer through the real prompt->wait->co
   ]
   await taskContractCapability.setup({ ctx, config: { models: {} } as any, state })
   const contract = tools.get("task_contract")
-  await contract.execute({ op: "create", goal: "Add --json flag", requirements: ["keep default output"] }, { sessionID: "ses-1" })
+  await contract.execute({ op: "create", taskKind: "feature", goal: "Add --json flag", requirements: ["keep default output"] }, { sessionID: "ses-1" })
   const review: any = await tools.get("request_review").execute({ revision: "rev-a" }, { sessionID: "ses-1" })
   assert.match(review.content, /"stored": true/)
   assert.match(review.content, /"verdict": "approve"/)
@@ -448,15 +458,15 @@ test("concurrent contract mutations are serialized instead of last-write-wins", 
   await taskContractCapability.setup({ ctx, config: { models: {} } as any, state })
   const contract = tools.get("task_contract")
   await contract.execute(
-    { op: "create", goal: "Add --json flag", requirements: ["keep default output", "update tests", "update README"] },
+    { op: "create", taskKind: "feature", goal: "Add --json flag", requirements: ["keep default output", "update tests", "update README"] },
     { sessionID: "ses-1" },
   )
   // Fire three evidence+update pairs concurrently; the per-session write
   // lock must preserve every requirement's evidence and status.
   await Promise.all([
-    contract.execute({ op: "record_evidence", requirementId: "REQ-1", type: "diff", reference: "git diff" }, { sessionID: "ses-1" }),
-    contract.execute({ op: "record_evidence", requirementId: "REQ-2", type: "verification", reference: "tests" }, { sessionID: "ses-1" }),
-    contract.execute({ op: "record_evidence", requirementId: "REQ-3", type: "diff", reference: "README" }, { sessionID: "ses-1" }),
+    contract.execute({ op: "record_evidence", requirementId: "REQ-1", type: "diff", reference: "git diff", revision: "rev-a" }, { sessionID: "ses-1" }),
+    contract.execute({ op: "record_evidence", requirementId: "REQ-2", type: "verification", reference: "tests", revision: "rev-a" }, { sessionID: "ses-1" }),
+    contract.execute({ op: "record_evidence", requirementId: "REQ-3", type: "diff", reference: "README", revision: "rev-a" }, { sessionID: "ses-1" }),
     contract.execute({ op: "update", requirementId: "REQ-1", status: "satisfied" }, { sessionID: "ses-1" }),
     contract.execute({ op: "update", requirementId: "REQ-2", status: "satisfied" }, { sessionID: "ses-1" }),
     contract.execute({ op: "update", requirementId: "REQ-3", status: "satisfied" }, { sessionID: "ses-1" }),
@@ -483,7 +493,7 @@ test("delegation-free reviewer: invalid review output consumes no round even thr
   ]
   await taskContractCapability.setup({ ctx, config: { models: {} } as any, state })
   const contract = tools.get("task_contract")
-  await contract.execute({ op: "create", goal: "Add --json flag", requirements: ["keep default output"] }, { sessionID: "ses-1" })
+  await contract.execute({ op: "create", taskKind: "feature", goal: "Add --json flag", requirements: ["keep default output"] }, { sessionID: "ses-1" })
   const result: any = await tools.get("request_review").execute({ revision: "rev-a" }, { sessionID: "ses-1" })
   assert.match(result.content, /^invalid reviewer output/)
   const stored = await state.scan("task-contract-review/")
@@ -497,7 +507,7 @@ test("request_review with invalid reviewer output stores nothing and consumes no
   ctx.session.prompt = async () => ({ text: "looks good to me, ship it" })
   await taskContractCapability.setup({ ctx, config: { models: {} } as any, state })
   const contract = tools.get("task_contract")
-  await contract.execute({ op: "create", goal: "Add --json flag", requirements: ["keep default output"] }, { sessionID: "ses-1" })
+  await contract.execute({ op: "create", taskKind: "feature", goal: "Add --json flag", requirements: ["keep default output"] }, { sessionID: "ses-1" })
   const result: any = await tools.get("request_review").execute({ revision: "rev-a" }, { sessionID: "ses-1" })
   assert.match(result.content, /^invalid reviewer output/)
   const stored = await state.scan("task-contract-review/")
@@ -515,6 +525,7 @@ test("negative smoke: green tests cannot complete a task with a pending README r
   await contract.execute(
     {
       op: "create",
+      taskKind: "feature",
       goal: "Add --json flag to command X",
       requirements: ["keep default output", "update tests", "update README", "run real smoke"],
     },
@@ -580,7 +591,7 @@ test("negative smoke: green tests cannot complete a task with a pending README r
   const gate = lHarness.tools.get("completion_gate")
   const clean = { revision: "rev-a", testsPassed: true, docsStatus: "clean", versionStatus: "not-applicable" }
   const denied: any = await gate.execute(
-    { currentRevision: "rev-a", evidence: clean, requiredChecks: ["tests", "typecheck"] },
+    { taskKind: "feature", currentRevision: "rev-a", evidence: clean, requiredChecks: ["tests", "typecheck"] },
     { sessionID: "ses-1" },
   )
   const deniedJson = JSON.parse(denied.content)
@@ -599,7 +610,7 @@ test("positive smoke: full contract plus approved review completes", async () =>
   await taskContractCapability.setup({ ctx: harness.ctx, config: { models: {} } as any, state })
   const contract = harness.tools.get("task_contract")
   await contract.execute(
-    { op: "create", goal: "Add --json flag", requirements: ["keep default output", "update tests"] },
+    { op: "create", taskKind: "feature", goal: "Add --json flag", requirements: ["keep default output", "update tests"] },
     { sessionID: "ses-1" },
   )
   for (const id of ["REQ-1", "REQ-2"]) {
@@ -662,11 +673,11 @@ test("positive smoke: full contract plus approved review completes", async () =>
   const clean = { revision: "rev-a", testsPassed: true, docsStatus: "clean", versionStatus: "not-applicable" }
   const passed: any = await lHarness.tools
     .get("completion_gate")
-    .execute({ currentRevision: "rev-a", evidence: clean, requiredChecks: ["tests", "typecheck"] }, { sessionID: "ses-1" })
+    .execute({ taskKind: "feature", currentRevision: "rev-a", evidence: clean, requiredChecks: ["tests", "typecheck"] }, { sessionID: "ses-1" })
   assert.equal(JSON.parse(passed.content).ok, true)
 })
 
-test("completion gate without a contract keeps legacy behavior for trivial tasks", async () => {
+test("completion gate derives contract policy from taskKind", async () => {
   const state: any = createMemoryState()
   const lHarness = createToolHarness()
   await lifecycleCapability.setup({
@@ -675,15 +686,253 @@ test("completion gate without a contract keeps legacy behavior for trivial tasks
     state,
   })
   const clean = { revision: "rev-a", testsPassed: true, docsStatus: "clean", versionStatus: "not-applicable" }
+
   const trivial: any = await lHarness.tools
     .get("completion_gate")
-    .execute({ currentRevision: "rev-a", evidence: clean, requiredChecks: [] }, { sessionID: "ses-1" })
+    .execute(
+      { taskKind: "docs-format", currentRevision: "rev-a", evidence: clean, requiredChecks: [] },
+      { sessionID: "ses-1" },
+    )
   assert.equal(JSON.parse(trivial.content).ok, true)
 
-  const demanded: any = await lHarness.tools
+  const nonTrivial: any = await lHarness.tools
     .get("completion_gate")
-    .execute({ currentRevision: "rev-a", evidence: clean, requiredChecks: [], requireContract: true }, { sessionID: "ses-1" })
-  const demandedJson = JSON.parse(demanded.content)
-  assert.equal(demandedJson.ok, false)
-  assert.match(demandedJson.reasons.join(" "), /no Task Contract/)
+    .execute(
+      { taskKind: "feature", currentRevision: "rev-a", evidence: clean, requiredChecks: [] },
+      { sessionID: "ses-1" },
+    )
+  const nonTrivialJson = JSON.parse(nonTrivial.content)
+  assert.equal(nonTrivialJson.ok, false)
+  assert.match(nonTrivialJson.reasons.join(" "), /Task Contract required/)
+  assert.match(nonTrivialJson.reasons.join(" "), /independent review required/)
+})
+
+test("review gate derives outcome from blocking findings, not the reported verdict", () => {
+  const contract = makeContract()
+
+  const falseApprove: ReviewRecord = {
+    verdict: "approve",
+    findings: [
+      {
+        requirementId: "REQ-1",
+        observation: "required behavior is missing",
+        evidencePointer: "src/x.ts",
+      },
+    ],
+    round: 1,
+    reviewSessionID: "review-1",
+    revision: "rev-a",
+    at: 1,
+  }
+  const denied = evaluateReviewGate(contract, [falseApprove], "rev-a", true)
+  assert.equal(denied.ok, false)
+  assert.equal(denied.latestVerdict, "reject")
+  assert.equal(denied.blockingFindings, 1)
+
+  const tasteReject: ReviewRecord = {
+    verdict: "reject",
+    findings: [
+      {
+        observation: "I would use another architecture",
+        evidencePointer: "src/x.ts",
+      },
+    ],
+    round: 1,
+    reviewSessionID: "review-2",
+    revision: "rev-a",
+    at: 1,
+  }
+  const advisory = evaluateReviewGate(contract, [tasteReject], "rev-a", true)
+  assert.equal(advisory.ok, true)
+  assert.equal(advisory.latestVerdict, "approve")
+  assert.equal(advisory.blockingFindings, 0)
+})
+
+test("revision-sensitive requirement evidence is refused without a revision", () => {
+  const contract = makeContract()
+  for (const type of ["verification", "runtime", "diff", "review"] as const) {
+    const result = recordRequirementEvidence(contract, "REQ-1", {
+      type,
+      reference: "pointer",
+    })
+    assert.equal(result.ok, false)
+  }
+
+  assert.equal(
+    recordRequirementEvidence(contract, "REQ-1", {
+      type: "user-decision",
+      reference: "user explicitly chose option A",
+    }).ok,
+    true,
+  )
+})
+
+test("task contract review policy is derived from taskKind", () => {
+  const feature = createTaskContract("feature-session", {
+    taskKind: "feature",
+    goal: "feature",
+    requirements: ["ship feature"],
+  })
+  assert.equal(feature.ok, true)
+  assert.equal((feature as any).contract.reviewRequired, true)
+
+  const docs = createTaskContract("docs-session", {
+    taskKind: "docs-format",
+    goal: "docs",
+    requirements: ["format docs"],
+  })
+  assert.equal(docs.ok, true)
+  assert.equal((docs as any).contract.reviewRequired, false)
+})
+
+test("contract cannot close completed without an exact completion-gate seal", async () => {
+  const state: any = createMemoryState()
+  const { ctx, tools } = createToolHarness()
+  await taskContractCapability.setup({ ctx, config: { models: {} } as any, state })
+  const contract = tools.get("task_contract")
+
+  await contract.execute(
+    {
+      op: "create",
+      taskKind: "feature",
+      goal: "ship feature",
+      requirements: ["requirement"],
+    },
+    { sessionID: "ses-close" },
+  )
+
+  const denied: any = await contract.execute(
+    { op: "close", outcome: "completed", revision: "rev-a" },
+    { sessionID: "ses-close" },
+  )
+  assert.match(denied.content, /^refused:/)
+
+  const statusBeforeClose: any = await contract.execute(
+    { op: "status" },
+    { sessionID: "ses-close" },
+  )
+  const currentContract = JSON.parse(statusBeforeClose.content).contract
+  await state.set("task-contract-completion/ses-close", {
+    revision: "rev-a",
+    taskKind: "feature",
+    contractStateToken: contractStateToken(currentContract),
+    at: Date.now(),
+  })
+  const accepted: any = await contract.execute(
+    { op: "close", outcome: "completed", revision: "rev-a" },
+    { sessionID: "ses-close" },
+  )
+  assert.match(accepted.content, /"status": "completed"/)
+})
+
+test("completion gate denies a taskKind mismatch even when the requirement gate itself is green", async () => {
+  const state: any = createMemoryState()
+  const harness = createToolHarness()
+  await taskContractCapability.setup({
+    ctx: harness.ctx,
+    config: { models: {} } as any,
+    state,
+  })
+
+  const contract = harness.tools.get("task_contract")
+  await contract.execute(
+    {
+      op: "create",
+      taskKind: "docs-format",
+      goal: "Format one document",
+      requirements: ["format the document"],
+    },
+    { sessionID: "ses-kind-mismatch" },
+  )
+  await contract.execute(
+    {
+      op: "record_evidence",
+      requirementId: "REQ-1",
+      type: "user-decision",
+      reference: "requested document formatting completed",
+    },
+    { sessionID: "ses-kind-mismatch" },
+  )
+  await contract.execute(
+    { op: "update", requirementId: "REQ-1", status: "satisfied" },
+    { sessionID: "ses-kind-mismatch" },
+  )
+
+  const lifecycle = createToolHarness()
+  await lifecycleCapability.setup({
+    ctx: lifecycle.ctx,
+    config: {
+      documentation: { rules: [] },
+      versioning: { enabled: false, publicPaths: [] },
+    } as any,
+    state,
+  })
+
+  const clean = {
+    revision: "rev-a",
+    testsPassed: true,
+    docsStatus: "clean",
+    versionStatus: "not-applicable",
+  }
+  const result: any = await lifecycle.tools.get("completion_gate").execute(
+    {
+      taskKind: "known-test",
+      currentRevision: "rev-a",
+      evidence: clean,
+      requiredChecks: [],
+    },
+    { sessionID: "ses-kind-mismatch" },
+  )
+
+  const parsed = JSON.parse(result.content)
+  assert.equal(parsed.ok, false)
+  assert.match(parsed.reasons.join(" "), /taskKind mismatch/)
+})
+
+test("a completion seal for an older contract state cannot close a mutated contract", async () => {
+  const state: any = createMemoryState()
+  const { ctx, tools } = createToolHarness()
+  await taskContractCapability.setup({
+    ctx,
+    config: { models: {} } as any,
+    state,
+  })
+
+  const contract = tools.get("task_contract")
+  await contract.execute(
+    {
+      op: "create",
+      taskKind: "feature",
+      goal: "Ship feature",
+      requirements: ["ship the feature"],
+    },
+    { sessionID: "ses-stale-seal" },
+  )
+
+  const before: any = await contract.execute(
+    { op: "status" },
+    { sessionID: "ses-stale-seal" },
+  )
+  const beforeContract = JSON.parse(before.content).contract
+  const staleToken = contractStateToken(beforeContract)
+
+  await contract.execute(
+    { op: "steer", addConstraints: ["do not change public API"] },
+    { sessionID: "ses-stale-seal" },
+  )
+
+  // Simulate: gate evaluated A -> contract became B -> old gate writes A's seal.
+  await state.set("task-contract-completion/ses-stale-seal", {
+    revision: "rev-a",
+    taskKind: "feature",
+    contractStateToken: staleToken,
+    at: Date.now(),
+  })
+
+  const close: any = await contract.execute(
+    { op: "close", outcome: "completed", revision: "rev-a" },
+    { sessionID: "ses-stale-seal" },
+  )
+  assert.match(close.content, /^refused:/)
+  assert.match(close.content, /stale/)
 })

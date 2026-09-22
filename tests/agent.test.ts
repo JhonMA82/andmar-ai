@@ -69,3 +69,9 @@ test("AndMar agent handles post-completion operational continuations proportiona
   assert.match(agent, /Do not call `andmar_completion_gate` again/)
   assert.match(agent, /proportional checks/i)
 })
+
+test("AndMar agent passes taskKind through contract and completion boundaries", () => {
+  assert.match(agent, /Task Contract.*taskKind|taskKind.*Task Contract/i)
+  assert.match(agent, /completion_gate.*taskKind|taskKind.*completion_gate/i)
+  assert.match(agent, /runtime.*derived.*taskKind|taskKind.*runtime.*derived/i)
+})

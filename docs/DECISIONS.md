@@ -188,6 +188,25 @@ semantic uses still wait for measured friction.
 
 **Consequence:** Continuity is pull-based and documented in the `AndMar` agent policy; `andmar.contract`/`andmar.review` observability stays metadata-only and fail-open.
 
+## D-020 — Behavioral completion policy is runtime-derived
+
+**Decision:** Task kind is stored in the Task Contract and passed explicitly to
+the completion boundary. Contract/review requirements are derived in runtime;
+the model cannot disable them with optional `requireContract`,
+`requireReview`, or `reviewRequired` flags. Review outcome is derived from
+structured blocking findings, revision-sensitive evidence must be revision
+bound, and a contract can close as completed only after an exact-revision
+completion seal bound to the exact Task Contract state evaluated by the gate.
+
+**Why:** Real-world use showed that prompt-level instructions are not strong
+enough for the properties the harness exists to guarantee. A model omission
+must produce a denied completion rather than silently falling back to legacy
+behavior.
+
+**Consequence:** Trivial task kinds retain the proportional escape hatch.
+Non-trivial work fails closed when the Task Contract/review boundary is
+missing.
+
 ---
 
 ## D-021 — Completed-task operational continuations use a proportional fast-path
@@ -197,5 +216,3 @@ semantic uses still wait for measured friction.
 **Why:** Repeating contract → verification → review → gate ceremony for pure release/VCS operations wastes frontier review and risks re-litigating approved work, while any new code/product requirement must keep full guarantees.
 
 **Consequence:** Intake owns continuation detection; the agent executes only requested operational mutations with proportional checks and leaves the fast-path on any behavior change. No `release` capability yet.
-
-

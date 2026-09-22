@@ -6,10 +6,13 @@ import {
   type VerificationGateStatus,
 } from "../../core/lifecycle.ts"
 import {
+  completionSealKey,
   contractKey,
   contractMetrics,
+  contractStateToken,
   evaluateRequirementGate,
   evaluateReviewGate,
+  isTrivialTask,
   requiresIndependentReview,
   reviewPrefix,
   type ReviewRecord,
@@ -146,14 +149,12 @@ export const lifecycleCapability: Capability = {
               additionalProperties: false,
             },
             requiredChecks: { type: "array", items: { type: "string", enum: [...CHECKS] } },
-            requireContract: { type: "boolean" },
-            requireReview: { type: "boolean" },
             taskKind: {
               type: "string",
               enum: ["trivial-ui", "docs-format", "known-test", "feature", "bugfix", "refactor", "debug", "architecture", "security", "migration", "review", "internal"],
             },
           },
-          required: ["currentRevision", "evidence"],
+          required: ["currentRevision", "evidence", "taskKind"],
           additionalProperties: false,
         },
         options: { namespace: "andmar", codemode: true },
@@ -162,9 +163,7 @@ export const lifecycleCapability: Capability = {
             currentRevision: string
             evidence: CompletionEvidence
             requiredChecks?: string[]
-            requireContract?: boolean
-            requireReview?: boolean
-            taskKind?: ChangeKind
+            taskKind: ChangeKind
           },
           toolContext: any,
         ) => {
@@ -174,6 +173,11 @@ export const lifecycleCapability: Capability = {
               ? { ok: true, missing: [], failed: [], unverified: [], reasons: [] }
               : await readVerificationStatus(state, input.currentRevision, required)
           const sessionID = sessionIDFrom(toolContext)
+          if (sessionID !== undefined) {
+            // Every gate attempt invalidates any older success seal; only this
+            // exact evaluation may write a new one.
+            await state.remove(completionSealKey(sessionID))
+          }
           const contract =
             sessionID !== undefined ? await state.get<TaskContract>(contractKey(sessionID)) : undefined
           const reviews =
@@ -181,43 +185,51 @@ export const lifecycleCapability: Capability = {
               ? (await state.scan<ReviewRecord>(reviewPrefix(sessionID))).map((entry) => entry.value)
               : []
 
-          // Task Contract gate: enforced whenever a contract exists for this
-          // session; explicitly demandable via requireContract for
-          // non-trivial work that should have created one.
+          // Task Contract policy is derived from taskKind, never from optional
+          // caller bypass flags. Non-trivial tasks must have a contract.
+          const contractRequired = !isTrivialTask(input.taskKind)
           let contractGate: ReturnType<typeof evaluateRequirementGate> | undefined
           const contractReasons: string[] = []
           if (contract) {
+            if (contract.taskKind !== input.taskKind) {
+              contractReasons.push(
+                `taskKind mismatch: contract=${contract.taskKind}, completion=${input.taskKind}`,
+              )
+            }
             contractGate = evaluateRequirementGate(contract, input.currentRevision)
-          } else if (input.requireContract === true) {
-            contractReasons.push("requireContract=true but no Task Contract exists for this session")
+          } else if (contractRequired) {
+            contractReasons.push(
+              `Task Contract required for non-trivial taskKind "${input.taskKind}" but none exists for this session`,
+            )
           }
 
-          // Independent review gate: explicit requireReview wins; otherwise
-          // the contract's own reviewRequired flag decides. No contract and
-          // no explicit demand means the legacy proportional behavior.
-          const reviewRequired =
-            input.requireReview === true || (contract !== undefined && contract.reviewRequired === true)
-          let reviewGate: ReturnType<typeof evaluateReviewGate> | undefined
-          if (contract || input.requireReview === true) {
-            reviewGate = evaluateReviewGate(contract, reviews, input.currentRevision, reviewRequired)
-          } else if (input.taskKind !== undefined && requiresIndependentReview(input.taskKind)) {
-            reviewGate = evaluateReviewGate(undefined, [], input.currentRevision, input.requireReview ?? false)
-          }
+          // Review policy is also derived. A caller cannot disable review for
+          // a code-changing task by omitting/setting a flag.
+          const reviewRequired = requiresIndependentReview(contract?.taskKind ?? input.taskKind)
+          const reviewGate =
+            contract !== undefined || reviewRequired
+              ? evaluateReviewGate(contract, reviews, input.currentRevision, reviewRequired)
+              : undefined
 
           const combinedContractGate =
-            contractGate ??
-            (contractReasons.length > 0
+            contractGate !== undefined
               ? {
-                  ok: false,
-                  pending: [],
-                  blocked: [],
-                  missingEvidence: [],
-                  stale: [],
-                  reasons: contractReasons,
-                  total: 0,
-                  satisfied: 0,
+                  ...contractGate,
+                  ok: contractGate.ok && contractReasons.length === 0,
+                  reasons: [...contractGate.reasons, ...contractReasons],
                 }
-              : undefined)
+              : contractReasons.length > 0
+                ? {
+                    ok: false,
+                    pending: [],
+                    blocked: [],
+                    missingEvidence: [],
+                    stale: [],
+                    reasons: contractReasons,
+                    total: 0,
+                    satisfied: 0,
+                  }
+                : undefined
           const result = evaluateCompletionV2(
             input.currentRevision,
             input.evidence,
@@ -226,6 +238,17 @@ export const lifecycleCapability: Capability = {
             combinedContractGate,
             reviewGate,
           )
+          if (result.ok && sessionID !== undefined) {
+            await state.set(completionSealKey(sessionID), {
+              revision: input.currentRevision,
+              taskKind: input.taskKind,
+              ...(contract === undefined
+                ? {}
+                : { contractStateToken: contractStateToken(contract) }),
+              at: Date.now(),
+            })
+          }
+
           const metrics = contract ? contractMetrics(contract, reviews) : undefined
           const reviewRejectCount = reviews.filter((review) => review.verdict === "reject").length
           observability?.emit({
