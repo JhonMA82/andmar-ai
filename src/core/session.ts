@@ -26,6 +26,39 @@ export interface SessionDomainLike {
 const MAX_WAIT_MS = 10 * 60_000
 const RETRY_DELAY_MS = 1_000
 
+export interface RunChildTaskOptions {
+  timeoutMs?: number
+  retryDelayMs?: number
+}
+
+async function withDeadline<T>(
+  promise: Promise<T>,
+  deadline: number,
+  label: string,
+): Promise<T> {
+  const remaining = deadline - Date.now()
+  if (remaining <= 0) {
+    throw new Error(`child session timed out before ${label}`)
+  }
+
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`child session timed out during ${label}`)),
+      remaining,
+    )
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error) => {
+        clearTimeout(timer)
+        reject(error)
+      },
+    )
+  })
+}
+
 interface AssistantLike {
   type?: unknown
   time?: { created?: unknown; completed?: unknown }
@@ -68,10 +101,18 @@ export async function runChildTask(
   sessions: SessionDomainLike,
   sessionID: string,
   text: string,
+  options: RunChildTaskOptions = {},
 ): Promise<string | undefined> {
   if (typeof sessions?.prompt !== "function") return undefined
   const startedAt = Date.now()
-  const queued = await sessions.prompt({ sessionID, text })
+  const timeoutMs = Math.max(1, options.timeoutMs ?? MAX_WAIT_MS)
+  const retryDelayMs = Math.max(1, options.retryDelayMs ?? RETRY_DELAY_MS)
+  const deadline = startedAt + timeoutMs
+  const queued = await withDeadline(
+    sessions.prompt({ sessionID, text }),
+    deadline,
+    "session.prompt",
+  )
 
   const canWait = typeof sessions.wait === "function"
   const canRead = typeof sessions.context === "function"
@@ -86,11 +127,14 @@ export async function runChildTask(
     return undefined
   }
 
-  const deadline = startedAt + MAX_WAIT_MS
   let last: { text: string | undefined; completedAt: number } = { text: undefined, completedAt: 0 }
   while (Date.now() < deadline) {
-    await sessions.wait!({ sessionID })
-    const messages = await sessions.context!({ sessionID })
+    await withDeadline(sessions.wait!({ sessionID }), deadline, "session.wait")
+    const messages = await withDeadline(
+      sessions.context!({ sessionID }),
+      deadline,
+      "session.context",
+    )
     last = lastAssistantText(messages)
     // Only accept an assistant completion produced by this prompt; a wait
     // that resolved before the queued message even started must be retried.
@@ -99,7 +143,9 @@ export async function runChildTask(
     const fresh = last.completedAt === 0 || last.completedAt >= startedAt - 1_000
     if (last.text !== undefined && fresh) return last.text
     if (!fresh) {
-      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS))
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(retryDelayMs, Math.max(1, deadline - Date.now()))),
+      )
       continue
     }
     // Fresh but empty text: the child finished without emitting text.

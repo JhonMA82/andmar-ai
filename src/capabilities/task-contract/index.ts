@@ -1,10 +1,12 @@
-import type { Capability, StateStore } from "../../core/contracts.ts"
+import type { Capability, ChangeKind, StateStore } from "../../core/contracts.ts"
 import type { SemanticObservability } from "../../core/observability.ts"
 import { runChildTask } from "../../core/session.ts"
 import {
   MAX_REVIEW_ROUNDS,
   buildReviewPacket,
+  completionSealKey,
   contractKey,
+  contractStateToken,
   contractMetrics,
   createTaskContract,
   evaluateRequirementGate,
@@ -91,15 +93,19 @@ async function mutateTaskContract(
     if (!Array.isArray(input.requirements)) {
       return "refused: create requires requirements (explicit user obligations, not internal steps)"
     }
+    if (typeof input.taskKind !== "string") {
+      return "refused: create requires taskKind so review policy is runtime-derived, not caller-controlled"
+    }
     const created = createTaskContract(sessionID, {
+      taskKind: input.taskKind as ChangeKind,
       goal: input.goal,
       desiredOutcome: input.desiredOutcome,
       requirements: input.requirements,
       constraints: input.constraints,
       verificationSurface: input.verificationSurface,
-      reviewRequired: input.reviewRequired,
     })
     if (!created.ok) return `refused: ${created.error}`
+    await state.remove(completionSealKey(sessionID))
     await state.set(contractKey(sessionID), created.contract)
     observability?.emit({
       type: "andmar.contract",
@@ -120,6 +126,7 @@ async function mutateTaskContract(
       input.reason,
     )
     if (!updated.ok) return `refused: ${updated.error}`
+    await state.remove(completionSealKey(sessionID))
     await state.set(contractKey(sessionID), updated.contract)
     observability?.emit({
       type: "andmar.contract",
@@ -139,6 +146,7 @@ async function mutateTaskContract(
       revision: input.revision,
     })
     if (!recorded.ok) return `refused: ${recorded.error}`
+    await state.remove(completionSealKey(sessionID))
     await state.set(contractKey(sessionID), recorded.contract)
     observability?.emit({
       type: "andmar.contract",
@@ -157,6 +165,7 @@ async function mutateTaskContract(
       addConstraints: input.addConstraints,
     })
     if (!steered.ok) return `refused: ${steered.error}`
+    await state.remove(completionSealKey(sessionID))
     await state.set(contractKey(sessionID), steered.contract)
     observability?.emit({
       type: "andmar.contract",
@@ -173,8 +182,27 @@ async function mutateTaskContract(
     if (input.outcome === "blocked" && (typeof input.reason !== "string" || input.reason.trim() === "")) {
       return "refused: closing as blocked requires a reason"
     }
+    if (input.outcome === "completed") {
+      if (typeof input.revision !== "string" || input.revision.trim() === "") {
+        return "refused: closing as completed requires the exact revision that passed andmar_completion_gate"
+      }
+      const seal = await state.get<{
+        revision: string
+        taskKind?: ChangeKind
+        contractStateToken?: string
+      }>(completionSealKey(sessionID))
+      if (
+        !seal ||
+        seal.revision !== input.revision ||
+        seal.taskKind !== contract.taskKind ||
+        seal.contractStateToken !== contractStateToken(contract)
+      ) {
+        return "refused: completion gate seal is missing or stale for the current revision and Task Contract state"
+      }
+    }
     const closed: TaskContract = { ...contract, status: input.outcome, updatedAt: Date.now() }
     await state.set(contractKey(sessionID), closed)
+    await state.remove(completionSealKey(sessionID))
     observability?.emit({
       type: "andmar.contract",
       sessionID,
@@ -225,7 +253,10 @@ export const taskContractCapability: Capability = {
             requirements: { type: "array", items: { type: "string" } },
             constraints: { type: "array", items: { type: "string" } },
             verificationSurface: { type: "string" },
-            reviewRequired: { type: "boolean" },
+            taskKind: {
+              type: "string",
+              enum: ["trivial-ui", "docs-format", "known-test", "feature", "bugfix", "refactor", "debug", "architecture", "security", "migration", "review", "internal"],
+            },
             requirementId: { type: "string" },
             status: { type: "string", enum: ["pending", "satisfied", "blocked", "skipped"] },
             reason: { type: "string" },
@@ -297,6 +328,7 @@ export const taskContractCapability: Capability = {
 
           const contract = await readContract(state, sessionID)
           if (!contract) return { content: "refused: no active Task Contract for this session; create one first" }
+          await state.remove(completionSealKey(sessionID))
           const contractErrors = validateTaskContract(contract)
           if (contractErrors.length > 0) {
             return { content: `refused: stored contract is invalid: ${contractErrors.join("; ")}` }
@@ -380,15 +412,17 @@ export const taskContractCapability: Capability = {
                 content: `invalid reviewer output: ${validated.error}; nothing was stored and no round was consumed. Re-request the review.`,
               }
             }
+            const blocking = validated.result.findings.filter((finding) => isBlockingFinding(contract, finding)).length
+            const effectiveVerdict = blocking > 0 ? "reject" : "approve"
             const record: ReviewRecord = {
               ...validated.result,
+              verdict: effectiveVerdict,
               round,
               reviewSessionID: child.id,
               revision: input.revision,
               at: Date.now(),
             }
             await state.set(reviewKey(sessionID, round), record)
-            const blocking = validated.result.findings.filter((finding) => isBlockingFinding(contract, finding)).length
             const gate = evaluateReviewGate(contract, [...reviews, record], input.revision, contract.reviewRequired)
             observability?.emit({
               type: "andmar.review",
@@ -397,6 +431,7 @@ export const taskContractCapability: Capability = {
                 action: "completed",
                 round,
                 verdict: record.verdict,
+                reportedVerdict: validated.result.verdict,
                 findings: record.findings.length,
                 blockingFindings: blocking,
                 reviewRequired: contract.reviewRequired,
@@ -404,7 +439,19 @@ export const taskContractCapability: Capability = {
                 durationMs: Date.now() - startedAt,
               },
             })
-            return { content: JSON.stringify({ stored: true, round, reviewSessionID: child.id, result: validated.result }, null, 2) }
+            return {
+              content: JSON.stringify(
+                {
+                  stored: true,
+                  round,
+                  reviewSessionID: child.id,
+                  result: { ...validated.result, verdict: effectiveVerdict },
+                  reportedVerdict: validated.result.verdict,
+                },
+                null,
+                2,
+              ),
+            }
           } catch (error) {
             observability?.emit({
               type: "andmar.review",

@@ -62,3 +62,9 @@ test("AndMar agent reports change, verification, requirements and limitations on
   assert.match(agent, /which real limitations remain|limitations remain/i)
   assert.match(agent, /two rejects the task is blocked|After two rejects/i)
 })
+
+test("AndMar agent passes taskKind through contract and completion boundaries", () => {
+  assert.match(agent, /Task Contract.*taskKind|taskKind.*Task Contract/i)
+  assert.match(agent, /completion_gate.*taskKind|taskKind.*completion_gate/i)
+  assert.match(agent, /runtime.*derived.*taskKind|taskKind.*runtime.*derived/i)
+})
