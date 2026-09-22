@@ -196,7 +196,7 @@ test("completion_gate tool enforces stored verification and stays proportional",
   }
 
   // Only tests recorded: typecheck missing, so the gate must fail despite testsPassed:true.
-  const blocked: any = await gate.execute({ currentRevision: "rev-a", evidence: clean })
+  const blocked: any = await gate.execute({ taskKind: "known-test", currentRevision: "rev-a", evidence: clean })
   const blockedJson = JSON.parse(blocked.content)
   assert.equal(blockedJson.ok, false)
   assert.match(blockedJson.reasons.join(" "), /required verification/)
@@ -206,11 +206,11 @@ test("completion_gate tool enforces stored verification and stays proportional",
     { revision: "rev-a", check: "typecheck", passed: true, command: "bunx tsc --noEmit" },
     { sessionID: "ses-1" },
   )
-  const passed: any = await gate.execute({ currentRevision: "rev-a", evidence: clean })
+  const passed: any = await gate.execute({ taskKind: "known-test", currentRevision: "rev-a", evidence: clean })
   assert.equal(JSON.parse(passed.content).ok, true)
 
   // Explicit opt-out for tasks that genuinely require no checks.
-  const trivial: any = await gate.execute({ currentRevision: "rev-a", evidence: clean, requiredChecks: [] })
+  const trivial: any = await gate.execute({ taskKind: "known-test", currentRevision: "rev-a", evidence: clean, requiredChecks: [] })
   assert.equal(JSON.parse(trivial.content).ok, true)
 })
 
