@@ -13,6 +13,8 @@ AndMar AI uses OpenCode V2 plugin storage for operational facts. This state is d
 | `verification-evidence/<executionId>` | `verification` | `verification`, `lifecycle` (read-only gate scan) | bound to one revision on first receipt use; unbounded, no pruning yet |
 | `verification/<revision>/<check>` | `verification` | `verification`, `lifecycle` (read-only gate scan) | a new revision starts with no receipts; old receipts are never reused; unbounded, no pruning yet |
 | `intake-trace/<timestamp>-<rand>` | `intake` | `andmar_intake_trace` queries | max 20 entries, oldest pruned first |
+| `task-contract/<sessionID>` | `task-contract` | `task-contract` (writes); `lifecycle` (read-only gate scan) | one active contract per session; `active` → `completed`/`blocked`; unbounded, no pruning yet |
+| `task-contract-review/<sessionID>/<round>` | `task-contract` | `task-contract` (writes); `lifecycle` (read-only gate scan) | max 2 rounds per task; a new round always uses a new child session; unbounded, no pruning yet |
 
 ### `runtime/last-start`
 
@@ -46,6 +48,25 @@ pruned first). Stores `timestamp`, `sessionID`, `requestHash` (sha256),
 `requestLength`, `jevModel`, `jevCalled`, `jevAvailable`, `source`, `reason`,
 `latencyMs`, typed `answers`, and `decision.refine`. Full `request` text only
 when `ANDMAR_INTAKE_TRACE_CONTENT=1`. Never stores `OPENROUTER_API_KEY`.
+
+### `task-contract/<sessionID>`
+
+The active Task Contract for one parent session: `goal`, optional
+`desiredOutcome`/`verificationSurface`, `requirements` (`REQ-N` with
+`pending`/`satisfied`/`blocked`/`skipped`, evidence pointers, reasons),
+`constraints` (`CON-N`), `reviewRequired`, and `status`
+(`active`/`blocked`/`completed`). Steering appends requirements/constraints
+with the next deterministic numbers and never removes. Stores no
+transcripts, chain-of-thought, prompts, or source code — only obligations
+and evidence pointers.
+
+### `task-contract-review/<sessionID>/<round>`
+
+One independent review record per round (`round`, fresh `reviewSessionID`,
+`revision`, `verdict`, linked `findings`, `notes`). At most two rounds per
+task; every round creates a new child session and review sessions are never
+resumed, so a correction is always judged from a fresh session. Invalid
+reviewer output is never stored and consumes no round.
 
 ## Worker record
 

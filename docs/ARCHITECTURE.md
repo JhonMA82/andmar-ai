@@ -93,6 +93,7 @@ delegation
 lifecycle
 verification
 intake
+task-contract
 ```
 
 Future examples may include `workflow`, `context-projection`, or `worktree-provider`, but they are not part of the current MVP. The narrow `jev-decisions` extension point is now implemented as the `intake` pilot (typed Jev answers only, no free text).
@@ -133,17 +134,25 @@ Request
 Intake (`andmar_intake`: deterministic first, one typed Jev
    ↓    decision when useful, explicit non-blocking fallback;
         `needsRefinement=true` → Internal Task Brief by the primary model)
+Task Contract (`andmar_task_contract create`: goal, requirements,
+   ↓     constraints, verification surface; trivial edits skip it;
+         later user instructions `steer` it; `status` recovers it
+         after compaction — compaction never ends the task)
 Routing (`andmar_route`: deterministic minimum profile from
    ↓     TaskSignals; intake `routeSignals` reused, same taxonomy)
 Execution / Delegation (native OpenCode tools; `andmar_delegate`
    ↓     only for bounded child tasks, `andmar_resume` by handle)
 Verification (`andmar_suggest_checks` → run via native shell
    ↓     → `andmar_record_receipt` bound to observed execution
-     → `andmar_verify_revision` for the exact revision)
+     → `andmar_verify_revision` for the exact revision;
+       requirement evidence recorded per Task Contract requirement)
 Lifecycle (`andmar_change_impact` for docs/version obligations)
    ↓
+Independent review (`andmar_request_review`: fresh frontier child
+   ↓     session per round, compact adversarial packet, max two rounds)
 Completion (`andmar_completion_gate`: exact-revision evidence +
-   clean lifecycle gates + satisfied required verification)
+   requirement gate + approved current review + clean lifecycle
+   gates + satisfied required verification)
 ```
 
 There is intentionally no generic Workflow engine between these steps: each
@@ -252,6 +261,8 @@ journal/...
 verification-evidence/<executionId>
 verification/<revision>/<check>
 intake-trace/<timestamp>-<rand>
+task-contract/<sessionID>
+task-contract-review/<sessionID>/<round>
 ```
 
 This is not long-term semantic memory. It is durable execution state.
@@ -271,7 +282,9 @@ verification evidence (observed execution + revision match)
      +-- revision matches current revision?
      +-- passed receipts backed by completed same-revision execution?
      +-- tests passed?
-     +-- review passed if required?
+     +-- every Task Contract requirement satisfied/blocked/skipped with evidence?
+     +-- revision-bound requirement evidence current (not stale)?
+     +-- independent review approved for the current revision (when required)?
      +-- docs clean/updated?
      `-- version/changelog clean/updated?
      |
@@ -279,9 +292,12 @@ verification evidence (observed execution + revision match)
 completion gate
 ```
 
-Changing the revision makes earlier evidence stale. A `passed: true` claim
-without observed execution evidence is reported as `unverified`, never as
-proof.
+A worker saying “done” still creates only a candidate completion, and
+passing tests prove only what those tests cover. Changing the revision
+makes earlier evidence stale — including requirement evidence. A
+`passed: true` claim without observed execution evidence is reported as
+`unverified`, never as proof; a `satisfied` requirement without evidence
+is invalid, never as completion.
 
 ## 8. Documentation integrity
 
@@ -335,6 +351,8 @@ The intended future shape is:
      |           |                 |             |
      +-----------+--------+--------+-------------+
                          |
+                 task-contract (obligations + review)
+                          |
                   optional workflow
                          |
        ODD / Product Plan / other skills

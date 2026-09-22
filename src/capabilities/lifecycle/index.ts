@@ -1,10 +1,20 @@
 import type { Capability, ChangeKind, CompletionEvidence } from "../../core/contracts.ts"
 import {
   analyzeDocumentationImpact,
-  evaluateCompletionWithVerification,
+  evaluateCompletionV2,
   inferVersionImpact,
   type VerificationGateStatus,
 } from "../../core/lifecycle.ts"
+import {
+  contractKey,
+  contractMetrics,
+  evaluateRequirementGate,
+  evaluateReviewGate,
+  requiresIndependentReview,
+  reviewPrefix,
+  type ReviewRecord,
+  type TaskContract,
+} from "../../core/task-contract.ts"
 import { matchesAny } from "../../core/glob.ts"
 
 const CHECKS = ["tests", "lint", "typecheck", "build", "custom"] as const
@@ -118,7 +128,7 @@ export const lifecycleCapability: Capability = {
       editor.add({
         name: "completion_gate",
         description:
-          "Accept completion only when evidence belongs to the exact current revision, lifecycle gates are clean, and required verification receipts are satisfied. A manual testsPassed flag alone can never formally verify a revision with missing verification; pass requiredChecks: [] only for tasks that genuinely require no checks.",
+          "Accept completion only when evidence belongs to the exact current revision, the Task Contract requirement gate passes, required independent review is recorded, lifecycle gates are clean, and required verification receipts are satisfied. A manual testsPassed flag alone can never formally verify a revision with missing verification; pass requiredChecks: [] only for tasks that genuinely require no checks. Trivial tasks without a contract keep the legacy behavior.",
         input: {
           type: "object",
           properties: {
@@ -136,6 +146,12 @@ export const lifecycleCapability: Capability = {
               additionalProperties: false,
             },
             requiredChecks: { type: "array", items: { type: "string", enum: [...CHECKS] } },
+            requireContract: { type: "boolean" },
+            requireReview: { type: "boolean" },
+            taskKind: {
+              type: "string",
+              enum: ["trivial-ui", "docs-format", "known-test", "feature", "bugfix", "refactor", "debug", "architecture", "security", "migration", "review", "internal"],
+            },
           },
           required: ["currentRevision", "evidence"],
           additionalProperties: false,
@@ -146,6 +162,9 @@ export const lifecycleCapability: Capability = {
             currentRevision: string
             evidence: CompletionEvidence
             requiredChecks?: string[]
+            requireContract?: boolean
+            requireReview?: boolean
+            taskKind?: ChangeKind
           },
           toolContext: any,
         ) => {
@@ -154,12 +173,61 @@ export const lifecycleCapability: Capability = {
             required.length === 0
               ? { ok: true, missing: [], failed: [], unverified: [], reasons: [] }
               : await readVerificationStatus(state, input.currentRevision, required)
-          const result = evaluateCompletionWithVerification(
+          const sessionID = sessionIDFrom(toolContext)
+          const contract =
+            sessionID !== undefined ? await state.get<TaskContract>(contractKey(sessionID)) : undefined
+          const reviews =
+            sessionID !== undefined
+              ? (await state.scan<ReviewRecord>(reviewPrefix(sessionID))).map((entry) => entry.value)
+              : []
+
+          // Task Contract gate: enforced whenever a contract exists for this
+          // session; explicitly demandable via requireContract for
+          // non-trivial work that should have created one.
+          let contractGate: ReturnType<typeof evaluateRequirementGate> | undefined
+          const contractReasons: string[] = []
+          if (contract) {
+            contractGate = evaluateRequirementGate(contract, input.currentRevision)
+          } else if (input.requireContract === true) {
+            contractReasons.push("requireContract=true but no Task Contract exists for this session")
+          }
+
+          // Independent review gate: explicit requireReview wins; otherwise
+          // the contract's own reviewRequired flag decides. No contract and
+          // no explicit demand means the legacy proportional behavior.
+          const reviewRequired =
+            input.requireReview === true || (contract !== undefined && contract.reviewRequired === true)
+          let reviewGate: ReturnType<typeof evaluateReviewGate> | undefined
+          if (contract || input.requireReview === true) {
+            reviewGate = evaluateReviewGate(contract, reviews, input.currentRevision, reviewRequired)
+          } else if (input.taskKind !== undefined && requiresIndependentReview(input.taskKind)) {
+            reviewGate = evaluateReviewGate(undefined, [], input.currentRevision, input.requireReview ?? false)
+          }
+
+          const combinedContractGate =
+            contractGate ??
+            (contractReasons.length > 0
+              ? {
+                  ok: false,
+                  pending: [],
+                  blocked: [],
+                  missingEvidence: [],
+                  stale: [],
+                  reasons: contractReasons,
+                  total: 0,
+                  satisfied: 0,
+                }
+              : undefined)
+          const result = evaluateCompletionV2(
             input.currentRevision,
             input.evidence,
             verification,
             required,
+            combinedContractGate,
+            reviewGate,
           )
+          const metrics = contract ? contractMetrics(contract, reviews) : undefined
+          const reviewRejectCount = reviews.filter((review) => review.verdict === "reject").length
           observability?.emit({
             type: "andmar.completion",
             sessionID: sessionIDFrom(toolContext),
@@ -176,6 +244,17 @@ export const lifecycleCapability: Capability = {
               unverifiedCount: verification.unverified.length,
               verificationPreventedCompletion:
                 required.length > 0 && input.evidence.testsPassed && !verification.ok,
+              hasContract: contract !== undefined,
+              requirementsTotal: metrics?.requirementsTotal ?? 0,
+              requirementsSatisfied: metrics?.requirementsSatisfied ?? 0,
+              requirementsPending: metrics?.requirementsPending ?? 0,
+              requirementsBlocked: metrics?.requirementsBlocked ?? 0,
+              requirementGatePreventedCompletion: combinedContractGate !== undefined && !combinedContractGate.ok,
+              reviewRequired,
+              reviewRounds: reviews.length,
+              reviewRejectCount,
+              reviewApproved: reviewGate !== undefined && reviewGate.ok && reviewRequired,
+              finalCompletion: result.ok,
             },
           })
           return {

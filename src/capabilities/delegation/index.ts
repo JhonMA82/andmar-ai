@@ -1,4 +1,5 @@
 import type { Capability, ModelProfile, TaskSignals, WorkerRecord } from "../../core/contracts.ts"
+import { runChildTask } from "../../core/session.ts"
 import { clampRequestedProfile, minimumProfile } from "../../core/model-policy.ts"
 
 function currentSessionID(toolContext: any): string | undefined {
@@ -9,12 +10,11 @@ function truncate(value: string, max: number): string {
   return value.length <= max ? value : `${value.slice(0, max)}\n…[truncated by AndMar AI]`
 }
 
-function resultText(result: any): string {
-  const parts = result?.parts ?? result?.message?.parts ?? []
-  const text = Array.isArray(parts)
-    ? parts.filter((part: any) => part?.type === "text" && typeof part.text === "string").map((part: any) => part.text).join("\n")
-    : ""
-  return text || (typeof result?.text === "string" ? result.text : JSON.stringify(result ?? {}))
+function boundedChildResult(result: string | undefined, max: number): string {
+  if (result === undefined) {
+    return "(child session finished without a final text response; inspect the child session directly with andmar_resume)"
+  }
+  return truncate(result, max)
 }
 
 export const delegationCapability: Capability = {
@@ -111,7 +111,7 @@ export const delegationCapability: Capability = {
           })
 
           try {
-            const result = await ctx.session.prompt({ sessionID: child.id, text: input.task })
+            const childText = await runChildTask(ctx.session, child.id, input.task)
             const finished = { ...record, status: "idle" as const, updatedAt: Date.now() }
             await state.set(`workers/${parentSessionID}/${child.id}`, finished)
             await state.set(`worker-by-session/${child.id}`, finished)
@@ -132,7 +132,7 @@ export const delegationCapability: Capability = {
               content: JSON.stringify({
                 sessionID: child.id,
                 profile,
-                result: truncate(resultText(result), config.delegation.maxResultChars),
+                result: boundedChildResult(childText, config.delegation.maxResultChars),
               }, null, 2),
             }
           } catch (error) {
@@ -177,7 +177,7 @@ export const delegationCapability: Capability = {
           if (!record) return { content: "Resume denied: this session is not owned by the current parent session." }
           const startedAt = Date.now()
           try {
-            const result = await ctx.session.prompt({ sessionID: input.sessionID, text: input.task })
+            const childText = await runChildTask(ctx.session, input.sessionID, input.task)
             observability?.emit({
               type: "andmar.delegation",
               sessionID: parentSessionID,
@@ -194,7 +194,7 @@ export const delegationCapability: Capability = {
               content: JSON.stringify({
                 sessionID: input.sessionID,
                 profile: record.profile,
-                result: truncate(resultText(result), config.delegation.maxResultChars),
+                result: boundedChildResult(childText, config.delegation.maxResultChars),
               }, null, 2),
             }
           } catch (error) {

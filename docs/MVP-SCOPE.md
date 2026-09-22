@@ -32,10 +32,11 @@ Validate the architecture of AndMar AI with enough working behavior to prove the
 - delegate;
 - resume;
 - change impact;
-- completion gate;
+- completion gate (verification + Task Contract requirements + independent review);
 - verification receipts (`andmar_record_receipt`, `andmar_verify_revision`)
   and check suggestions (`andmar_suggest_checks`);
-- request refinement (`andmar_intake`, `andmar_intake_trace`).
+- request refinement (`andmar_intake`, `andmar_intake_trace`);
+- Task Contract (`andmar_task_contract`, `andmar_request_review`).
 
 ### Documentation
 
@@ -88,7 +89,8 @@ The MVP is successful when:
 6. stale-revision evidence blocks completion;
 7. a new capability can be added without modifying the root plugin/core;
 8. human and agent documentation explain the architecture without relying on prior chat context;
-9. the AndMar primary agent can be installed without replacing Build/Plan or editing user config.
+9. the AndMar primary agent can be installed without replacing Build/Plan or editing user config;
+10. a task with pending or unevidenced Task Contract requirements cannot complete even with green tests.
 
 ## What should trigger the next capability
 

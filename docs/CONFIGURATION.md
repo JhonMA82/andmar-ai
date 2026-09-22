@@ -128,8 +128,8 @@ maintained.
 - **Default:** `http://localhost:4000`.
 - **Purpose:** optional endpoint compatible with
   `opencodev2-observability`'s `POST /events`.
-- **Scope:** semantic AndMar events only: routing, delegation, verification
-  and completion.
+- **Scope:** semantic AndMar events only: routing, delegation, verification,
+  completion, contract and review.
 - **Failure behavior:** 1 s timeout, no retries, maximum 8 concurrent sends;
   failures are dropped and never affect AndMar execution.
 - **Privacy:** sends structured metadata only. It never sends prompts, task

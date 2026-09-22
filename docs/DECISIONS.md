@@ -148,3 +148,43 @@ semantic uses still wait for measured friction.
 
 **Consequence:** Orchestration stays in the `AndMar` agent's completion policy and in methodology consumers. The first workflow slice, if ever triggered, is only `sequence / parallel / gate / repeat(maxRounds)` for the demonstrated problem — never a general DSL upfront. The `intake` pilot (D-013) is not a precedent for building engines without triggers.
 
+---
+
+## D-016 — Task Contract as the completion obligation record
+
+**Decision:** Non-trivial work carries one small `TaskContract` per session (`goal`, explicit `requirements` as `REQ-N`, `constraints` as `CON-N`, optional `desiredOutcome`/`verificationSurface`, per-requirement evidence pointers). It is not a workflow, plan, memory, TODO list, or ODD/RDD artifact: no priorities, scores, weights, or trees. Trivial edits skip it. A later user instruction steers the active contract (append-only) unless the user clearly cancels or replaces the goal. Compaction never ends the task: the persisted contract plus `status` projection is the continuity source, never the transcript.
+
+**Why:** Real use showed correct code with green tests still missing the user's actual request. The missing piece is semantic (what was asked), so the primary model extracts obligations while code owns validation, transitions, and gating deterministically.
+
+**Consequence:** `src/core/task-contract.ts` holds pure types/transitions/evaluation; `src/capabilities/task-contract/` owns `task-contract/<sessionID>` persistence. No sibling imports; `lifecycle` reads through core key helpers only.
+
+---
+
+## D-017 — Requirement-gated completion
+
+**Decision:** `andmar_completion_gate` enforces, in fixed order: exact-revision verification, Task Contract requirements (no `pending`, no `blocked`, every `satisfied` requirement evidenced and revision-current), required independent review, then docs/version obligations. Without a contract the gate keeps its legacy behavior so trivial tasks stay proportional.
+
+**Why:** Tests prove only what they cover. Completion must be backed by evidence for both technical correctness and fulfillment of the explicit user requirements.
+
+**Consequence:** `evaluateCompletionV2` composes the gates; the negative smoke (green tests, pending README requirement → denied) is a first-class test.
+
+---
+
+## D-018 — Fresh independent review, max two rounds
+
+**Decision:** Non-trivial code-changing work requires one independent review in a new child session per round (`frontier` profile, prompt-constrained read-only, compact packet, structured `{verdict, findings}` response). Never resume a review session; after a correction the next round is a new session. Findings block only when linked to a requirement/constraint/desired outcome/missing evidence. Invalid reviewer output is reported and consumes no round. Two rejects block the task — no judge-of-judge.
+
+**Why:** The implementer's claims are not evidence, and reusing a review session anchors the second judgment. Two rounds bound cost and loops.
+
+**Consequence:** Reviews live under `task-contract-review/<sessionID>/<round>`; review sessions are not worker records so `andmar_resume` denies them. Verified against the installed `@opencode/plugin@2.0.4`: no technical read-only session primitive exists, so read-only is prompt-enforced and documented as a limitation (see `OPENCODE-V2.md`).
+
+---
+
+## D-019 — No automatic compaction projection or harness self-tuning
+
+**Decision:** After compaction the agent pulls continuity via `andmar_task_contract status` (compact brief, no transcript). The harness does not hijack the session `compaction` hook result, builds no general memory, and never mutates its own policy/prompts/routing from observability or eval results — it only proposes through evidence → human analysis → approval → implementation.
+
+**Why:** Overwriting the compaction summary would destroy context the model still needs; memory machinery would violate state/context/memory separation; autonomous self-modification has no demonstrated safe trigger.
+
+**Consequence:** Continuity is pull-based and documented in the `AndMar` agent policy; `andmar.contract`/`andmar.review` observability stays metadata-only and fail-open.
+

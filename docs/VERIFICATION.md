@@ -153,11 +153,46 @@ implementación
 verification (checks en verde para esta revisión)
       |
       v
+Task Contract (cada requirement satisfecho/bloqueado/omitido con evidencia)
+      |
+      v
+independent review (aprobada, revisión actual, cuando aplica)
+      |
+      v
 completion gate (docs + versión también en orden)
       |
       v
 terminado de verdad
 ```
+
+Pasar los tests demuestra solo lo que esos tests cubren; no demuestra que
+la petición del usuario esté completa. Por eso el completion gate exige,
+además de la verificación, que ningún requirement quede `pending` o
+`blocked` sin resolución, que cada `satisfied` tenga evidencia apropiada
+(`verification`, `runtime`, `diff`, `review`, `user-decision` o `external`,
+ligada a la revisión actual cuando aplique) y que la revisión
+independiente requerida esté aprobada sobre la revisión actual. La prueba
+negativa canónica: tests en verde con el requirement de README pendiente
+→ completion denegado.
+
+Cuando un comportamiento observable importa al usuario, el contrato puede
+declarar su `verificationSurface` (CLI, HTTP, plugin runtime, database…)
+y la verificación debe ejercitar esa superficie real de forma proporcional
+al riesgo: un smoke de carga real del plugin vale más que solo typecheck;
+una petición HTTP real vale más que un unit test aislado.
+
+## Métricas del harness
+
+Los eventos `andmar.completion` (y los nuevos `andmar.contract` /
+`andmar.review`) llevan las métricas de uso real: `requirementsTotal`,
+`requirementsSatisfied`, `requirementsPending` (en el intento de
+completado), `verificationPreventedCompletion`,
+`requirementGatePreventedCompletion`, `reviewRejectCount`, `reviewRounds`
+y `finalCompletion`. `completionAttempts` no es un contador propio: es el
+número de eventos `andmar.completion` de la sesión (cada intento emite
+uno), lo que evita crear estado extra para algo derivable del stream.
+Observability sigue siendo best-effort y fail-open: nunca es prerequisite
+de nada.
 
 ## Lo que NO hace
 

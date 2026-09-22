@@ -2,10 +2,38 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
-## [Unreleased]
+## [0.6.0] - 2026-09-21
+
+### Fixed
+
+- Child-session results: `session.prompt` queues the message and returns
+  the inbox record, not the child's answer. `andmar_delegate`,
+  `andmar_resume` and `andmar_request_review` now use the real
+  `prompt -> wait -> context` contract (`src/core/session.ts`), so the
+  parent receives the child's actual final text (and `andmar_request_review`
+  can finally parse reviewer verdicts in real sessions). A child that
+  finishes without text is reported explicitly instead of silently
+  serializing internal records.
+- Task Contract concurrent mutations: contract writes are now serialized
+  per session (last-write-wins previously could drop evidence when the
+  agent issued parallel `record_evidence`/`update` calls).
 
 ### Added
 
+- Task Contract behavioral core: new `task-contract` capability with
+  `andmar_task_contract` (single tool, ops `create`/`status`/`update`/
+  `record_evidence`/`steer`/`close`; deterministic `REQ-N`/`CON-N` ids;
+  append-only steering; compact post-compaction brief) and
+  `andmar_request_review` (fresh frontier child session per round, compact
+  adversarial packet, structured `{verdict, findings}` response, max two
+  rounds, invalid output never stored — real smoke hardening: verdict values
+  are normalized tolerantly (case/variants) and a reviewer that returns no
+  final text is reported without consuming a round). Pure core in
+  `src/core/task-contract.ts`; `andmar_completion_gate` now enforces
+  verification → contract requirements → independent review → docs/version
+  in that order (legacy behavior preserved when no contract exists).
+  New content-free observability events `andmar.contract`/`andmar.review`
+  plus contract/review metrics on `andmar.completion`.
 - Optional fail-open semantic observability sink compatible with
   `opencodev2-observability` `POST /events`, emitting only bounded
   metadata for `andmar.routing`, `andmar.delegation`,

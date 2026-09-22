@@ -82,15 +82,61 @@ never persisted by the observer.
 
 ## Sessions
 
-Delegation expects:
+Verified 2026-09-22 against the installed `@opencode/plugin@2.0.4`
+generated client types:
 
 ```text
-ctx.session.get
-ctx.session.create({ parentID, title, model, metadata })
-ctx.session.prompt
+ctx.session.prompt({ sessionID, text })  // QUEUES the user message and
+                                         // resolves immediately with a
+                                         // SessionInboxUser record
+ctx.session.wait({ sessionID })          // resolves when the session is idle
+ctx.session.context({ sessionID })       // SessionMessageInfo[]; assistant
+                                         // messages carry
+                                         // content: [{ type: "text", text }]
 ```
 
-OpenCode V2 child sessions inherit the permission rules in effect at creation. AndMar AI relies on that native behavior instead of constructing a parallel permission model.
+`session.prompt` does NOT return the child's answer — it returns the queued
+user prompt (`SessionInboxUser`). To obtain a child's response the pattern
+is `prompt -> wait -> context`, implemented once in
+`src/core/session.ts` (`runChildTask`) and used by `delegation`
+(`andmar_delegate` / `andmar_resume`) and `task-contract`
+(`andmar_request_review`). Before v0.5.x both capabilities serialized the
+prompt result object instead of the child's actual answer; real smoke
+(2026-09-22) exposed this — the reviewer had answered, but the answer was
+unread through the wrong shape.
+
+OpenCode V2 child sessions inherit the permission rules in effect at
+creation. AndMar AI relies on that native behavior instead of constructing
+a parallel permission model.
+
+Verified 2026-09-22 against the same types (`SessionCreateInput`): the
+typed shape exposes `id/title/agent/model/location/metadata/permissions`
+but no `parentID` field. The harness keeps the established `parentID`
+runtime pattern (shared with the pre-existing `delegation` capability,
+which real-world testing exercises) because `ctx` is untyped at the
+capability boundary; if a future typed client rejects it, both
+capabilities must move together. Do not invent a parallel
+session/permission layer around this gap.
+
+### No technical read-only reviewer primitive
+
+The installed V2 API offers no read-only agent or review-only session
+mode (`SessionCreateInput.permissions` exists but its action/resource
+vocabulary is undocumented for this purpose; guessing it would be
+speculative). The `task-contract` reviewer therefore inherits parent
+permissions like any native child and is constrained by its packet
+instructions to read-only review (inspect, search, run read-only checks;
+never edit, fix, or record). This is documented as a known limitation,
+not as a guarantee.
+
+### Compaction: pull, don't hijack
+
+A session `compaction` hook with an overridable `result` summary exists
+in the installed types, but setting it would replace the whole
+compaction summary with the contract projection and destroy context the
+model still needs. AndMar therefore does not hook compaction: after
+compaction or restart the agent recovers continuity by calling
+`andmar_task_contract status` (compact brief, no transcript).
 
 ## Models
 

@@ -91,6 +91,16 @@ missing key, timeout, failure, or invalid payload degrades to an explicit
 `fallback` that never blocks. Structured dev trace via `andmar_intake_trace`
 (disabled by default). See [`docs/INTAKE.md`](docs/INTAKE.md).
 
+### `task-contract`
+Behavioral completion core: one small Task Contract per non-trivial task
+(goal, explicit requirements, constraints, requirement evidence) plus
+bounded independent review. `andmar_task_contract` creates, projects,
+updates, evidences, steers, and closes the contract; `andmar_request_review`
+runs one adversarial review round per fresh frontier child session (max two
+rounds). `andmar_completion_gate` enforces verification, then contract
+requirements, then review, then docs/version — so green tests alone can
+never complete a task with unmet user requirements.
+
 ## Architecture in one picture
 
 ```text
@@ -106,11 +116,11 @@ User / methodology / skill
           |
           v
    generated capability manifest
-      /       |       |        |         \
- system   routing  delegation lifecycle verification intake
-             |          |          |            |          |
-         model tier   workers   docs/version/  check    request
-                                completion     receipts refinement
+      /       |       |        |         \            \
+ system   routing  delegation lifecycle verification intake task-contract
+             |          |          |            |          |         |
+         model tier   workers   docs/version/  check    request   obligations
+                                completion     receipts refinement  + review
                                 gates
 ```
 
@@ -162,6 +172,8 @@ The namespace is `andmar`:
 - `andmar_verify_revision` — check stored receipts against the exact current revision.
 - `andmar_intake` — classify one request as sufficient or needing refinement.
 - `andmar_intake_trace` — list recent structured intake decisions.
+- `andmar_task_contract` — create, project, update, evidence, steer, or close the active Task Contract.
+- `andmar_request_review` — one independent review round in a fresh child session.
 
 Names are primitives, not methodologies. A future ODD skill can use these without AndMar AI knowing what ODD is.
 
@@ -188,7 +200,7 @@ There is no automatic downgrade loop.
 
 ## Optional semantic observability
 
-AndMar can emit four content-free semantic signals to a compatible local
+AndMar can emit six content-free semantic signals to a compatible local
 `POST /events` endpoint such as
 `JhonMA82/opencodev2-observability`:
 
@@ -197,6 +209,8 @@ andmar.routing
 andmar.delegation
 andmar.verification
 andmar.completion
+andmar.contract
+andmar.review
 ```
 
 This is a best-effort sink, not a dependency. If the observability server is

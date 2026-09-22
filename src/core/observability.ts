@@ -3,6 +3,8 @@ export type SemanticEventType =
   | "andmar.delegation"
   | "andmar.verification"
   | "andmar.completion"
+  | "andmar.contract"
+  | "andmar.review"
 
 export interface SemanticEventInput {
   type: SemanticEventType

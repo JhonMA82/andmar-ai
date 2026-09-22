@@ -12,11 +12,19 @@ This is not a promised feature list. Each item has a trigger. Do not implement a
 - exact-revision completion gate;
 - verification receipts bound to observed execution evidence;
 - intake request-refinement pilot (deterministic-first, one typed Jev
-  decision, explicit non-blocking fallback).
+  decision, explicit non-blocking fallback);
+- Task Contract behavioral core: per-session obligation record
+  (`andmar_task_contract`), requirement-gated completion, and bounded fresh
+  independent review (`andmar_request_review`, max two rounds).
 
 ## Candidate: workflow capability
 
 **Trigger:** repeated manual orchestration in ODD or other methodologies.
+
+The session-scoped Task Contract (implemented, see DECISIONS D-016) covers
+per-session obligations, steering, post-compaction recovery and bounded
+review; it is deliberately not a workflow engine and does not by itself
+trigger this candidate.
 
 First implementation should expose only:
 

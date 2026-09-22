@@ -16,7 +16,10 @@ For any non-trivial task:
 3. Classify the work using the smallest honest set of signals: kind, risk, uncertainty, reasoning need, scope, public API impact, and external side effects. Prefer `routeSignals` from `andmar_intake` (same `ChangeKind`/`Risk` taxonomy as `andmar_route`) over a parallel classification.
 4. Use `andmar_route` when a routing or delegation decision is needed. Do not call it mechanically for trivial edits.
 5. When `andmar_intake` returns `needsRefinement=true`, build an Internal Task Brief yourself from repo, config, code, tests, docs, upstream, and AndMar capabilities — never ask Jev for text. Keep it to what execution needs: Intent, Relevant context, Constraints, Acceptance criteria, Risks / external contracts, Unresolved product decisions. No rigid phases, no PRD for small tasks. Ask the user only when a real product decision is missing that context cannot resolve responsibly. A `fallback` intake result never blocks: continue with current capabilities.
-6. Work directly with native OpenCode tools. Use `andmar_delegate` only when a bounded child task genuinely benefits from separate context or a different model profile. Resume owned child sessions with `andmar_resume` instead of recreating their context.
+6. For non-trivial or code-changing work, create one Task Contract with `andmar_task_contract` (op `create`): goal, desired outcome, explicit requirements, constraints, and the closest observable verification surface when one matters. Trivial typo/text/question/reading/local-reversible edits skip the contract. Never turn internal steps, trivial decisions, unknown files, hypothetical work, or unrequested improvements into requirements.
+7. When the user adds instructions mid-task, steer the active contract (op `steer`: new requirements/constraints) instead of replacing it. Only close/replace it when the user clearly cancels or replaces the original goal.
+8. After context compaction or a restart, recover continuity with `andmar_task_contract` (op `status`): goal, pending requirements, constraints, blockers. Compaction does not end the task. Never store transcripts, chain-of-thought, prompts, or source code in the contract — compact projections only.
+9. Work directly with native OpenCode tools. Use `andmar_delegate` only when a bounded child task genuinely benefits from separate context or a different model profile. Resume owned child sessions with `andmar_resume` instead of recreating their context.
 
 Avoid ceremony for trivial documentation, text, or tiny local changes.
 
@@ -24,9 +27,11 @@ Avoid ceremony for trivial documentation, text, or tiny local changes.
 
 Implementation success is not task completion.
 
+Passing tests prove only what those tests cover. Tests passing do not prove that the user's task is complete. Task completion requires every explicit requirement in the active Task Contract to be satisfied, blocked, or explicitly skipped, with evidence appropriate to the claim.
+
 Before claiming a code-changing task is complete:
 
-1. Inspect the final changed files and the actual current working state.
+1. Compare the final state against the original user goal and the active Task Contract, not only against the implementation plan you created yourself. Inspect the final changed files and the actual current working state.
 2. Use `andmar_suggest_checks` with real project signals and package scripts when useful. Select only checks that are relevant to the change.
 3. Establish one exact working-state revision fingerprint that includes committed HEAD plus staged, unstaged, and untracked source changes. Do not use the HEAD commit alone when the working tree is dirty.
 4. Run the required checks through native OpenCode shell/tools so OpenCode permissions remain authoritative.
@@ -34,7 +39,9 @@ Before claiming a code-changing task is complete:
 6. If any relevant file changes after a recorded check, recompute the fingerprint. Old receipts are stale and the affected checks must run again.
 7. Call `andmar_verify_revision` with the checks required for this task.
 8. Call `andmar_change_impact` using the final changed paths and actual change kind. Resolve stale documentation/version obligations instead of merely reporting them.
-9. Use `andmar_completion_gate` only with evidence from the same final revision. A manual `testsPassed: true` flag alone can never formally verify a revision with missing verification; for tasks that genuinely require no checks pass `requiredChecks: []` explicitly.
+9. For every requirement in the active contract, record appropriate evidence with `andmar_task_contract` (op `record_evidence`: `verification`, `runtime`, `diff`, `review`, `user-decision`, or `external`, bound to the current revision when one applies) and move it to `satisfied`, `blocked` (with reason), or `skipped` (with reason) via op `update`. A requirement left `pending` blocks completion; a `satisfied` requirement without evidence is invalid. Verify at the closest observable surface that matters to the user (real plugin load/smoke beats typecheck alone; a real HTTP request beats a unit test alone) — proportionally to risk, never ceremony for its own sake.
+10. For non-trivial code-changing work, request one independent review with `andmar_request_review` (fresh child session, frontier profile, compact packet built from the contract). The reviewer is read-only and judges only the original goal, requirements, constraints, and evidence — never architecture taste. If it rejects, fix, re-verify, and request again in a new session. After two rejects the task is blocked.
+11. Use `andmar_completion_gate` only with evidence from the same final revision. The gate enforces, in order: exact-revision verification, Task Contract requirements (no pending, no blocked, every satisfied requirement evidenced and current), required independent review (approved, current revision), then docs/version obligations. A manual `testsPassed: true` flag alone can never formally verify a revision with missing verification; for tasks that genuinely require no checks pass `requiredChecks: []` explicitly.
 
 A practical Git fallback for the fingerprint, when a native VCS revision cannot represent the dirty working tree, is:
 
@@ -67,9 +74,15 @@ If a real runtime boundary is unavailable, declare that explicitly as a limitati
 
 ## Completion behavior
 
-Do not claim "done", "complete", or equivalent while required verification is missing or failing.
+Do not claim "done", "complete", or equivalent while required verification is missing or failing, while any contract requirement is still pending or unresolvedly blocked, or while a required review is missing, rejected, or stale.
+
+The final response must report: what changed, how it was verified, which requirements were met, and which real limitations remain. If a blocker is external, report it exactly (for example: "5/6 requirements satisfied, REQ-6 blocked: real runtime unavailable") — never "all done".
 
 If a gate does not pass, continue correcting when possible. If the remaining blocker is external or unavailable, report exactly what is verified, what is not verified, and why.
+
+Continue autonomously with reading, investigation, implementation, tests, fixes, verification, review, and review corrections once the task authorized that work. Do not ask "should I run tests / fix the review / continue" for already-authorized reversible work. Ask the user only for: a product decision that context cannot resolve, a destructive/irreversible operation, a publish/merge/deploy needing authorization, a missing credential/secret, or a material change to the requested scope. More reversible means more autonomy; larger blast radius means more evidence or explicit authorization.
+
+Before editing: inspect the target, nearby conventions, repository instructions, and the authoritative external contract when the task depends on one — read the minimum sufficient context, never indiscriminate exploration. Before building a new subsystem or capability, check whether an adequate current solution already exists (official repo, current package, installed API, relevant projects). Do not add unrequested features, abstractions for hypothetical futures, unrelated refactors, cleanup outside the task, or compatibility layers with no current consumer. Run only checks that add signal for the change; once the needed checks pass, stop re-running them unless relevant code changed, a failure appeared, or new uncertainty arose.
 
 For trivial non-code edits, keep the process proportional: inspect the diff and perform only relevant checks.
 

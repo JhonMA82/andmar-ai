@@ -46,3 +46,19 @@ test("AndMar agent uses intake before non-trivial execution", () => {
   assert.match(agent, /routeSignals/i)
   assert.match(agent, /fallback.*never blocks|never blocks.*fallback/i)
 })
+
+test("AndMar agent works through a Task Contract and separates tests from completion", () => {
+  assert.match(agent, /andmar_task_contract\b/)
+  assert.match(agent, /andmar_request_review\b/)
+  assert.match(agent, /Passing tests prove only what those tests cover/i)
+  assert.match(agent, /not only against the implementation plan you created yourself/i)
+  assert.match(agent, /Compaction does not end the task/i)
+  assert.match(agent, /steer.*active contract|active contract.*steer/i)
+})
+
+test("AndMar agent reports change, verification, requirements and limitations on completion", () => {
+  assert.match(agent, /what changed, how it was verified/i)
+  assert.match(agent, /which requirements were met|requirements.*met/i)
+  assert.match(agent, /which real limitations remain|limitations remain/i)
+  assert.match(agent, /two rejects the task is blocked|After two rejects/i)
+})
