@@ -11,7 +11,9 @@ All notable changes to AndMar AI are recorded here. The package version in `pack
   metadata for `andmar.routing`, `andmar.delegation`,
   `andmar.verification` and `andmar.completion`. No prompts, commands,
   code, tool outputs or reasoning are transmitted; delivery failure never
-  affects AndMar execution.
+  affects AndMar execution. Verification observability also records rejected
+  receipt attempts as bounded categories without commands, revisions or
+  rejection text.
 
 ## [0.5.0] - 2026-09-21
 

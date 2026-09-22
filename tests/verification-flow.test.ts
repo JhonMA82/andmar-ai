@@ -213,3 +213,44 @@ test("completion_gate tool enforces stored verification and stays proportional",
   const trivial: any = await gate.execute({ currentRevision: "rev-a", evidence: clean, requiredChecks: [] })
   assert.equal(JSON.parse(trivial.content).ok, true)
 })
+
+test("record_receipt emits structured rejection metadata without command/reason content", async () => {
+  const state: any = createMemoryState()
+  const { ctx, tools, getAfterHandler } = createToolHarness()
+  const emitted: any[] = []
+  await verificationCapability.setup({
+    ctx,
+    config: {} as any,
+    state,
+    observability: { emit(event: any) { emitted.push(event) } },
+  })
+
+  const after = getAfterHandler()!
+  await after({
+    id: "exec-failed",
+    tool: "bash",
+    sessionID: "ses-1",
+    status: "error",
+    input: { command: "bun test" },
+    error: { message: "boom" },
+  })
+
+  const result: any = await tools.get("record_receipt").execute(
+    { revision: "rev-a", check: "tests", passed: true, command: "bun test" },
+    { sessionID: "ses-1" },
+  )
+
+  assert.match(result.content, /^refused:/)
+  const event = emitted.at(-1)
+  assert.equal(event.type, "andmar.verification")
+  assert.equal(event.sessionID, "ses-1")
+  assert.deepEqual(event.payload, {
+    action: "receipt_rejected",
+    category: "failed-execution",
+    check: "tests",
+    claimedPassed: true,
+    stored: false,
+  })
+  assert.equal("command" in event.payload, false)
+  assert.equal("reason" in event.payload, false)
+})

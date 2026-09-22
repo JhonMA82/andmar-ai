@@ -215,8 +215,9 @@ known limitations.
   resolution, and toolchain detection (`tests/verification.test.ts`,
   `tests/verification-flow.test.ts`); mocked shapes prove parsing, never live
   hook behavior.
-- **Observability:** emits `andmar.verification` for stored receipt outcomes
-  and revision-summary counts; commands, revisions and outputs are not sent.
+- **Observability:** emits `andmar.verification` for stored receipt outcomes,
+  rejected receipt attempts (structured category only), and revision-summary
+  counts; commands, revisions, rejection text and outputs are not sent.
 - **Known limitations:** revision capture takes the revision as explicit
   input (no VCS automation yet); evidence and receipt stores are unbounded
   (no pruning yet); only the latest same-session same-command execution wins.

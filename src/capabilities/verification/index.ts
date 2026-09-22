@@ -24,6 +24,14 @@ function sessionIDFrom(toolContext: any): string | undefined {
   return toolContext?.sessionID ?? toolContext?.session?.id ?? toolContext?.metadata?.sessionID
 }
 
+function refusalCategory(reason: string): string {
+  if (reason.includes("another session") || reason.includes("current session")) return "session-mismatch"
+  if (reason.includes("command mismatch")) return "command-mismatch"
+  if (reason.includes("did not complete") || reason.includes("failed execution")) return "failed-execution"
+  if (reason.includes("bound to revision") || reason.includes("revision-compatible")) return "revision-mismatch"
+  return "no-compatible-execution"
+}
+
 async function readReceipts(state: StateStore, revision: string): Promise<VerificationReceipt[]> {
   const entries = await state.scan<VerificationReceipt>(receiptPrefix(revision))
   return entries.map((entry) => entry.value)
@@ -77,14 +85,32 @@ export const verificationCapability: Capability = {
           },
           toolContext: any,
         ) => {
-          if (input.revision.trim() === "") return { content: "revision must be a non-empty string" }
+          const sessionID = sessionIDFrom(toolContext)
+          const emitRejected = (category: string) => {
+            observability?.emit({
+              type: "andmar.verification",
+              sessionID,
+              payload: {
+                action: "receipt_rejected",
+                category,
+                check: input.check,
+                claimedPassed: input.passed,
+                stored: false,
+              },
+            })
+          }
+
+          if (input.revision.trim() === "") {
+            emitRejected("invalid-revision")
+            return { content: "revision must be a non-empty string" }
+          }
           if (typeof input.command !== "string" || input.command.trim() === "") {
+            emitRejected("invalid-command")
             return {
               content:
                 "refused: command is required to resolve observed execution: run the check first through native OpenCode shell/tools, then record it with the exact same command",
             }
           }
-          const sessionID = sessionIDFrom(toolContext)
           if (typeof sessionID !== "string" || sessionID === "") {
             return { content: "refused: cannot resolve observed execution without the current sessionID" }
           }
@@ -96,6 +122,7 @@ export const verificationCapability: Capability = {
             revision: input.revision,
           })
           if (!resolution.ok) {
+            emitRejected(refusalCategory(resolution.reason))
             return { content: `refused: ${resolution.reason}` }
           }
           const resolved = resolution.execution
