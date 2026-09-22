@@ -196,7 +196,7 @@ the model cannot disable them with optional `requireContract`,
 `requireReview`, or `reviewRequired` flags. Review outcome is derived from
 structured blocking findings, revision-sensitive evidence must be revision
 bound, and a contract can close as completed only after an exact-revision
-completion seal.
+completion seal bound to the exact Task Contract state evaluated by the gate.
 
 **Why:** Real-world use showed that prompt-level instructions are not strong
 enough for the properties the harness exists to guarantee. A model omission

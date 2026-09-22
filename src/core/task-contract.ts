@@ -117,11 +117,31 @@ export function reviewPrefix(sessionID: string): string {
 export interface CompletionSeal {
   revision: string
   taskKind: ChangeKind
+  contractStateToken?: string | undefined
   at: number
 }
 
 export function completionSealKey(sessionID: string): string {
   return `task-contract-completion/${sessionID}`
+}
+
+export function contractStateToken(contract: TaskContract): string {
+  return JSON.stringify({
+    id: contract.id,
+    taskKind: contract.taskKind,
+    status: contract.status,
+    updatedAt: contract.updatedAt,
+    requirements: contract.requirements.map((requirement) => ({
+      id: requirement.id,
+      status: requirement.status,
+      evidence: requirement.evidence.map((entry) => ({
+        type: entry.type,
+        revision: entry.revision ?? null,
+        at: entry.at,
+      })),
+    })),
+    constraints: contract.constraints.map((constraint) => constraint.id),
+  })
 }
 
 // ---------------------------------------------------------------------------

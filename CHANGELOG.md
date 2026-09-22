@@ -137,4 +137,5 @@ All notable changes to AndMar AI are recorded here. The package version in `pack
   must carry the exact working-state revision.
 - Child-session prompt/wait/context now have a real bounded timeout.
 - Closing a contract as completed requires an exact-revision success seal
-  written by `andmar_completion_gate`.
+  written by `andmar_completion_gate`, bound to the exact Task Contract
+  state that the gate evaluated.

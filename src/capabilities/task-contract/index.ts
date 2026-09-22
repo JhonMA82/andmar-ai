@@ -6,6 +6,7 @@ import {
   buildReviewPacket,
   completionSealKey,
   contractKey,
+  contractStateToken,
   contractMetrics,
   createTaskContract,
   evaluateRequirementGate,
@@ -185,9 +186,18 @@ async function mutateTaskContract(
       if (typeof input.revision !== "string" || input.revision.trim() === "") {
         return "refused: closing as completed requires the exact revision that passed andmar_completion_gate"
       }
-      const seal = await state.get<{ revision: string }>(completionSealKey(sessionID))
-      if (!seal || seal.revision !== input.revision) {
-        return "refused: no successful completion gate seal exists for this exact revision"
+      const seal = await state.get<{
+        revision: string
+        taskKind?: ChangeKind
+        contractStateToken?: string
+      }>(completionSealKey(sessionID))
+      if (
+        !seal ||
+        seal.revision !== input.revision ||
+        seal.taskKind !== contract.taskKind ||
+        seal.contractStateToken !== contractStateToken(contract)
+      ) {
+        return "refused: completion gate seal is missing or stale for the current revision and Task Contract state"
       }
     }
     const closed: TaskContract = { ...contract, status: input.outcome, updatedAt: Date.now() }

@@ -9,6 +9,7 @@ import {
   completionSealKey,
   contractKey,
   contractMetrics,
+  contractStateToken,
   evaluateRequirementGate,
   evaluateReviewGate,
   isTrivialTask,
@@ -211,19 +212,24 @@ export const lifecycleCapability: Capability = {
               : undefined
 
           const combinedContractGate =
-            contractGate ??
-            (contractReasons.length > 0
+            contractGate !== undefined
               ? {
-                  ok: false,
-                  pending: [],
-                  blocked: [],
-                  missingEvidence: [],
-                  stale: [],
-                  reasons: contractReasons,
-                  total: 0,
-                  satisfied: 0,
+                  ...contractGate,
+                  ok: contractGate.ok && contractReasons.length === 0,
+                  reasons: [...contractGate.reasons, ...contractReasons],
                 }
-              : undefined)
+              : contractReasons.length > 0
+                ? {
+                    ok: false,
+                    pending: [],
+                    blocked: [],
+                    missingEvidence: [],
+                    stale: [],
+                    reasons: contractReasons,
+                    total: 0,
+                    satisfied: 0,
+                  }
+                : undefined
           const result = evaluateCompletionV2(
             input.currentRevision,
             input.evidence,
@@ -236,6 +242,9 @@ export const lifecycleCapability: Capability = {
             await state.set(completionSealKey(sessionID), {
               revision: input.currentRevision,
               taskKind: input.taskKind,
+              ...(contract === undefined
+                ? {}
+                : { contractStateToken: contractStateToken(contract) }),
               at: Date.now(),
             })
           }

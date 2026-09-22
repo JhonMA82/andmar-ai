@@ -3,6 +3,7 @@ import assert from "node:assert/strict"
 import {
   MAX_REVIEW_ROUNDS,
   buildReviewPacket,
+  contractStateToken,
   createTaskContract,
   evaluateRequirementGate,
   evaluateReviewGate,
@@ -787,9 +788,15 @@ test("contract cannot close completed without an exact completion-gate seal", as
   )
   assert.match(denied.content, /^refused:/)
 
+  const statusBeforeClose: any = await contract.execute(
+    { op: "status" },
+    { sessionID: "ses-close" },
+  )
+  const currentContract = JSON.parse(statusBeforeClose.content).contract
   await state.set("task-contract-completion/ses-close", {
     revision: "rev-a",
     taskKind: "feature",
+    contractStateToken: contractStateToken(currentContract),
     at: Date.now(),
   })
   const accepted: any = await contract.execute(
@@ -797,4 +804,116 @@ test("contract cannot close completed without an exact completion-gate seal", as
     { sessionID: "ses-close" },
   )
   assert.match(accepted.content, /"status": "completed"/)
+})
+
+test("completion gate denies a taskKind mismatch even when the requirement gate itself is green", async () => {
+  const state: any = createMemoryState()
+  const harness = createToolHarness()
+  await taskContractCapability.setup({
+    ctx: harness.ctx,
+    config: { models: {} } as any,
+    state,
+  })
+
+  const contract = harness.tools.get("task_contract")
+  await contract.execute(
+    {
+      op: "create",
+      taskKind: "docs-format",
+      goal: "Format one document",
+      requirements: ["format the document"],
+    },
+    { sessionID: "ses-kind-mismatch" },
+  )
+  await contract.execute(
+    {
+      op: "record_evidence",
+      requirementId: "REQ-1",
+      type: "user-decision",
+      reference: "requested document formatting completed",
+    },
+    { sessionID: "ses-kind-mismatch" },
+  )
+  await contract.execute(
+    { op: "update", requirementId: "REQ-1", status: "satisfied" },
+    { sessionID: "ses-kind-mismatch" },
+  )
+
+  const lifecycle = createToolHarness()
+  await lifecycleCapability.setup({
+    ctx: lifecycle.ctx,
+    config: {
+      documentation: { rules: [] },
+      versioning: { enabled: false, publicPaths: [] },
+    } as any,
+    state,
+  })
+
+  const clean = {
+    revision: "rev-a",
+    testsPassed: true,
+    docsStatus: "clean",
+    versionStatus: "not-applicable",
+  }
+  const result: any = await lifecycle.tools.get("completion_gate").execute(
+    {
+      taskKind: "known-test",
+      currentRevision: "rev-a",
+      evidence: clean,
+      requiredChecks: [],
+    },
+    { sessionID: "ses-kind-mismatch" },
+  )
+
+  const parsed = JSON.parse(result.content)
+  assert.equal(parsed.ok, false)
+  assert.match(parsed.reasons.join(" "), /taskKind mismatch/)
+})
+
+test("a completion seal for an older contract state cannot close a mutated contract", async () => {
+  const state: any = createMemoryState()
+  const { ctx, tools } = createToolHarness()
+  await taskContractCapability.setup({
+    ctx,
+    config: { models: {} } as any,
+    state,
+  })
+
+  const contract = tools.get("task_contract")
+  await contract.execute(
+    {
+      op: "create",
+      taskKind: "feature",
+      goal: "Ship feature",
+      requirements: ["ship the feature"],
+    },
+    { sessionID: "ses-stale-seal" },
+  )
+
+  const before: any = await contract.execute(
+    { op: "status" },
+    { sessionID: "ses-stale-seal" },
+  )
+  const beforeContract = JSON.parse(before.content).contract
+  const staleToken = contractStateToken(beforeContract)
+
+  await contract.execute(
+    { op: "steer", addConstraints: ["do not change public API"] },
+    { sessionID: "ses-stale-seal" },
+  )
+
+  // Simulate: gate evaluated A -> contract became B -> old gate writes A's seal.
+  await state.set("task-contract-completion/ses-stale-seal", {
+    revision: "rev-a",
+    taskKind: "feature",
+    contractStateToken: staleToken,
+    at: Date.now(),
+  })
+
+  const close: any = await contract.execute(
+    { op: "close", outcome: "completed", revision: "rev-a" },
+    { sessionID: "ses-stale-seal" },
+  )
+  assert.match(close.content, /^refused:/)
+  assert.match(close.content, /stale/)
 })
