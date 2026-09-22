@@ -406,6 +406,17 @@ test("request_review stores approve in a fresh session; second round uses anothe
   assert.match(third.content, /^blocked:/)
 })
 
+test("request_review on a completed contract is refused", async () => {
+  const state: any = createMemoryState()
+  const { ctx, tools } = createToolHarness()
+  await taskContractCapability.setup({ ctx, config: { models: {} } as any, state })
+  const contract = tools.get("task_contract")
+  await contract.execute({ op: "create", goal: "Add --json flag", requirements: ["keep default output"] }, { sessionID: "ses-done" })
+  await contract.execute({ op: "close", outcome: "completed" }, { sessionID: "ses-done" })
+  const refused: any = await tools.get("request_review").execute({ revision: "rev-a" }, { sessionID: "ses-done" })
+  assert.match(refused.content, /^refused: this Task Contract is already completed/)
+})
+
 test("request_review reads the reviewer answer through the real prompt->wait->context contract", async () => {
   const state: any = createMemoryState()
   const { ctx, tools } = createToolHarness()

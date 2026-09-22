@@ -188,3 +188,14 @@ semantic uses still wait for measured friction.
 
 **Consequence:** Continuity is pull-based and documented in the `AndMar` agent policy; `andmar.contract`/`andmar.review` observability stays metadata-only and fail-open.
 
+---
+
+## D-021 — Completed-task operational continuations use a proportional fast-path
+
+**Decision:** A new request after a `completed` Task Contract that only operates on the already-approved result (version/changelog metadata, commit, tag, push, publish) runs as `continuation.fastPath=true` with `taskKind=internal`: no new/reopened contract, no `andmar_request_review`, no `andmar_completion_gate` replay. Obvious wording fast-paths deterministically with no Jev; ambiguous wording uses the same single Jev call plus three conditional questions. Fallback never fast-paths. `andmar_request_review` refuses completed contracts.
+
+**Why:** Repeating contract → verification → review → gate ceremony for pure release/VCS operations wastes frontier review and risks re-litigating approved work, while any new code/product requirement must keep full guarantees.
+
+**Consequence:** Intake owns continuation detection; the agent executes only requested operational mutations with proportional checks and leaves the fast-path on any behavior change. No `release` capability yet.
+
+

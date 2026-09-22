@@ -43,6 +43,10 @@ export interface IntakeTraceEntry {
     externalContract?: boolean;
     productDecisionMissing?: boolean;
   };
+  continuationFastPath?: boolean;
+  continuationRelation?: string;
+  continuationMutation?: string;
+  continuationSource?: string;
   request?: string;
 }
 
@@ -99,6 +103,10 @@ export function buildTraceEntry(input: {
   needsRefinement?: boolean | undefined;
   externalContract?: boolean | undefined;
   productDecisionMissing?: boolean | undefined;
+  continuationFastPath?: boolean | undefined;
+  continuationRelation?: string | undefined;
+  continuationMutation?: string | undefined;
+  continuationSource?: string | undefined;
   at?: number | undefined;
 }): IntakeTraceEntry {
   const entry: IntakeTraceEntry = {
@@ -120,6 +128,10 @@ export function buildTraceEntry(input: {
       ...(input.externalContract === undefined ? {} : { externalContract: input.externalContract }),
       ...(input.productDecisionMissing === undefined ? {} : { productDecisionMissing: input.productDecisionMissing }),
     },
+    ...(input.continuationFastPath === undefined ? {} : { continuationFastPath: input.continuationFastPath }),
+    ...(input.continuationRelation === undefined ? {} : { continuationRelation: input.continuationRelation }),
+    ...(input.continuationMutation === undefined ? {} : { continuationMutation: input.continuationMutation }),
+    ...(input.continuationSource === undefined ? {} : { continuationSource: input.continuationSource }),
   };
   if (includeTraceContent()) entry.request = input.request;
   return entry;

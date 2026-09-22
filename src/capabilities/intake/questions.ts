@@ -102,3 +102,50 @@ export const INTAKE_QUESTIONS: Record<IntakeQuestionId, JevQuestion> = {
     },
   },
 };
+
+export const CONTINUATION_QUESTION_IDS = [
+  "continuation_relation",
+  "continuation_mutation",
+  "continuation_new_requirement",
+] as const;
+
+export type ContinuationQuestionId = (typeof CONTINUATION_QUESTION_IDS)[number];
+
+export const CONTINUATION_QUESTIONS: Record<ContinuationQuestionId, JevQuestion> = {
+  continuation_relation: {
+    type: "choice",
+    instructions:
+      "A previous development task in this same session is already completed. How does the NEW request relate to that completed result?",
+    criteria: {
+      operational_continuation:
+        "Only operate on the already-approved result: version/bump metadata, changelog/generated version, commit, tag, push, publish, or equivalent release/VCS action. No new product or code behavior.",
+      task_extension:
+        "The request extends or changes the just-completed implementation: fix/add/change/refactor behavior, tests as new work, or any new technical requirement.",
+      new_task:
+        "The request starts a different objective rather than operating on or extending the completed result.",
+    },
+  },
+  continuation_mutation: {
+    type: "choice",
+    instructions: "What is the strongest mutation required by the NEW request?",
+    criteria: {
+      operational_only:
+        "Only VCS/release operations such as commit, tag, push, publish; no file-content or product behavior change.",
+      metadata_only:
+        "Only release/version metadata such as package version, changelog, generated version; no product/code behavior change.",
+      metadata_and_operational:
+        "Release/version metadata plus VCS/release operations such as commit, tag, push, publish; no product/code behavior change.",
+      code_or_behavior:
+        "Any source behavior, product behavior, implementation, refactor, bug fix, feature, or substantive test change.",
+    },
+  },
+  continuation_new_requirement: {
+    type: "noul",
+    instructions:
+      "Does the NEW request introduce any new product/code behavior requirement beyond the already-completed result?",
+    criteria: {
+      true: "It asks to change, add, fix, refactor, debug, or otherwise alter product/code behavior beyond release/version/VCS operations.",
+      false: "It only asks to version, changelog, commit, tag, push, publish, or otherwise operate on the already-approved result.",
+    },
+  },
+};

@@ -221,3 +221,29 @@ never prints the key.
   detection stays in `andmar_change_impact`.
 - No workflow, memory, scoring, embeddings, dashboard, telemetry, auto-tuning,
   or per-message evaluation. Pilot only.
+
+## Operational continuations (D-021)
+
+After a `completed` Task Contract, a new request that only operates on the
+already-approved result fast-paths as `continuation.fastPath=true`:
+
+```text
+completed Task Contract → new request → operational continuation only?
+  obvious → deterministic fast-path, no Jev
+  ambiguous → same single Jev call + 3 conditional questions
+```
+
+Deterministic bypass accepts only short, unequivocally operational wording
+(`sube y versiona`, `push`, `haz commit`, `commit y push`,
+`actualiza la versión`, `crea el tag`); anything hinting at code/behavior
+change returns to the normal flow. Ambiguous cases send one Jev call with
+the base six plus `continuation_relation` / `continuation_mutation` /
+`continuation_new_requirement` (state carries only request plus prior
+`status`/`taskKind`, never the full contract). Fast-path requires
+`operational_continuation` + non-code mutation + new-requirement `< 0.25`
+(+ choice confidence absent or `>= 0.70`).
+
+Fast-path sets `taskKind=internal`, `needsRefinement=false`,
+`sufficiency=4`, low uncertainty/reasoning, and `brief.required=false`;
+trace stores only `continuationFastPath`/`Relation`/`Mutation`/`Source`.
+Fallback never fast-paths. No `release` capability is created.

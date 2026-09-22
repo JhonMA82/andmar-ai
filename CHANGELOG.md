@@ -2,6 +2,20 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
+## [0.6.2] - 2026-09-22
+
+### Added
+
+- Completed-task operational continuations use a proportional fast-path (D-021):
+  `andmar_intake` detects `continuation.fastPath` via a narrow deterministic
+  bypass (obvious version/commit/tag/push/publish wording) or the same single
+  Jev call with three conditional questions, returning `taskKind=internal`
+  with no new Task Contract, no `andmar_request_review`, and no
+  `andmar_completion_gate` replay. Any new code/product requirement leaves
+  the fast-path for the normal flow.
+- `andmar_request_review` refuses completed contracts so a bad model decision
+  cannot re-trigger frontier review on already-approved work.
+
 ## [0.6.0] - 2026-09-21
 
 ### Fixed
