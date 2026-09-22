@@ -16,6 +16,23 @@ All notable changes to AndMar AI are recorded here. The package version in `pack
 - `andmar_request_review` refuses completed contracts so a bad model decision
   cannot re-trigger frontier review on already-approved work.
 
+## [0.6.1] - 2026-09-21
+
+### Changed
+
+- Task Contract creation now requires `taskKind`; independent-review policy is
+  derived by runtime and cannot be disabled by a caller flag.
+- Completion gate requires `taskKind`; non-trivial tasks without a Task
+  Contract are denied deterministically.
+- Review findings tied to Task Contract obligations are authoritative over a
+  contradictory model verdict. Advisory/taste-only findings do not block.
+- `verification`, `runtime`, `diff`, and `review` requirement evidence
+  must carry the exact working-state revision.
+- Child-session prompt/wait/context now have a real bounded timeout.
+- Closing a contract as completed requires an exact-revision success seal
+  written by `andmar_completion_gate`, bound to the exact Task Contract
+  state that the gate evaluated.
+
 ## [0.6.0] - 2026-09-21
 
 ### Fixed
@@ -136,20 +153,3 @@ All notable changes to AndMar AI are recorded here. The package version in `pack
 - Exact-revision completion gate.
 - Architecture checks preventing core-to-capability and sibling-capability coupling.
 - Human and agent documentation for safe extension.
-
-## [0.6.1] - 2026-09-21
-
-### Changed
-
-- Task Contract creation now requires `taskKind`; independent-review policy is
-  derived by runtime and cannot be disabled by a caller flag.
-- Completion gate requires `taskKind`; non-trivial tasks without a Task
-  Contract are denied deterministically.
-- Review findings tied to Task Contract obligations are authoritative over a
-  contradictory model verdict. Advisory/taste-only findings do not block.
-- `verification`, `runtime`, `diff`, and `review` requirement evidence
-  must carry the exact working-state revision.
-- Child-session prompt/wait/context now have a real bounded timeout.
-- Closing a contract as completed requires an exact-revision success seal
-  written by `andmar_completion_gate`, bound to the exact Task Contract
-  state that the gate evaluated.
