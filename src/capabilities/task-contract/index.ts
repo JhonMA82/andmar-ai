@@ -13,6 +13,7 @@ import {
   evaluateReviewGate,
   formatContractBrief,
   isBlockingFinding,
+  minimumReviewMode,
   recordRequirementEvidence,
   reviewKey,
   reviewPrefix,
@@ -22,9 +23,11 @@ import {
   validateTaskContract,
   type EvidenceType,
   type RequirementStatus,
+  type ReviewMode,
   type ReviewRecord,
   type TaskContract,
 } from "../../core/task-contract.ts"
+import { routeReviewWithJev } from "./review-jev.ts"
 
 const MAX_PACKET_FIELD_CHARS = 2000
 const MAX_CHANGED_PATHS = 100
@@ -36,6 +39,27 @@ function sessionIDFrom(toolContext: any): string | undefined {
 
 function truncate(value: string, max: number): string {
   return value.length <= max ? value : `${value.slice(0, max)}\n…[truncated by AndMar AI]`
+}
+
+const REVIEW_SESSION_PERMISSIONS = [
+  { action: "*", resource: "*", effect: "deny" },
+  { action: "read", resource: "*", effect: "allow" },
+  { action: "glob", resource: "*", effect: "allow" },
+  { action: "grep", resource: "*", effect: "allow" },
+] as const
+
+async function restrictReviewerSession(ctx: any, sessionID: string): Promise<boolean> {
+  if (typeof ctx?.permission?.rules !== "function") return false
+  try {
+    await ctx.permission.rules({ sessionID, permissions: REVIEW_SESSION_PERMISSIONS })
+    return true
+  } catch {
+    return false
+  }
+}
+
+function reviewTimeoutMs(mode: ReviewMode): number {
+  return mode === "audit" ? 4 * 60_000 : 8 * 60_000
 }
 
 function extractJsonObject(text: string): unknown {
@@ -353,8 +377,41 @@ export const taskContractCapability: Capability = {
           }
 
           const changedPaths = (input.changedPaths ?? []).slice(0, MAX_CHANGED_PATHS)
+          const minimumMode = minimumReviewMode(contract.taskKind, changedPaths.length)
+          const routing = await routeReviewWithJev({
+            contract,
+            minimumMode,
+            changedPaths,
+            verificationSummary: input.verificationSummary
+              ? truncate(input.verificationSummary, MAX_PACKET_FIELD_CHARS)
+              : undefined,
+          })
+          observability?.emit({
+            type: "andmar.review",
+            sessionID,
+            payload: {
+              action: "routed",
+              mode: routing.mode,
+              minimumMode: routing.minimumMode,
+              source: routing.source,
+              jevCalled: routing.jevCalled,
+              jevAvailable: routing.jevAvailable,
+              reason: routing.reason ?? null,
+              latencyMs: routing.latencyMs ?? null,
+            },
+          })
+          if (routing.mode === "none") {
+            return {
+              content: JSON.stringify(
+                { stored: false, skipped: true, mode: "none", reason: "deterministic review bypass" },
+                null,
+                2,
+              ),
+            }
+          }
           const packet = buildReviewPacket(contract, {
             revision: input.revision,
+            reviewMode: routing.mode,
             changedPaths,
             verificationSummary: input.verificationSummary
               ? truncate(input.verificationSummary, MAX_PACKET_FIELD_CHARS)
@@ -370,7 +427,7 @@ export const taskContractCapability: Capability = {
           const selectedModel = model ?? parent?.model
           const child = await ctx.session.create({
             parentID: sessionID,
-            title: `AndMar review round ${round}`,
+            title: `AndMar ${routing.mode} review round ${round}`,
             ...(selectedModel ? { model: selectedModel } : {}),
             metadata: { andmar: { profile: "frontier", role: "review", round } },
           })
@@ -378,9 +435,12 @@ export const taskContractCapability: Capability = {
             return { content: "refused: review session reuse detected; retry the review request" }
           }
 
+          const permissionsApplied = await restrictReviewerSession(ctx, child.id)
           const startedAt = Date.now()
           try {
-            const text = await runChildTask(ctx.session, child.id, packet)
+            const text = await runChildTask(ctx.session, child.id, packet, {
+              timeoutMs: reviewTimeoutMs(routing.mode),
+            })
             if (text === undefined) {
               observability?.emit({
                 type: "andmar.review",
@@ -436,6 +496,9 @@ export const taskContractCapability: Capability = {
               payload: {
                 action: "completed",
                 round,
+                mode: routing.mode,
+                routingSource: routing.source,
+                permissionsApplied,
                 verdict: record.verdict,
                 reportedVerdict: validated.result.verdict,
                 findings: record.findings.length,
@@ -450,6 +513,9 @@ export const taskContractCapability: Capability = {
                 {
                   stored: true,
                   round,
+                  mode: routing.mode,
+                  routingSource: routing.source,
+                  permissionsApplied,
                   reviewSessionID: child.id,
                   result: { ...validated.result, verdict: effectiveVerdict },
                   reportedVerdict: validated.result.verdict,

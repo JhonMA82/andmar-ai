@@ -148,8 +148,10 @@ ANDMAR_OBSERVABILITY_ENABLED=1
 
 ## Intake options (capability-local, fail open)
 
-The `intake` capability reads its own keys so `src/core` stays free of
-Jev/OpenRouter specifics. These keys are **not** part of the validated
+The `intake` capability reads its own keys so model/timeout resolution stays
+capability-local: `src/core/jev-client.ts` holds only the shared Decisions
+transport (endpoint and payload shape, also used by review routing), no
+provider policy. These keys are **not** part of the validated
 `HarnessConfig`: unknown or malformed values fall back to defaults instead of
 failing plugin setup. See [INTAKE.md](INTAKE.md) for the full pilot contract.
 
@@ -204,4 +206,34 @@ ANDMAR_INTAKE_MODEL=typesafe/jev-1.13
 ANDMAR_INTAKE_TIMEOUT_MS=8000
 ANDMAR_INTAKE_TRACE=1
 ANDMAR_INTAKE_TRACE_CONTENT=1
+```
+
+## Review routing options (environment only, fail open)
+
+`andmar_request_review` consults one Jev decision only in the deterministic
+`audit` gray zone; these keys configure that routing call only. The reviewer
+model is never configured here — it stays the configured `frontier` profile
+or the parent session model. Unknown or malformed values fall back to
+defaults, and any Jev failure falls back to the deterministic minimum mode.
+See [ANDMAR-AI-CAPABILITIES.md](ANDMAR-AI-CAPABILITIES.md) and D-023.
+
+### `ANDMAR_REVIEW_MODEL`
+
+- **Default:** `typesafe/jev-1.13`.
+- **Purpose:** which Jev model answers the review routing questions
+  (`semantic_scope`, `external_contract_risk`, `evidence_sufficiency`,
+  `review_depth`).
+- **Scope:** review routing only.
+
+### `ANDMAR_REVIEW_TIMEOUT_MS`
+
+- **Default:** `5000`. Clamped to 1000–15000 ms.
+- **Purpose:** bound the single routing Jev call; on timeout the review stays
+  at the deterministic minimum mode and never blocks.
+- **Scope:** review routing only; the child review task deadline is separate
+  (4 min `audit`, 8 min `deep`).
+
+```bash
+ANDMAR_REVIEW_MODEL=typesafe/jev-1.13
+ANDMAR_REVIEW_TIMEOUT_MS=5000
 ```
