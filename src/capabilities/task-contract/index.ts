@@ -1,6 +1,6 @@
 import type { Capability, ChangeKind, StateStore } from "../../core/contracts.ts"
 import type { SemanticObservability } from "../../core/observability.ts"
-import { runChildTask } from "../../core/session.ts"
+import { ChildSessionTimeoutError, runChildTask } from "../../core/session.ts"
 import {
   MAX_REVIEW_ROUNDS,
   buildReviewPacket,
@@ -305,7 +305,7 @@ export const taskContractCapability: Capability = {
       editor.add({
         name: "request_review",
         description:
-          "Request one independent final review round in a fresh child session (frontier profile, read-only reviewer, compact packet from the active Task Contract). Each call creates a new session; review sessions are never resumed. Max two rounds per task; after two rejects the task is blocked. Invalid reviewer output is reported, never stored as success.",
+          "Request one independent final review round in a fresh child session (frontier profile, read-only evidence auditor, compact packet from the active Task Contract). Verification must already have run for this revision: the reviewer audits semantic completeness and evidence sufficiency, never repeats broad tests/builds/typechecks, and may use only bounded targeted spot-checks for a concrete uncertainty. Each call creates a new session; review sessions are never resumed. Max two stored rounds per task; invalid output and timeouts store nothing and consume no round.",
         input: {
           type: "object",
           properties: {
@@ -459,6 +459,23 @@ export const taskContractCapability: Capability = {
               ),
             }
           } catch (error) {
+            if (error instanceof ChildSessionTimeoutError) {
+              observability?.emit({
+                type: "andmar.review",
+                sessionID,
+                payload: {
+                  action: "timeout",
+                  round,
+                  stored: false,
+                  roundConsumed: false,
+                  durationMs: Date.now() - startedAt,
+                },
+              })
+              return {
+                content:
+                  `review timeout: ${error.message}; nothing was stored and no round was consumed. Do not rerun broad verification. Re-request once with the same revision and a concise exact-revision verificationSummary; if review times out again, report the reviewer as unavailable instead of looping.`,
+              }
+            }
             observability?.emit({
               type: "andmar.review",
               sessionID,

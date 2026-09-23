@@ -19,6 +19,7 @@ import {
   type TaskContract,
 } from "../src/core/task-contract.ts"
 import { evaluateCompletionV2 } from "../src/core/lifecycle.ts"
+import { ChildSessionTimeoutError } from "../src/core/session.ts"
 import { taskContractCapability } from "../src/capabilities/task-contract/index.ts"
 import { lifecycleCapability } from "../src/capabilities/lifecycle/index.ts"
 
@@ -227,10 +228,24 @@ test("reviewer verdict variants normalize to the canonical enum", () => {
   assert.equal(validateReviewResult({ verdict: "OK", findings: [] }).ok, false)
 })
 
-test("review packet demands a strict lowercase verdict and read-only reviewer", () => {
-  const packet = buildReviewPacket(makeContract(), { revision: "rev-a" })
+test("review packet audits existing evidence and forbids broad re-verification", () => {
+  const packet = buildReviewPacket(makeContract(), {
+    revision: "rev-a",
+    verificationSummary: "tests: passed; typecheck: passed; runtime smoke: passed",
+  })
   assert.match(packet, /read-only/i)
+  assert.match(packet, /not to reproduce the verification phase/i)
+  assert.match(packet, /Do NOT rerun broad test suites/i)
+  assert.match(packet, /bounded targeted spot-checks/i)
+  assert.match(packet, /target=missing-evidence/i)
+  assert.match(packet, /Existing exact-revision verification summary:/i)
   assert.match(packet, /exactly the lowercase string "approve" or "reject"/)
+})
+
+test("review packet without verification summary does not invite broad verification", () => {
+  const packet = buildReviewPacket(makeContract(), { revision: "rev-a" })
+  assert.match(packet, /verification summary: not supplied/i)
+  assert.match(packet, /Do not compensate by running broad verification/i)
 })
 
 // --- Trivial task: no mandatory contract/reviewer ceremony ---
@@ -425,6 +440,32 @@ test("request_review on a completed contract is refused", async () => {
   await contract.execute({ op: "close", outcome: "completed", revision: "rev-a" }, { sessionID: "ses-done" })
   const refused: any = await tools.get("request_review").execute({ revision: "rev-a" }, { sessionID: "ses-done" })
   assert.match(refused.content, /^refused: this Task Contract is already completed/)
+})
+
+test("request_review timeout is recoverable and consumes no review round", async () => {
+  const state: any = createMemoryState()
+  const { ctx, tools } = createToolHarness()
+  ctx.session.wait = async () => {
+    throw new ChildSessionTimeoutError("child session timed out during session.wait")
+  }
+  ctx.session.context = async () => []
+  await taskContractCapability.setup({ ctx, config: { models: {} } as any, state })
+  const contract = tools.get("task_contract")
+  await contract.execute(
+    { op: "create", taskKind: "feature", goal: "Add --json flag", requirements: ["keep default output"] },
+    { sessionID: "ses-timeout" },
+  )
+
+  const review: any = await tools.get("request_review").execute(
+    { revision: "rev-a", verificationSummary: "tests: passed; typecheck: passed" },
+    { sessionID: "ses-timeout" },
+  )
+
+  assert.match(review.content, /^review timeout:/)
+  assert.match(review.content, /no round was consumed/)
+  assert.match(review.content, /Do not rerun broad verification/)
+  const stored = await state.scan("task-contract-review/ses-timeout/")
+  assert.equal(stored.length, 0)
 })
 
 test("request_review reads the reviewer answer through the real prompt->wait->context contract", async () => {

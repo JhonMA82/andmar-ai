@@ -769,9 +769,12 @@ export interface ReviewPacketInput {
 
 export function buildReviewPacket(contract: TaskContract, input: ReviewPacketInput): string {
   const lines = [
-    "You are an independent final reviewer. You are read-only: inspect, search and run read-only checks, but do not edit files, apply fixes, or record anything. Judge only the work described below.",
+    "You are an independent final reviewer. You are read-only: inspect the diff, relevant code/tests and repository context; search when needed; use only bounded targeted spot-checks for a concrete unresolved uncertainty. Do not edit files, apply fixes, or record anything. Judge only the work described below.",
     "",
-    "Assume completion claims are unverified until evidence shows otherwise.",
+    "Your job is to audit semantic completeness and the sufficiency of existing exact-revision evidence, not to reproduce the verification phase.",
+    "Verification runs before review. Recorded exact-revision evidence proves that the referenced commands executed with their recorded outcomes; independently judge whether those checks and their scope are sufficient for the claims being made.",
+    "Do NOT rerun broad test suites, full typechecks, builds, lints, installs, dependency restores, repository-wide scans, or other verification already represented by current-revision evidence. Prefer inspection, targeted search and the smallest useful spot-check.",
+    "If evidence is missing, stale, too narrow, or otherwise insufficient, report a blocking finding with target=missing-evidence. Do not recreate the whole verification phase yourself.",
     "Compare: (1) original goal against final behavior; (2) requirements against implementation; (3) constraints against the diff; (4) claims against verification evidence; (5) external contracts against implementation; (6) tests against what they actually prove.",
     "Look specifically for: explicit requirements missed; constraints violated; unsupported completion claims; stale or deprecated upstream API use; mock-only verification represented as runtime proof; missing observable-surface verification; scope drift; incomplete error or failure behavior when explicitly required.",
     "Do not invent new requirements. Do not reject for architecture taste. Do not expand scope. A finding blocks only when it is linked to a real requirementId/constraintId below, or target=desired-outcome/missing-evidence.",
@@ -795,7 +798,13 @@ export function buildReviewPacket(contract: TaskContract, input: ReviewPacketInp
   if (input.changedPaths && input.changedPaths.length > 0) {
     lines.push(`Changed paths: ${input.changedPaths.join(", ")}`)
   }
-  if (input.verificationSummary) lines.push(`Verification summary: ${input.verificationSummary}`)
+  if (input.verificationSummary) {
+    lines.push(`Existing exact-revision verification summary: ${input.verificationSummary}`)
+  } else {
+    lines.push(
+      "Existing exact-revision verification summary: not supplied. Do not compensate by running broad verification; report target=missing-evidence if the missing summary materially prevents approval.",
+    )
+  }
   if (input.knownLimitations) lines.push(`Known limitations: ${input.knownLimitations}`)
   lines.push(
     "",

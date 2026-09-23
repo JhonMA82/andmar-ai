@@ -1,6 +1,6 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { runChildTask } from "../src/core/session.ts"
+import { ChildSessionTimeoutError, runChildTask } from "../src/core/session.ts"
 
 test("runChildTask hard-times-out when session.wait never resolves", async () => {
   const sessions = {
@@ -18,7 +18,9 @@ test("runChildTask hard-times-out when session.wait never resolves", async () =>
   const started = Date.now()
   await assert.rejects(
     () => runChildTask(sessions, "child-1", "review", { timeoutMs: 30, retryDelayMs: 5 }),
-    /timed out during session\.wait/,
+    (error: unknown) =>
+      error instanceof ChildSessionTimeoutError &&
+      /timed out during session\.wait/.test(error.message),
   )
   assert.ok(Date.now() - started < 1000)
 })
@@ -38,6 +40,8 @@ test("runChildTask hard-times-out when session.context never resolves", async ()
 
   await assert.rejects(
     () => runChildTask(sessions, "child-1", "review", { timeoutMs: 30, retryDelayMs: 5 }),
-    /timed out during session\.context/,
+    (error: unknown) =>
+      error instanceof ChildSessionTimeoutError &&
+      /timed out during session\.context/.test(error.message),
   )
 })

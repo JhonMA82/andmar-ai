@@ -60,7 +60,7 @@ test("AndMar agent reports change, verification, requirements and limitations on
   assert.match(agent, /what changed, how it was verified/i)
   assert.match(agent, /which requirements were met|requirements.*met/i)
   assert.match(agent, /which real limitations remain|limitations remain/i)
-  assert.match(agent, /two rejects the task is blocked|After two rejects/i)
+  assert.match(agent, /two (stored )?rejects the task is blocked|After two (stored )?rejects/i)
 })
 
 test("AndMar agent handles post-completion operational continuations proportionally", () => {
