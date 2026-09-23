@@ -216,3 +216,11 @@ missing.
 **Why:** Repeating contract → verification → review → gate ceremony for pure release/VCS operations wastes frontier review and risks re-litigating approved work, while any new code/product requirement must keep full guarantees.
 
 **Consequence:** Intake owns continuation detection; the agent executes only requested operational mutations with proportional checks and leaves the fast-path on any behavior change. No `release` capability yet.
+
+## D-022 — Independent review audits evidence; it does not duplicate verification
+
+**Decision:** Independent final review is a semantic/evidence audit, not a second verification phase. Verification remains responsible for executing relevant checks and recording exact-revision receipts. The reviewer inspects the diff, relevant implementation/tests, requirements, constraints and evidence sufficiency. It must not rerun broad test/typecheck/build/lint/install/repository-wide verification already represented by current-revision evidence. A reviewer may run only bounded targeted spot-checks when a concrete uncertainty cannot be resolved by inspection/search. Missing, stale or insufficient evidence is returned as a structured `target=missing-evidence` finding rather than recreated by the reviewer.
+
+**Why:** Real use on small repositories showed reviewers spending roughly the entire child-session budget repeating verification that AndMar had already completed, causing `session.wait` timeouts without finding implementation defects. The same behavior would scale poorly on large repositories and duplicates responsibilities already owned by Verification.
+
+**Consequence:** `andmar_request_review` remains independent and fresh-session-based, but its packet explicitly treats exact-revision verification as existing execution evidence and asks the reviewer to judge its sufficiency. The 10-minute child-session safety ceiling is not increased. A timeout stores nothing, consumes no review round, emits `andmar.review action=timeout`, and may be retried at most once by policy without rerunning verification.

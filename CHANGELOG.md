@@ -2,6 +2,15 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
+## [0.6.3] - 2026-09-22
+
+### Fixed
+
+- Independent review is now an evidence audit instead of a second verification phase. Review packets explicitly forbid rerunning broad tests, typechecks, builds, lints, installs, dependency restores or repository-wide verification already represented by exact-revision evidence; reviewers use inspection/search first and only bounded targeted spot-checks for concrete uncertainty.
+- Missing or insufficient verification is reported as a structured `target=missing-evidence` finding instead of inviting the reviewer to recreate the full verification phase.
+- Review child-session timeouts are classified as `andmar.review action=timeout`, return a recoverable result, store no review and consume no round. The existing 10-minute child-session safety ceiling is unchanged.
+- AndMar's primary-agent policy now passes a concise exact-revision `verificationSummary` into review and prevents timeout retry loops.
+
 ## [0.6.2] - 2026-09-22
 
 ### Added

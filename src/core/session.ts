@@ -31,6 +31,13 @@ export interface RunChildTaskOptions {
   retryDelayMs?: number
 }
 
+export class ChildSessionTimeoutError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "ChildSessionTimeoutError"
+  }
+}
+
 async function withDeadline<T>(
   promise: Promise<T>,
   deadline: number,
@@ -38,12 +45,12 @@ async function withDeadline<T>(
 ): Promise<T> {
   const remaining = deadline - Date.now()
   if (remaining <= 0) {
-    throw new Error(`child session timed out before ${label}`)
+    throw new ChildSessionTimeoutError(`child session timed out before ${label}`)
   }
 
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(
-      () => reject(new Error(`child session timed out during ${label}`)),
+      () => reject(new ChildSessionTimeoutError(`child session timed out during ${label}`)),
       remaining,
     )
     promise.then(
