@@ -101,6 +101,7 @@ Do not add a semantic router until real ambiguous routing cases demonstrate the 
 canonical source for the area you touch:
 
 ```text
+what AndMar is / product flow     -> docs/OVERVIEW.md
 architecture / boundaries / data flow  -> docs/ARCHITECTURE.md
 adding or changing a capability        -> docs/CAPABILITY-CONTRACT.md
   + canonical per-capability reference -> docs/ANDMAR-AI-CAPABILITIES.md

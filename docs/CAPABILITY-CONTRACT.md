@@ -110,7 +110,11 @@ bun run generate
 
 ## 9. Documentation requirements
 
-A capability change is incomplete until the matching documentation is updated:
+Documentation ownership is defined once in
+[ARCHITECTURE.md](ARCHITECTURE.md) §2.3: a capability owns its behavioral
+documentation, the generated index owns inventory, and OVERVIEW/ARCHITECTURE
+only explain the system. A capability change is incomplete until the matching
+documentation is updated:
 
 - canonical section in [ANDMAR-AI-CAPABILITIES.md](ANDMAR-AI-CAPABILITIES.md)
   (the `### \`<id>\`` heading is enforced by `check-architecture.mjs`);
@@ -119,7 +123,7 @@ A capability change is incomplete until the matching documentation is updated:
 - [ARCHITECTURE.md](ARCHITECTURE.md) when boundaries or data flow changed;
 - [DECISIONS.md](DECISIONS.md) when an architectural decision changed;
 - `CHANGELOG.md` when the change is user-visible;
-- [README.md](README.md) only for human-facing behavior (keep it concise).
+- [../README.md](../README.md) only for human-facing behavior (keep it concise).
 
 ## 10. Done means verified
 

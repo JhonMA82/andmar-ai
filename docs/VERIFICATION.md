@@ -1,5 +1,11 @@
 # Verification: cómo saber que algo realmente está terminado
 
+**Scope:** qué hace la capability `verification` en lenguaje llano — receipts,
+evidencia de ejecución observada y ligazón a la revisión exacta. El contrato de
+integración vive en [CAPABILITY-CONTRACT.md](CAPABILITY-CONTRACT.md); el flujo
+completo hasta la completitud está en [OVERVIEW.md](OVERVIEW.md) §3 y el modelo
+de completitud en [ARCHITECTURE.md](ARCHITECTURE.md) §7.
+
 ## El problema
 
 Un agente que dice "ya terminé" no es una prueba de que terminó. Pudo olvidar
@@ -138,48 +144,30 @@ automáticamente invalidada.
 ## Cómo encaja con el resto
 
 `andmar_verify_revision` es el paso previo natural de `andmar_completion_gate`
-(de la capability `lifecycle`). La verificación dice "los checks pasaron";
-el completion gate además revisa documentación y versionado antes de aceptar
-el cierre. El gate no puede declararse formalmente verificado con
-verificación requerida incompleta: un `testsPassed: true` manual nunca basta
-cuando `verify_revision` reporta faltantes para la misma revisión. Para tareas
-que genuinamente no requieren checks, el gate acepta `requiredChecks: []`
-explícito.
+(de la capability `lifecycle`). La verificación dice "los checks pasaron"; el
+completion gate además exige el Task Contract, la revisión independiente
+requerida y las obligaciones de documentación/versionado. Ese encadenamiento
+completo es canónico en [ARCHITECTURE.md](ARCHITECTURE.md) §7 y no se repite
+aquí.
 
-```text
-implementación
-      |
-      v
-verification (checks en verde para esta revisión)
-      |
-      v
-Task Contract (cada requirement satisfecho/bloqueado/omitido con evidencia)
-      |
-      v
-independent review (aprobada, revisión actual, cuando aplica)
-      |
-      v
-completion gate (docs + versión también en orden)
-      |
-      v
-terminado de verdad
-```
+Lo que sí es específico de esta capability:
 
-Pasar los tests demuestra solo lo que esos tests cubren; no demuestra que
-la petición del usuario esté completa. Por eso el completion gate exige,
-además de la verificación, que ningún requirement quede `pending` o
-`blocked` sin resolución, que cada `satisfied` tenga evidencia apropiada
-(`verification`, `runtime`, `diff`, `review`, `user-decision` o `external`,
-ligada a la revisión actual cuando aplique) y que la revisión
-independiente requerida esté aprobada sobre la revisión actual. La prueba
-negativa canónica: tests en verde con el requirement de README pendiente
-→ completion denegado.
-
-Cuando un comportamiento observable importa al usuario, el contrato puede
-declarar su `verificationSurface` (CLI, HTTP, plugin runtime, database…)
-y la verificación debe ejercitar esa superficie real de forma proporcional
-al riesgo: un smoke de carga real del plugin vale más que solo typecheck;
-una petición HTTP real vale más que un unit test aislado.
+- el gate **no** puede declararse formalmente verificado con verificación
+  requerida incompleta: un `testsPassed: true` manual nunca basta cuando
+  `verify_revision` reporta faltantes para la misma revisión;
+- para tareas que genuinamente no requieren checks, el gate acepta
+  `requiredChecks: []` explícito;
+- pasar los tests demuestra solo lo que esos tests cubren; no demuestra que la
+  petición del usuario esté completa. Esa garantía adicional es del Task
+  Contract y del completion gate, no de los receipts. La prueba negativa
+  canónica (tests en verde con un requirement pendiente → completion
+  denegado) está documentada en
+  [ANDMAR-AI-CAPABILITIES.md](ANDMAR-AI-CAPABILITIES.md) § `lifecycle`;
+- cuando un comportamiento observable importa al usuario, el contrato puede
+  declarar su `verificationSurface` (CLI, HTTP, plugin runtime, database…) y la
+  verificación debe ejercitar esa superficie real de forma proporcional al
+  riesgo: un smoke de carga real del plugin vale más que solo typecheck; una
+  petición HTTP real vale más que un unit test aislado.
 
 ## Métricas del harness
 

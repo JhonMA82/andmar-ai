@@ -2,6 +2,10 @@
 
 This file records the OpenCode V2 primitives the MVP intentionally relies on, so future upgrades can audit compatibility without reading the entire repository.
 
+**Scope:** the external contract this repository depends on. Architectural
+boundaries derived from it are summarized in [ARCHITECTURE.md](ARCHITECTURE.md)
+§2.4; this document stays authoritative for the API shape itself.
+
 Validated package target for this test build: `@opencode/plugin@2.0.4`.
 
 Reference documentation used during the MVP design:

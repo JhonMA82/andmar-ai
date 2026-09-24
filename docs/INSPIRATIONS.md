@@ -2,6 +2,11 @@
 
 These projects were reviewed for patterns. **None is automatically a dependency or fork target.** AndMar AI extracts ideas while keeping its own scope small.
 
+**Scope:** historical reference only. This document is not canonical for any
+current rule — decisions that were actually taken live in
+[DECISIONS.md](DECISIONS.md), and the current boundaries live in
+[ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## `nail00749/opencode-agent` (Gvozd)
 
 Useful patterns:

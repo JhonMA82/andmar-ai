@@ -2,6 +2,13 @@
 
 This is a compact decision log, not a process-heavy ADR system. Add an entry only for decisions that future maintainers/agents are likely to reconsider.
 
+**Scope:** this document records *why* — rationale and history. The current
+rules themselves live elsewhere: system explanation in [OVERVIEW.md](OVERVIEW.md),
+boundaries in [ARCHITECTURE.md](ARCHITECTURE.md), capability rules in
+[CAPABILITY-CONTRACT.md](CAPABILITY-CONTRACT.md). Entries here are kept because
+they still match the code; where an entry and the implementation disagree, the
+implementation wins and this log is corrected.
+
 ## D-001 — OpenCode V2 is the only runtime
 
 **Decision:** AndMar AI supports OpenCode V2 only.

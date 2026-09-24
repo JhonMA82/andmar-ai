@@ -2,14 +2,22 @@
 
 This is not a promised feature list. Each item has a trigger. Do not implement an item merely because it appears here.
 
+**Scope:** forward-looking triggers only. What already exists is the generated
+inventory ([CAPABILITIES.md](CAPABILITIES.md)) plus
+[ANDMAR-AI-CAPABILITIES.md](ANDMAR-AI-CAPABILITIES.md); what is deliberately
+excluded is [MVP-SCOPE.md](MVP-SCOPE.md). This document is canonical for
+*triggers*, not for current behavior.
+
 ## 0.1 — Current MVP
 
-- capability loader;
-- durable state;
+Already implemented; see [CAPABILITIES.md](CAPABILITIES.md) for the generated
+id/version/tool inventory and [ANDMAR-AI-CAPABILITIES.md](ANDMAR-AI-CAPABILITIES.md)
+for behavior. The distinctive pieces are:
+
+- capability loader and durable state;
 - deterministic model profiles;
 - delegation/resume;
-- documentation/version impact;
-- exact-revision completion gate;
+- documentation/version impact and the exact-revision completion gate;
 - verification receipts bound to observed execution evidence;
 - intake request-refinement pilot (deterministic-first, one typed Jev
   decision, explicit non-blocking fallback);

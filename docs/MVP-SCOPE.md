@@ -1,5 +1,11 @@
 # MVP Scope
 
+**Scope:** what the current MVP promises and deliberately does not promise,
+plus the success criteria used to judge it. It is a scope record, not an
+architecture document: the system explanation is [OVERVIEW.md](OVERVIEW.md) and
+the boundaries are [ARCHITECTURE.md](ARCHITECTURE.md). Candidate future work
+with its triggers lives in [ROADMAP.md](ROADMAP.md).
+
 ## Objective
 
 Validate the architecture of AndMar AI with enough working behavior to prove the extension model, without prematurely implementing a complete agent platform.

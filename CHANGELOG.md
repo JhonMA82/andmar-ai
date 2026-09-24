@@ -10,10 +10,17 @@ All notable changes to AndMar AI are recorded here. The package version in `pack
 - Jev complements only ambiguous `audit` routing and may escalate to `deep`; it can never downgrade deterministic policy and its failure falls back to the deterministic minimum.
 - Review child sessions receive a strict read/search-only session policy when the OpenCode V2 permission API is available, preventing shell/curl/tests/builds/network/edits and filesystem-wide scans.
 
+### Changed
+
+- Documentation reorganized into a single reading path: `README.md` → `docs/OVERVIEW.md` (new) → `docs/ARCHITECTURE.md`. `README.md` is now the quick entry (problem, philosophy, explicit non-goals, short task flow, quick start, reading map); `docs/OVERVIEW.md` holds the product view, component ownership, the real current flow with its conditional steps, a worked example, and the skill/capability relationship.
+- `docs/ARCHITECTURE.md` gained explicit `Core`, `Capabilities`, `Skills`, `Scripts`, capability-vs-skill rule, documentation-ownership and not-duplicating-OpenCode sections; its duplicated state-key and documentation/version detail now links to `docs/STATE.md`, `docs/CONFIGURATION.md` and `docs/VERSIONING.md`.
+- Every remaining document declares its scope and links to the canonical source for shared rules (mission/flow → `OVERVIEW`, boundaries → `ARCHITECTURE`, inventory → generated `CAPABILITIES`, contract → `CAPABILITY-CONTRACT`, configuration → `CONFIGURATION`, state → `STATE`), removing duplicated statements that could diverge.
+
 ### Fixed
 
 - Reviewer packets no longer expose raw receipt references, execution IDs, state-store keys or opaque hashes that a reviewer could misinterpret as filesystem paths. Verification summaries are sanitized before Review/Jev routing.
 - Audit and deep review use bounded mode-specific child deadlines (4m/8m) instead of allowing a small audit to consume the generic 10-minute ceiling.
+- Unbalanced code fences in `docs/ARCHITECTURE.md` §1 that broke the architectural diagram, and a duplicated restart/ownership paragraph in `docs/TESTING.md`.
 
 ## [0.6.3] - 2026-09-22
 
