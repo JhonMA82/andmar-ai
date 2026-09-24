@@ -14,7 +14,9 @@ import {
   evaluateReviewGate,
   isTrivialTask,
   requiresIndependentReview,
+  reviewAvailabilityKey,
   reviewPrefix,
+  type ReviewAvailabilityRecord,
   type ReviewRecord,
   type TaskContract,
 } from "../../core/task-contract.ts"
@@ -184,6 +186,17 @@ export const lifecycleCapability: Capability = {
             sessionID !== undefined
               ? (await state.scan<ReviewRecord>(reviewPrefix(sessionID))).map((entry) => entry.value)
               : []
+          const reviewAvailability =
+            sessionID !== undefined
+              ? await state.get<ReviewAvailabilityRecord>(reviewAvailabilityKey(sessionID))
+              : undefined
+          const currentReviewAvailability =
+            reviewAvailability !== undefined &&
+            contract !== undefined &&
+            reviewAvailability.revision === input.currentRevision &&
+            reviewAvailability.contractStateToken === contractStateToken(contract)
+              ? reviewAvailability
+              : undefined
 
           // Task Contract policy is derived from taskKind, never from optional
           // caller bypass flags. Non-trivial tasks must have a contract.
@@ -230,13 +243,37 @@ export const lifecycleCapability: Capability = {
                     satisfied: 0,
                   }
                 : undefined
+          let effectiveReviewGate = reviewGate
+          let reviewDegraded = false
+          if (reviewGate !== undefined && !reviewGate.ok && currentReviewAvailability !== undefined) {
+            const currentReject =
+              reviewGate.latestRevision === input.currentRevision && reviewGate.latestVerdict === "reject"
+            const evidenceGateGreen = verification.ok && (combinedContractGate?.ok ?? true)
+            if (
+              currentReviewAvailability.mode === "audit" &&
+              evidenceGateGreen &&
+              !currentReject
+            ) {
+              effectiveReviewGate = { ...reviewGate, ok: true, reasons: [] }
+              reviewDegraded = true
+            } else if (currentReviewAvailability.mode === "deep") {
+              effectiveReviewGate = {
+                ...reviewGate,
+                reasons: [
+                  ...reviewGate.reasons,
+                  `deep review unavailable: ${currentReviewAvailability.reason} during ${currentReviewAvailability.stage}`,
+                ],
+              }
+            }
+          }
+
           const result = evaluateCompletionV2(
             input.currentRevision,
             input.evidence,
             verification,
             required,
             combinedContractGate,
-            reviewGate,
+            effectiveReviewGate,
           )
           if (result.ok && sessionID !== undefined) {
             await state.set(completionSealKey(sessionID), {
@@ -277,11 +314,34 @@ export const lifecycleCapability: Capability = {
               reviewRounds: reviews.length,
               reviewRejectCount,
               reviewApproved: reviewGate !== undefined && reviewGate.ok && reviewRequired,
+              reviewDegraded,
+              reviewUnavailable: currentReviewAvailability !== undefined,
+              reviewUnavailableMode: currentReviewAvailability?.mode ?? null,
               finalCompletion: result.ok,
             },
           })
           return {
-            content: JSON.stringify(result, null, 2),
+            content: JSON.stringify(
+              {
+                ...result,
+                review: {
+                  required: reviewRequired,
+                  approved: reviewGate !== undefined && reviewGate.ok && reviewRequired,
+                  degraded: reviewDegraded,
+                  unavailable:
+                    currentReviewAvailability === undefined
+                      ? null
+                      : {
+                          mode: currentReviewAvailability.mode,
+                          reason: currentReviewAvailability.reason,
+                          stage: currentReviewAvailability.stage,
+                          elapsedMs: currentReviewAvailability.elapsedMs,
+                        },
+                },
+              },
+              null,
+              2,
+            ),
           }
         },
       })

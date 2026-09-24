@@ -240,3 +240,28 @@ missing.
 **Why:** Repeated production-like trials showed the prior reviewer spending its child-session window rediscovering evidence, including treating opaque receipt keys as filesystem names and launching whole-disk searches. Task kind alone was also too coarse: a localized bugfix and a cross-cutting bugfix should not receive identical review depth.
 
 **Consequence:** Review routing is cheap and deterministic first, semantic classification is delegated to Jev only where useful, and the frontier reviewer receives a bounded role. When supported by OpenCode V2, the review child is physically restricted to read/glob/grep operations, so prompt drift cannot turn Review back into Verification.
+
+## D-024 — Review timeout is availability, not a delegation failure
+
+**Decision:** Independent Review has its own bounded session runner instead of
+sharing `runChildTask` with delegation. `audit` gets a 90-second wall-clock
+budget and `deep` gets 180 seconds. Deadline expiry returns structured
+`reviewStatus=unavailable` with stage/elapsed metadata, stores no review round,
+and is never retried automatically.
+
+For current-revision `audit`, the completion gate may degrade to deterministic
+evidence only when exact-revision verification and the Task Contract requirement
+gate are both green and there is no current-revision blocking reject. `deep`
+unavailability remains fail-closed. The availability marker is bound to the
+contract state token, so steering/evidence mutations cannot reuse a stale
+timeout fallback.
+
+**Why:** Review is a bounded semantic/evidence audit, not a worker. Reusing the
+generic child-task lifecycle made a stalled `session.wait` look like task
+failure and encouraged long retry loops. The narrower policy preserves safety
+for high-risk work while preventing ordinary review transport failure from
+holding otherwise verified work for several minutes.
+
+**Consequence:** Delegation/resume keep the existing generic child runner and
+10-minute safety ceiling unchanged. Review timeout handling is explicit,
+observable and proportional without introducing a new workflow engine.

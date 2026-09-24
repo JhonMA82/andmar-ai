@@ -320,27 +320,32 @@ known limitations.
 - **Produces:** the session's active contract and up to two review records.
   **Consumes:** routing-adjacent triviality/review-need helpers from core.
 - **Owns:** `task-contract/<sessionID>`,
-  `task-contract-review/<sessionID>/<round>`. **Must not own:**
+  `task-contract-review/<sessionID>/<round>`,
+  `task-contract-review-availability/<sessionID>`. **Must not own:**
   verification receipts/evidence, worker, journal, or intake keys.
 - **State:** contract (`goal`, requirements with status/evidence/reason,
   constraints, `reviewRequired`, `active`/`blocked`/`completed`) and review
   records (`round`, fresh `reviewSessionID`, `revision`, `verdict`,
-  `findings`, `notes`). No transcripts, chain-of-thought, prompts, or
-  source code.
+  `findings`, `notes`) plus one current-revision availability marker when a
+  bounded reviewer exceeds its deadline. No transcripts, chain-of-thought,
+  prompts, or source code.
 - **Configuration:** reviewer model is the configured
   `frontier` profile or the parent session model (never a hard-coded id).
   Review routing reads `ANDMAR_REVIEW_MODEL` / `ANDMAR_REVIEW_TIMEOUT_MS`
   (fail open; see [CONFIGURATION.md](CONFIGURATION.md)).
-- **External contracts:** `ctx.session.get/create/prompt` (same native
-  pattern as `delegation`; verified against the installed
+- **External contracts:** `ctx.session.get/create/prompt/wait/context`
+  through a review-specific bounded runner (delegation keeps its own generic
+  child-task runner); verified against the installed
   `@opencode/plugin@2.0.4` types — see [OPENCODE-V2.md](OPENCODE-V2.md) for
   the read-only and compaction findings).
 - **Interaction:** review routing is deterministic first (`minimumReviewMode`:
   trivial/non-code `none`, security/migration/architecture `deep`, ordinary
   code-changing work `audit`); one Jev call in the `audit` gray zone may only
   escalate to `deep` and never blocks (fallback is the deterministic
-  minimum). `lifecycle`'s completion gate reads the contract and
-  reviews through core key helpers (never writes them); `delegation`
+  minimum). `lifecycle`'s completion gate reads the contract, reviews and
+  current availability marker through core key helpers. A current `audit`
+  timeout may degrade to deterministic evidence only when verification and
+  contract gates are green; `deep` unavailability stays fail-closed. `delegation`
   ownership is untouched (review sessions are not worker records, so
   `andmar_resume` denies them).
 - **Failure / fallback:** duplicate active `create` refused (steer
@@ -348,8 +353,9 @@ known limitations.
   without reason refused; steering a `completed` contract refused; review
   without a contract refused; review on a `completed` contract refused (operational
   continuations must not re-review approved work); rounds beyond two return `blocked`; invalid
-  reviewer output is reported and consumes no round; child timeouts store
-  nothing and consume no round (4 min `audit`, 8 min `deep`). Trivial tasks skip the
+  reviewer output is reported and consumes no round. Review timeout is a
+  structured `unavailable` outcome, stores no review round, and is never
+  retried automatically (90 s `audit`, 180 s `deep`). Trivial tasks skip the
   contract entirely (proportional escape hatch).
 - **Security / trust:** review sessions inherit parent permissions like any
   native child and are additionally constrained to read/search-only review:
@@ -372,9 +378,10 @@ known limitations.
   enforcement; compaction continuity is pull-based (`status`) because
   hijacking the compaction summary would destroy context; reviewer output
   quality depends on the model behind the `frontier` profile (without a
-  mapping it inherits the parent model — a weak reviewer may need several
-  re-requests; verdict parsing is tolerant but a reviewer that never emits
-  final text leaves the review round unstored); real OpenCode runtime
+  mapping it inherits the parent model; verdict parsing is tolerant but a
+  reviewer that never emits final text leaves the review round unstored);
+  review deadline expiry is surfaced as unavailable rather than silently
+  retried; real OpenCode runtime
   smoke is covered by manual testing (see [TESTING.md](TESTING.md)).
 
 ## AndMar primary agent

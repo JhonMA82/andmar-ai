@@ -230,8 +230,9 @@ See [ANDMAR-AI-CAPABILITIES.md](ANDMAR-AI-CAPABILITIES.md) and D-023.
 - **Default:** `5000`. Clamped to 1000–15000 ms.
 - **Purpose:** bound the single routing Jev call; on timeout the review stays
   at the deterministic minimum mode and never blocks.
-- **Scope:** review routing only; the child review task deadline is separate
-  (4 min `audit`, 8 min `deep`).
+- **Scope:** review routing only; the review attempt deadline is separate
+  and fixed by core policy (90 s `audit`, 180 s `deep`). These are review
+  budgets, not delegation timeouts.
 
 ```bash
 ANDMAR_REVIEW_MODEL=typesafe/jev-1.13

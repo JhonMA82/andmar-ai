@@ -115,6 +115,22 @@ export function reviewPrefix(sessionID: string): string {
   return `task-contract-review/${sessionID}/`
 }
 
+export interface ReviewAvailabilityRecord {
+  status: "unavailable"
+  mode: ReviewMode
+  reason: "deadline_exceeded"
+  stage: "session.prompt" | "session.wait" | "session.context"
+  revision: string
+  reviewSessionID: string
+  elapsedMs: number
+  contractStateToken: string
+  at: number
+}
+
+export function reviewAvailabilityKey(sessionID: string): string {
+  return `task-contract-review-availability/${sessionID}`
+}
+
 export interface CompletionSeal {
   revision: string
   taskKind: ChangeKind

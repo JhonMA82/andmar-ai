@@ -12,6 +12,7 @@ import {
   isTrivialTask,
   minimumReviewMode,
   recordRequirementEvidence,
+  reviewAvailabilityKey,
   requiresIndependentReview,
   steerTaskContract,
   updateRequirementStatus,
@@ -462,11 +463,17 @@ test("request_review timeout is recoverable and consumes no review round", async
     { sessionID: "ses-timeout" },
   )
 
-  assert.match(review.content, /^review timeout:/)
-  assert.match(review.content, /no round was consumed/)
-  assert.match(review.content, /Do not rerun broad verification/)
+  const timeout = JSON.parse(review.content)
+  assert.equal(timeout.reviewStatus, "unavailable")
+  assert.equal(timeout.roundConsumed, false)
+  assert.equal(timeout.mode, "audit")
+  assert.equal(timeout.reason, "deadline_exceeded")
+  assert.equal(timeout.completionPolicy, "evidence-gate")
   const stored = await state.scan("task-contract-review/ses-timeout/")
   assert.equal(stored.length, 0)
+  const availability = await state.get(reviewAvailabilityKey("ses-timeout"))
+  assert.equal(availability?.status, "unavailable")
+  assert.equal(availability?.revision, "rev-a")
 })
 
 test("request_review reads the reviewer answer through the real prompt->wait->context contract", async () => {
@@ -1006,4 +1013,124 @@ test("a completion seal for an older contract state cannot close a mutated contr
   )
   assert.match(close.content, /^refused:/)
   assert.match(close.content, /stale/)
+})
+
+test("completion gate degrades a current audit timeout only when deterministic evidence gates are green", async () => {
+  const state: any = createMemoryState()
+  const created = createTaskContract("ses-audit-unavailable", {
+    taskKind: "feature",
+    goal: "ship bounded feature",
+    requirements: ["feature works"],
+  })
+  assert.equal(created.ok, true)
+  let contract = (created as { ok: true; contract: TaskContract }).contract
+  contract = (
+    recordRequirementEvidence(contract, "REQ-1", {
+      type: "diff",
+      reference: "src/x.ts",
+      revision: "rev-a",
+    }) as { ok: true; contract: TaskContract }
+  ).contract
+  contract = (
+    updateRequirementStatus(contract, "REQ-1", "satisfied") as { ok: true; contract: TaskContract }
+  ).contract
+  await state.set("task-contract/ses-audit-unavailable", contract)
+  await state.set(reviewAvailabilityKey("ses-audit-unavailable"), {
+    status: "unavailable",
+    mode: "audit",
+    reason: "deadline_exceeded",
+    stage: "session.wait",
+    revision: "rev-a",
+    reviewSessionID: "review-timeout",
+    elapsedMs: 90_000,
+    contractStateToken: contractStateToken(contract),
+    at: Date.now(),
+  })
+
+  const harness = createToolHarness()
+  await lifecycleCapability.setup({
+    ctx: harness.ctx,
+    config: { documentation: { rules: [] }, versioning: { enabled: false, publicPaths: [] } } as any,
+    state,
+  })
+
+  const result: any = await harness.tools.get("completion_gate").execute(
+    {
+      taskKind: "feature",
+      currentRevision: "rev-a",
+      evidence: {
+        revision: "rev-a",
+        testsPassed: true,
+        docsStatus: "clean",
+        versionStatus: "not-applicable",
+      },
+      requiredChecks: [],
+    },
+    { sessionID: "ses-audit-unavailable" },
+  )
+  const parsed = JSON.parse(result.content)
+  assert.equal(parsed.ok, true)
+  assert.equal(parsed.review.degraded, true)
+  assert.equal(parsed.review.approved, false)
+  assert.equal(parsed.review.unavailable.mode, "audit")
+})
+
+test("completion gate keeps deep review unavailable fail-closed", async () => {
+  const state: any = createMemoryState()
+  const created = createTaskContract("ses-deep-unavailable", {
+    taskKind: "security",
+    goal: "harden auth",
+    requirements: ["no bypass"],
+  })
+  assert.equal(created.ok, true)
+  let contract = (created as { ok: true; contract: TaskContract }).contract
+  contract = (
+    recordRequirementEvidence(contract, "REQ-1", {
+      type: "verification",
+      reference: "security tests",
+      revision: "rev-a",
+    }) as { ok: true; contract: TaskContract }
+  ).contract
+  contract = (
+    updateRequirementStatus(contract, "REQ-1", "satisfied") as { ok: true; contract: TaskContract }
+  ).contract
+  await state.set("task-contract/ses-deep-unavailable", contract)
+  await state.set(reviewAvailabilityKey("ses-deep-unavailable"), {
+    status: "unavailable",
+    mode: "deep",
+    reason: "deadline_exceeded",
+    stage: "session.wait",
+    revision: "rev-a",
+    reviewSessionID: "review-timeout",
+    elapsedMs: 180_000,
+    contractStateToken: contractStateToken(contract),
+    at: Date.now(),
+  })
+
+  const harness = createToolHarness()
+  await lifecycleCapability.setup({
+    ctx: harness.ctx,
+    config: { documentation: { rules: [] }, versioning: { enabled: false, publicPaths: [] } } as any,
+    state,
+  })
+
+  const result: any = await harness.tools.get("completion_gate").execute(
+    {
+      taskKind: "security",
+      currentRevision: "rev-a",
+      evidence: {
+        revision: "rev-a",
+        testsPassed: true,
+        docsStatus: "clean",
+        versionStatus: "not-applicable",
+      },
+      requiredChecks: [],
+    },
+    { sessionID: "ses-deep-unavailable" },
+  )
+  const parsed = JSON.parse(result.content)
+  assert.equal(parsed.ok, false)
+  assert.equal(parsed.review.degraded, false)
+  assert.equal(parsed.review.unavailable.mode, "deep")
+  assert.match(parsed.reasons.join(" "), /deep review unavailable/)
 })
