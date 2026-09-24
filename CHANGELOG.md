@@ -2,6 +2,21 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
+## [0.7.1] - 2026-09-24
+
+### Fixed
+
+- Final Review no longer uses the generic delegation child runner. A dedicated
+  bounded review runner returns a structured `reviewStatus=unavailable`
+  instead of surfacing `child session timed out during session.wait`.
+- Review budgets are intentionally short: 90 seconds for `audit`, 180 seconds
+  for `deep`; timeout consumes no review round and is not automatically retried.
+- A current `audit` timeout may degrade to the deterministic evidence gate only
+  when exact-revision verification and Task Contract requirements are green.
+  `deep` review unavailability remains fail-closed.
+- Completion output now reports whether review was approved, degraded, or
+  unavailable, including timeout stage and elapsed time.
+
 ## [0.7.0] - 2026-09-23
 
 ### Added

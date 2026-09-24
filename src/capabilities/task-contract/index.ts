@@ -1,6 +1,6 @@
 import type { Capability, ChangeKind, StateStore } from "../../core/contracts.ts"
 import type { SemanticObservability } from "../../core/observability.ts"
-import { ChildSessionTimeoutError, runChildTask } from "../../core/session.ts"
+import { runReview } from "../../core/review-session.ts"
 import {
   MAX_REVIEW_ROUNDS,
   buildReviewPacket,
@@ -15,6 +15,7 @@ import {
   isBlockingFinding,
   minimumReviewMode,
   recordRequirementEvidence,
+  reviewAvailabilityKey,
   reviewKey,
   reviewPrefix,
   steerTaskContract,
@@ -23,6 +24,7 @@ import {
   validateTaskContract,
   type EvidenceType,
   type RequirementStatus,
+  type ReviewAvailabilityRecord,
   type ReviewMode,
   type ReviewRecord,
   type TaskContract,
@@ -59,7 +61,7 @@ async function restrictReviewerSession(ctx: any, sessionID: string): Promise<boo
 }
 
 function reviewTimeoutMs(mode: ReviewMode): number {
-  return mode === "audit" ? 4 * 60_000 : 8 * 60_000
+  return mode === "audit" ? 90_000 : 180_000
 }
 
 function extractJsonObject(text: string): unknown {
@@ -329,7 +331,7 @@ export const taskContractCapability: Capability = {
       editor.add({
         name: "request_review",
         description:
-          "Request one independent final review round in a fresh child session (frontier profile, read-only evidence auditor, compact packet from the active Task Contract). Verification must already have run for this revision: the reviewer audits semantic completeness and evidence sufficiency, never repeats broad tests/builds/typechecks, and may use only bounded targeted spot-checks for a concrete uncertainty. Each call creates a new session; review sessions are never resumed. Max two stored rounds per task; invalid output and timeouts store nothing and consume no round.",
+          "Request one independent final review attempt in a fresh child session (frontier profile, read-only evidence auditor, compact packet from the active Task Contract). Verification must already have run for this revision. Review uses a dedicated bounded runner (audit 90s, deep 180s); timeout returns structured reviewStatus=unavailable, stores no review round, and must not trigger an automatic retry. Max two stored reject/correction rounds per task.",
         input: {
           type: "object",
           properties: {
@@ -400,6 +402,7 @@ export const taskContractCapability: Capability = {
               latencyMs: routing.latencyMs ?? null,
             },
           })
+          await state.remove(reviewAvailabilityKey(sessionID))
           if (routing.mode === "none") {
             return {
               content: JSON.stringify(
@@ -438,9 +441,52 @@ export const taskContractCapability: Capability = {
           const permissionsApplied = await restrictReviewerSession(ctx, child.id)
           const startedAt = Date.now()
           try {
-            const text = await runChildTask(ctx.session, child.id, packet, {
-              timeoutMs: reviewTimeoutMs(routing.mode),
-            })
+            const run = await runReview(ctx.session, child.id, packet, reviewTimeoutMs(routing.mode))
+            if (run.status === "unavailable") {
+              const unavailable: ReviewAvailabilityRecord = {
+                status: "unavailable",
+                mode: routing.mode,
+                reason: run.reason,
+                stage: run.stage,
+                revision: input.revision,
+                reviewSessionID: child.id,
+                elapsedMs: run.elapsedMs,
+                contractStateToken: contractStateToken(contract),
+                at: Date.now(),
+              }
+              await state.set(reviewAvailabilityKey(sessionID), unavailable)
+              observability?.emit({
+                type: "andmar.review",
+                sessionID,
+                payload: {
+                  action: "timeout",
+                  round,
+                  stored: false,
+                  roundConsumed: false,
+                  mode: routing.mode,
+                  reason: run.reason,
+                  stage: run.stage,
+                  durationMs: run.elapsedMs,
+                },
+              })
+              return {
+                content: JSON.stringify(
+                  {
+                    stored: false,
+                    roundConsumed: false,
+                    reviewStatus: "unavailable",
+                    mode: routing.mode,
+                    reason: run.reason,
+                    stage: run.stage,
+                    elapsedMs: run.elapsedMs,
+                    completionPolicy: routing.mode === "audit" ? "evidence-gate" : "review-required",
+                  },
+                  null,
+                  2,
+                ),
+              }
+            }
+            const text = run.text
             if (text === undefined) {
               observability?.emit({
                 type: "andmar.review",
@@ -525,23 +571,6 @@ export const taskContractCapability: Capability = {
               ),
             }
           } catch (error) {
-            if (error instanceof ChildSessionTimeoutError) {
-              observability?.emit({
-                type: "andmar.review",
-                sessionID,
-                payload: {
-                  action: "timeout",
-                  round,
-                  stored: false,
-                  roundConsumed: false,
-                  durationMs: Date.now() - startedAt,
-                },
-              })
-              return {
-                content:
-                  `review timeout: ${error.message}; nothing was stored and no round was consumed. Do not rerun broad verification. Re-request once with the same revision and a concise exact-revision verificationSummary; if review times out again, report the reviewer as unavailable instead of looping.`,
-              }
-            }
             observability?.emit({
               type: "andmar.review",
               sessionID,

@@ -19,6 +19,7 @@ AndMar AI uses OpenCode V2 plugin storage for operational facts. This state is d
 | `intake-trace/<timestamp>-<rand>` | `intake` | `andmar_intake_trace` queries | max 20 entries, oldest pruned first |
 | `task-contract/<sessionID>` | `task-contract` | `task-contract` (writes); `lifecycle` (read-only gate scan) | one active contract per session; `active` → `completed`/`blocked`; unbounded, no pruning yet |
 | `task-contract-review/<sessionID>/<round>` | `task-contract` | `task-contract` (writes); `lifecycle` (read-only gate scan) | max 2 rounds per task; a new round always uses a new child session; unbounded, no pruning yet |
+| `task-contract-review-availability/<sessionID>` | `task-contract` | `task-contract` (writes); `lifecycle` (read-only gate read) | one current-revision review-unavailability marker; cleared on every new review request; unbounded, no pruning yet |
 
 ### `runtime/last-start`
 
@@ -71,6 +72,16 @@ One independent review record per round (`round`, fresh `reviewSessionID`,
 task; every round creates a new child session and review sessions are never
 resumed, so a correction is always judged from a fresh session. Invalid
 reviewer output is never stored and consumes no round.
+
+### `task-contract-review-availability/<sessionID>`
+
+One review-unavailability marker written when a bounded review attempt exceeds
+its deadline (`status: "unavailable"`, `mode`, `reason`, `stage`, `revision`,
+`reviewSessionID`, `elapsedMs`, `contractStateToken`, `at`). It is bound to
+the exact revision and Task Contract state token, so steering or evidence
+mutations cannot reuse a stale timeout fallback. The marker is cleared at the
+start of every new review request. Stores no transcripts, prompts or source
+code.
 
 ## Worker record
 

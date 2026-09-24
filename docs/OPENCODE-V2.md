@@ -101,10 +101,11 @@ ctx.session.context({ sessionID })       // SessionMessageInfo[]; assistant
 
 `session.prompt` does NOT return the child's answer — it returns the queued
 user prompt (`SessionInboxUser`). To obtain a child's response the pattern
-is `prompt -> wait -> context`, implemented once in
-`src/core/session.ts` (`runChildTask`) and used by `delegation`
-(`andmar_delegate` / `andmar_resume`) and `task-contract`
-(`andmar_request_review`). Before v0.5.x both capabilities serialized the
+is `prompt -> wait -> context`. Delegation uses the generic
+`src/core/session.ts` (`runChildTask`); final review uses the narrower
+`src/core/review-session.ts` (`runReview`) so review has its own short
+wall-clock budget and structured unavailable result without changing worker
+delegation semantics. Before v0.5.x both capabilities serialized the
 prompt result object instead of the child's actual answer; real smoke
 (2026-09-22) exposed this — the reviewer had answered, but the answer was
 unread through the wrong shape.
@@ -126,16 +127,13 @@ capability boundary; if a future typed client rejects it, both
 capabilities must move together. Do not invent a parallel
 session/permission layer around this gap.
 
-### No technical read-only reviewer primitive
+### Review permissions are host-capability dependent
 
-The installed V2 API offers no read-only agent or review-only session
-mode (`SessionCreateInput.permissions` exists but its action/resource
-vocabulary is undocumented for this purpose; guessing it would be
-speculative). The `task-contract` reviewer therefore inherits parent
-permissions like any native child and is constrained by its packet
-instructions to read-only review (inspect, search, run read-only checks;
-never edit, fix, or record). This is documented as a known limitation,
-not as a guarantee.
+The base `SessionCreateInput.permissions` vocabulary is not used as a guessed
+parallel permission model. When the host exposes `ctx.permission.rules`,
+AndMar applies deny-all plus `read`/`glob`/`grep` to the fresh review session.
+Older hosts fall back to packet-enforced read-only behavior and surface
+`permissionsApplied=false`; that fallback is explicitly weaker.
 
 ### Compaction: pull, don't hijack
 
