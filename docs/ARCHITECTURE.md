@@ -6,51 +6,32 @@ AndMar AI should remain a **policy + capability layer** over OpenCode V2.
 
 OpenCode owns execution mechanics. AndMar AI owns a small set of constraints and reusable primitives that are difficult to enforce reliably with prompts alone.
 
-Documentation is part of the architecture contract.
-
-Code, generated manifests, tests, configuration and documentation must describe the same system.
-
-Do not duplicate architectural truth across files when it can be generated or referenced from one canonical source.
-
-A capability change is incomplete when its public contract, state ownership, configuration, integrations or verification behavior changed without the corresponding documentation update.
+Documentation is part of the architecture contract: code, generated manifests,
+tests, configuration and documentation must describe the same system, and no
+architectural rule is restated where it can be generated or referenced from
+one canonical source. The rule itself lives in
+[../AGENTS.md](../AGENTS.md); the document ownership split is §2.3 below.
 
 ```text
-```text
-OpenCode V2
-    ↓
-AndMar primary agent (optional user-facing profile, not a runtime)
-    ↓
-AndMar capabilities (thin policy + evidence primitives)
-    ↓
-OpenCode native execution (shell, tools, sessions, permissions, VCS)
-```
-
-AndMar never replaces OpenCode machinery. Concretely, AndMar does **not**
-replace or re-implement:
-
-```text
-runtime            (sessions, tool execution, event delivery)
-shell              (AndMar runs no subprocesses; it only caps timeouts)
-permissions        (OpenCode permission hooks stay authoritative)
-sessions           (delegation creates native child sessions)
-VCS                (revision capture uses explicit fingerprints, no parallel VCS)
-models             (OpenCode owns the provider/model catalog)
-native execution   (checks run through OpenCode tools; AndMar only observes)
-```
-
 Methodologies / skills / user intent
                 |
                 v
            OpenCode V2
   sessions, tools, permissions, storage,
-   models, VCS, worktrees, event stream
+   models, VCS, worktrees, skill discovery,
+   event stream
                 |
                 v
            AndMar AI
        stable deterministic core
                 |
          capability modules
+                |
+   native OpenCode execution (shell, tools,
+   sessions, permissions, VCS) — unchanged
 ```
+
+AndMar never replaces OpenCode machinery. See §2.4 for the explicit list.
 
 ## 2. What belongs where
 
@@ -67,40 +48,96 @@ Methodologies / skills / user intent
 
 AndMar AI must use these APIs rather than wrap or reproduce them.
 
-### AndMar core
+### Core (`src/core/`)
 
-Only cross-capability contracts:
+Only stable cross-capability primitives:
 
 ```text
 config
-state
-capability loader
+state adapter
+capability loader / setup
 model policy
 generic path matching
-lifecycle primitives
+deterministic lifecycle helpers
+small shared contracts
 ```
 
-The core should be boring. Frequent product features in core indicate a boundary problem.
+The core should be **stable and boring**. Frequent product features in core
+indicate a boundary problem.
+
+> If a normal feature requires modifying `src/core`, first demonstrate why it
+> cannot live in a capability or a skill.
+
+No allowlist or resolver enforces this yet; it is a review rule, not a gate.
+Concretely, ODD, Product Plan, release flows, UI, Herdr, Jev, Lane and
+provider-specific prompts must never land in core.
 
 ### Capabilities
 
-Self-contained OpenCode integrations:
+> **Capability = a generic guarantee integrated into the runtime.**
+
+Capabilities live in one folder each, `src/capabilities/<id>/`, and register
+their own OpenCode hooks and tools during `setup`.
+
+Valid examples of the kind of problem a capability solves:
+
+- observing executions;
+- durable operational state;
+- exact-revision evidence;
+- parent/child ownership;
+- completion gates.
+
+Current inventory (generated, never hand-edited):
+[CAPABILITIES.md](CAPABILITIES.md). Per-capability behavior:
+[ANDMAR-AI-CAPABILITIES.md](ANDMAR-AI-CAPABILITIES.md). Integration rules:
+[CAPABILITY-CONTRACT.md](CAPABILITY-CONTRACT.md).
+
+Future examples such as `workflow`, `context-projection` or
+`worktree-provider` are not part of the current MVP. The narrow `jev-decisions`
+extension point is implemented as the `intake` pilot (typed Jev answers only,
+no free text).
+
+### Skills
+
+> **Skill = knowledge or procedure that the model loads through OpenCode's
+> native mechanism.**
+
+A skill may contain references, scripts and assets. It carries no runtime
+guarantees: it does not register hooks, does not own state and does not gate
+completion.
+
+**Having scripts does not turn a skill into a capability.**
+
+### Scripts
+
+> **Script = deterministic specialized automation, invoked by a skill or by
+> repository tooling.**
+
+Scripts run with the repository's normal tooling (`scripts/*.mjs`, package
+scripts). They are the right home for deterministic work that needs no hook,
+no durable state and no permission boundary.
+
+### Rule: capability vs skill
 
 ```text
-system
-routing
-delegation
-lifecycle
-verification
-intake
-task-contract
+Can it be solved correctly with skill + script, using the generic
+guarantees that already exist?
+
+    Yes -> do not create a capability.
+
+    No: it needs runtime integration, state, hooks, ownership or a gate
+        -> evaluate a capability.
 ```
 
-Future examples may include `workflow`, `context-projection`, or `worktree-provider`, but they are not part of the current MVP. The narrow `jev-decisions` extension point is now implemented as the `intake` pilot (typed Jev answers only, no free text).
+The same test exists in executable form in
+[ANDMAR-AI-CAPABILITIES.md](ANDMAR-AI-CAPABILITIES.md) ("Boundary test for a
+new capability"); if a candidate capability needs broad core edits, the
+boundary is wrong.
 
 ### Methodologies
 
-ODD, Product Plan, request-refiner and future skills are consumers. They are not runtime infrastructure.
+ODD, Product Plan, request-refiner and future skills are **consumers** of
+primitives. They are not runtime infrastructure.
 
 ```text
 ODD
@@ -112,7 +149,7 @@ ODD
 
 AndMar core must not know the name `ODD`.
 
-## 2.1 Primary-agent surface
+### 2.1 Primary-agent surface
 
 The optional `AndMar` Markdown agent is a user-facing OpenCode profile, not a capability and not another runtime.
 
@@ -124,7 +161,7 @@ AndMar -> native OpenCode execution + harness completion policy
 
 The agent may call `routing`, `verification`, `lifecycle`, and `delegation` primitives, but the actual implementation work remains native OpenCode tool execution. Removing the agent must not break the harness capabilities, and removing the harness must not alter Build/Plan behavior.
 
-## 2.2 Current request flow (real contracts, not a future Workflow)
+### 2.2 Current request flow (real contracts, not a future Workflow)
 
 For a non-trivial request handled by the `AndMar` agent today:
 
@@ -160,6 +197,53 @@ Completion (`andmar_completion_gate`: exact-revision evidence +
 There is intentionally no generic Workflow engine between these steps: each
 transition is an explicit primitive call by the agent, and the completion gate
 is the only composition point. See D-015 for why Workflow stays deferred.
+
+### 2.3 Documentation ownership
+
+Documentation ownership follows the same boundary rule as code:
+
+```text
+capability owns its behavioral documentation
+generated index owns inventory
+overview/architecture only explain the system
+```
+
+- Behavioral, per-capability truth lives with the capability's canonical
+  section in [ANDMAR-AI-CAPABILITIES.md](ANDMAR-AI-CAPABILITIES.md) (enforced
+  by `check-architecture.mjs`) and in that topic's specialized document.
+- The inventory (`id`, `version`, `description`, tools) is generated into
+  [CAPABILITIES.md](CAPABILITIES.md) and is never hand-edited.
+- [OVERVIEW.md](OVERVIEW.md) explains the product and the flow;
+  this document explains boundaries and data flow. Neither carries
+  per-capability detail.
+- Everything else links to the canonical source instead of restating it.
+
+Moving behavioral documentation physically into each capability folder is a
+deliberate future decision, not part of the current layout.
+
+### 2.4 Not duplicating OpenCode
+
+AndMar does **not** implement, and must not build:
+
+```text
+skill registry          (OpenCode owns discovery, registry, loading,
+                         progressive disclosure)
+tool registry           (tools register via ctx.tool.transform; OpenCode
+                         owns the namespace and execution)
+permissions             (OpenCode permission hooks stay authoritative;
+                         children inherit the parent's rules)
+session runtime         (delegation creates native child sessions)
+provider/model catalog  (AndMar stores ModelRef values already valid in
+                         OpenCode, and never guesses an ID)
+VCS                     (revision capture uses explicit fingerprints;
+                         there is no parallel VCS layer)
+worktrees               (the MVP does not override worktrees; a future
+                         adapter would use ctx.worktree.transform())
+```
+
+AndMar also runs no subprocesses of its own: checks and mutations go through
+native OpenCode shell/tools, and AndMar only observes, records and gates. See
+[OPENCODE-V2.md](OPENCODE-V2.md) for the API assumptions behind each line.
 
 ## 3. Determinism boundary
 
@@ -253,18 +337,14 @@ Ownership is recorded under the parent. Resume is rejected when the child does n
 
 ## 6. Operational state
 
-Operational facts use `ctx.storage`:
+Operational facts use `ctx.storage`. The key families, their owners, readers
+and lifecycle are enumerated in [STATE.md](STATE.md) — that document is
+canonical for state ownership; this section only fixes the boundary:
 
 ```text
-runtime/...
-workers/<parent>/<child>
-worker-by-session/<child>
-journal/...
-verification-evidence/<executionId>
-verification/<revision>/<check>
-intake-trace/<timestamp>-<rand>
-task-contract/<sessionID>
-task-contract-review/<sessionID>/<round>
+runtime/...                      workers/...
+journal/...                      verification*/...
+intake-trace/...                 task-contract*/...
 ```
 
 This is not long-term semantic memory. It is durable execution state.
@@ -311,6 +391,10 @@ code patterns -> documentation patterns
 
 The harness identifies possible staleness; the LLM/human decides the content to write. This avoids auto-generating low-value documentation.
 
+The option shape, defaults and matcher syntax live in
+[CONFIGURATION.md](CONFIGURATION.md); the mapping-driven rule is in
+[../AGENTS.md](../AGENTS.md).
+
 ## 9. Versioning integrity
 
 The MVP only computes likely impact:
@@ -320,6 +404,8 @@ none | patch | minor | major
 ```
 
 It intentionally does not mutate `package.json`, create tags or publish releases. That belongs in a future release capability only if repeated use demonstrates the need.
+
+The policy and release procedure live in [VERSIONING.md](VERSIONING.md).
 
 ## 10. Scalability mechanism
 

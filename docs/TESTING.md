@@ -1,12 +1,18 @@
 # Real-world testing
 
+**Scope:** how to install the development build for real use, the test matrix
+that should drive the next capability, and the current limitations. The
+system-level explanation is [OVERVIEW.md](OVERVIEW.md); the architecture is
+[ARCHITECTURE.md](ARCHITECTURE.md).
+
 Base snapshot: `JhonMA82/andmar-ai` main at commit `2f50effef624570b6e686d71caa6d430f77a467f`, plus the intake pilot, the `AndMar` primary agent, and the verification-evidence changes documented in the changelog.
 
 This package is intentionally at the point where real use should drive the next capability.
 
 ## Install the development build
 
-From this repository:
+The canonical install/uninstall steps live in
+[../README.md](../README.md) "Quick start":
 
 ```bash
 bun install
@@ -18,22 +24,11 @@ opencode service restart
 
 `bun run doctor` is read-only and fails if OpenCode v2 is missing, the plugin link points elsewhere, the agent differs from this checkout, or the plugin API dependency is not exactly pinned.
 
-The installer does not edit your OpenCode JSON configuration. It uses OpenCode V2's global discovery locations:
-
-```text
-~/.config/opencode/plugins/andmar-ai -> this repository
-~/.config/opencode/agents/andmar.md
-```
+`install:dev` does not edit your OpenCode JSON configuration; it uses OpenCode
+V2's global discovery locations and `uninstall:dev` only removes what it still
+owns.
 
 Start OpenCode in the project you want to test and use **Tab** to select the `AndMar` primary agent. `Build` and `Plan` remain available and unchanged.
-
-To remove this development install:
-
-```bash
-bun run uninstall:dev
-```
-
-The uninstaller only removes the plugin symlink when it still points to this checkout, and only removes the agent file when it still matches the repository copy.
 
 ## What the first tests should answer
 
@@ -58,19 +53,15 @@ For every scenario record:
 
 ## Current limitation being measured
 
-AndMar AI v0.4.0 has durable verification and child-worker state, but it does **not** yet have a project-level active-task/workflow record.
+AndMar AI has durable verification, contract and child-worker state, but it does **not** yet have a project-level active-task/workflow record.
 
 The session-scoped Task Contract (`andmar_task_contract`) now covers the
 active-task part for the current session: goal, requirements, constraints,
 blockers and review rounds survive restarts via plugin storage, and
-`status` re-projects them compactly after compaction. What is still
-deliberately missing is cross-session takeover: `andmar_resume`
-intentionally enforces parent-session ownership for delegated child
-sessions, and review sessions are never resumed at all. A brand-new
-parent session therefore must not silently take ownership of an old
-child.
-
-`andmar_resume` intentionally enforces parent-session ownership for delegated child sessions. A brand-new parent session therefore must not silently take ownership of an old child.
+`status` re-projects them compactly after compaction. What is still deliberately missing is cross-session takeover:
+`andmar_resume` intentionally enforces parent-session ownership for delegated
+child sessions, and review sessions are never resumed at all. A brand-new
+parent session therefore must not silently take ownership of an old child.
 
 If restart/session continuity becomes a repeated real-world friction, that is evidence for the first minimal `workflow` capability:
 

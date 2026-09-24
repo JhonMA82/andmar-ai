@@ -1,34 +1,132 @@
 # AndMar AI
 
-**Deterministic-first harness for OpenCode V2.**
+**A deterministic-first harness for OpenCode V2.**
 
-AndMar AI is named after **Andrea + Mario**. The name is intentionally broader than “AndMar Harness”: the harness is the first product, while the name can survive future capabilities without renaming the project.
+AndMar AI is a thin harness that sits on top of OpenCode V2 and adds only the
+guarantees that are not wise to leave to an agent's memory or discipline. It is
+not an agent runtime, not a general agent framework, not a replacement for
+OpenCode, not a port of Gentle-AI, not a workflow engine and not a memory
+platform.
 
-> Status: **MVP** — intentionally small. The goal is to establish stable extension points and runtime invariants before adding more automation.
+The name is a compound of **Andrea + Mario**; it is deliberately broader than
+"AndMar Harness", because the harness is the first product.
 
-## Why this exists
+> Status: **MVP** — intentionally small. Stable extension points and runtime
+> invariants first, more automation only when evidence demands it.
 
-AndMar AI is not another agent runtime and it is not a port of Gentle-AI. OpenCode V2 already owns sessions, tools, permissions, storage, model catalogs, hooks, VCS and worktrees. AndMar AI adds a thin policy/capability layer for the frictions that are better solved outside prompts:
+## The problem it solves
 
-- deterministic model routing so trivial work does not automatically consume frontier models;
-- durable operational state that survives context changes;
-- bounded child-session delegation;
-- verification evidence tied to an exact revision;
-- documentation and versioning impact checks;
-- capability modules that scale without editing the core in many places.
+OpenCode already executes well. What repeatedly breaks is consistency between
+the code that changed and everything that should have changed with it:
 
-## Design rule
+- code ends up correct while the repository is left inconsistent;
+- documentation that belonged to the change is forgotten;
+- version and changelog obligations are reported, then dropped;
+- verification is claimed for work done before the last edit;
+- the user's real requirements disappear during execution;
+- review is skipped, or run without proportion to risk;
+- delegation loses ownership or quietly raises authority.
 
-The project follows this order of preference:
+AndMar makes those specific failures structurally hard instead of merely
+discouraged. Everything else stays with OpenCode.
 
-1. **Deterministic code** — schemas, metadata, Git/VCS state, hashes, events and explicit rules.
-2. **Small semantic decision model** — Jev, only when a rule cannot decide cleanly.
-3. **Frontier model** — reasoning, design, hard debugging, security and genuinely ambiguous work.
+## Philosophy
 
-The `intake` pilot implements step 2 for one narrow purpose: deciding whether
-a natural-language request is sufficient or needs an Internal Task Brief
-before execution. See [`docs/INTAKE.md`](docs/INTAKE.md).
+```text
+deterministic first
+OpenCode first
+minimal core
+capabilities only for runtime guarantees
+skills for knowledge/procedures
+scripts for deterministic specialized automation
+measured friction before features
+progressive disclosure
+freeze when the objective is satisfied
+```
 
+Concretely, decisions are made in this order:
+
+1. **Deterministic code** — schemas, metadata, Git/VCS state, hashes, events
+   and explicit rules.
+2. **Small semantic decision model** — Jev, only where a rule cannot decide
+   cleanly. The `intake` pilot is the one implemented slice.
+3. **Frontier model** — reasoning, design, hard debugging, security and
+   genuinely ambiguous work.
+
+## What AndMar does not do
+
+- It does not replace OpenCode's sessions, tools, permissions, storage, VCS,
+  worktrees, model catalog or skill discovery.
+- It does not implement general semantic memory or a vector store.
+- It does not implement an agent swarm or an agent taxonomy.
+- It does not embed methodologies such as ODD; those are consumers of
+  primitives, never runtime infrastructure.
+- It does not know concrete technology stacks.
+- It does not create a capability when a skill plus a script can solve the
+  problem correctly.
+- It does not aim at feature parity with Gentle or any other harness.
+
+These are omissions by design, not missing TODOs. The full list of deferred
+items lives in [docs/MVP-SCOPE.md](docs/MVP-SCOPE.md).
+
+## Short flow of a task
+
+```text
+request
+  ↓
+understand obligations
+  ↓
+execute with OpenCode
+  ↓
+verify exact revision
+  ↓
+docs / version obligations
+  ↓
+proportional review when needed
+  ↓
+completion only when the repository is consistent
+```
+
+The step-by-step version, including which steps are conditional, is
+[docs/OVERVIEW.md](docs/OVERVIEW.md) §3.
+
+## Quick start
+
+Local development install from this checkout:
+
+```bash
+bun install
+bun run check
+bun run install:dev
+bun run doctor
+opencode service restart
+```
+
+`install:dev` uses OpenCode V2's global discovery locations and does **not**
+rewrite your `opencode.json(c)`:
+
+```text
+~/.config/opencode/plugins/andmar-ai -> this checkout
+~/.config/opencode/agents/andmar.md
+```
+
+`bun run doctor` validates the OpenCode major version, plugin link, installed
+agent and the pinned plugin-API dependency before the test.
+
+Start OpenCode in any project and use **Tab** to select the `AndMar` primary
+agent. `Build` and `Plan` remain available and unchanged. To remove only the
+development links owned by this checkout:
+
+```bash
+bun run uninstall:dev
+```
+
+For explicit plugin configuration or model-profile mappings, see
+[`examples/opencode.jsonc`](examples/opencode.jsonc). Missing profiles inherit
+the parent session model rather than guessing an ID.
+
+Full real-world test flow: [docs/TESTING.md](docs/TESTING.md).
+All options and environment variables: [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 ## Primary agents: Build, Plan, AndMar
 
@@ -40,144 +138,36 @@ Plan   -> analysis/planning with restricted mutation
 AndMar -> OpenCode development + AndMar routing, evidence and completion rules
 ```
 
-The repository ships a model-agnostic `AndMar` primary agent in `assets/agents/andmar.md`. It uses native OpenCode tools for normal development and calls the existing AndMar capabilities only where they add deterministic value. It does not add another agent runtime.
-
-For local development, the same agent is also present under `.opencode/agents/andmar.md`, so this repository can discover it project-locally.
-
-
-## MVP capabilities
-
-### `system`
-Adds lightweight status, a bounded shell timeout and a durable tool-execution journal.
-
-### `routing`
-Routes tasks to a model **profile** rather than a concrete model:
-
-- `fast`
-- `standard`
-- `frontier`
-
-Workflows and skills never need to know vendor/model names. You map profiles to models once in plugin options.
-
-### `delegation`
-Creates native OpenCode child sessions with:
-
-- parent/child ownership;
-- inherited authority;
-- max depth;
-- model-profile selection;
-- durable worker handles;
-- resume instead of rebuilding context;
-- bounded result returned to the parent.
-
-### `lifecycle`
-Provides deterministic checks for:
-
-- documentation likely affected by changed paths;
-- version impact (`none`, `patch`, `minor`, `major`);
-- completion evidence bound to the exact current revision.
-
-### `verification`
-Records revision-bound verification receipts (`tests`, `lint`, `typecheck`, `build`, `custom`) backed by observed execution evidence.
-
-The capability never executes commands itself: checks run through native OpenCode shell/tools (preserving permissions), AndMar observes each real outcome via the stable `execute.after` hook into `verification-evidence/<executionId>` (minimal metadata only: session, tool, command, status, timestamp, optional digest), and `andmar_record_receipt` resolves the compatible execution internally by current session plus normalized command — the agent never supplies a `callID`/`executionId`. `passed: true` alone is never evidence; failed executions can never become passed receipts; other-session or different-command executions are refused. Any revision change invalidates earlier receipts, and the completion gate cannot be formally satisfied while required verification is missing.
-
-### `intake`
-Request-refinement pilot: deterministic-first classification with one
-structured Jev decision (`typesafe/jev-1.13` by default) over six questions
-(`task_kind`, `needs_refinement`, `specification_sufficiency`, `risk`,
-`external_contract`, `product_decision_missing`). Trivial requests bypass Jev;
-missing key, timeout, failure, or invalid payload degrades to an explicit
-`fallback` that never blocks. Structured dev trace via `andmar_intake_trace`
-(disabled by default). See [`docs/INTAKE.md`](docs/INTAKE.md).
-
-### `task-contract`
-Behavioral completion core: one small Task Contract per non-trivial task
-(goal, explicit requirements, constraints, requirement evidence) plus
-bounded independent review. `andmar_task_contract` creates, projects,
-updates, evidences, steers, and closes the contract; `andmar_request_review`
-runs one adversarial review round per fresh frontier child session (max two
-rounds). `andmar_completion_gate` enforces verification, then contract
-requirements, then review, then docs/version — so green tests alone can
-never complete a task with unmet user requirements.
-
-## Architecture in one picture
-
-```text
-User / methodology / skill
-          |
-          v
-      OpenCode V2
- sessions | tools | perms | storage | VCS | worktrees
-          |
-          v
-     AndMar AI core
-  config | state | contracts
-          |
-          v
-   generated capability manifest
-      /       |       |        |         \            \
- system   routing  delegation lifecycle verification intake task-contract
-             |          |          |            |          |         |
-         model tier   workers   docs/version/  check    request   obligations
-                                completion     receipts refinement  + review
-                                gates
-```
-
-The core does not know ODD, Product Plan, Lane or Herdr. Request-refinement and future skills consume the `intake`/`route` primitives; Jev lives only inside the `intake` capability, never in core.
-
-## Installation for local development
-
-For real-world testing from this checkout:
-
-```bash
-bun install
-bun run check
-bun run install:dev
-bun run doctor
-opencode service restart
-```
-
-`install:dev` uses OpenCode V2's global discovery locations and does **not** rewrite your `opencode.json(c)`:
-
-```text
-~/.config/opencode/plugins/andmar-ai -> this checkout
-~/.config/opencode/agents/andmar.md
-```
-
-`bun run doctor` validates the OpenCode major version, plugin link, installed agent, and exact plugin-API dependency before the test.
-
-Start OpenCode in any project and use **Tab** to select the `AndMar` primary agent. `Build` and `Plan` remain available.
-
-To remove only the development links/files owned by this checkout:
-
-```bash
-bun run uninstall:dev
-```
-
-If you prefer explicit plugin configuration or need model-profile mappings, see [`examples/opencode.jsonc`](examples/opencode.jsonc). Missing model profiles inherit the parent session model rather than guessing an ID.
+The repository ships a model-agnostic `AndMar` primary agent in
+`assets/agents/andmar.md` (also discoverable project-locally under
+`.opencode/agents/andmar.md`). It uses native OpenCode tools for normal
+development and calls AndMar primitives only where they add deterministic
+value.
 
 ## Tools exposed by the MVP
 
-The namespace is `andmar`:
+Namespace `andmar`:
 
-- `andmar_status` — harness/runtime state.
-- `andmar_route` — deterministic model-profile decision.
-- `andmar_delegate` — bounded child-session work.
-- `andmar_resume` — continue a child by handle.
-- `andmar_change_impact` — docs/version impact.
-- `andmar_completion_gate` — exact-revision completion check.
-- `andmar_record_receipt` — store one verification check outcome for an exact revision.
-- `andmar_suggest_checks` — suggest verification commands from deterministic project signals.
-- `andmar_verify_revision` — check stored receipts against the exact current revision.
-- `andmar_intake` — classify one request as sufficient or needing refinement.
-- `andmar_intake_trace` — list recent structured intake decisions.
-- `andmar_task_contract` — create, project, update, evidence, steer, or close the active Task Contract.
-- `andmar_request_review` — one routed (`none | audit | deep`) review round in a fresh read/search-only child session.
+| Tool | Purpose |
+|---|---|
+| `andmar_status` | harness/runtime state |
+| `andmar_route` | deterministic model-profile decision |
+| `andmar_delegate` / `andmar_resume` | bounded child-session work and resume by handle |
+| `andmar_change_impact` | documentation and version impact |
+| `andmar_suggest_checks` | suggest verification commands from project signals |
+| `andmar_record_receipt` / `andmar_verify_revision` | revision-bound verification evidence |
+| `andmar_completion_gate` | exact-revision completion check |
+| `andmar_intake` / `andmar_intake_trace` | request classification and its bounded dev trace |
+| `andmar_task_contract` | create, project, update, evidence, steer or close the Task Contract |
+| `andmar_request_review` | one routed (`none \| audit \| deep`) independent review round |
 
-Names are primitives, not methodologies. A future ODD skill can use these without AndMar AI knowing what ODD is.
+Names are primitives, not methodologies: a future ODD skill can use them
+without AndMar knowing what ODD is. The generated, authoritative
+id/version/tool inventory is [docs/CAPABILITIES.md](docs/CAPABILITIES.md);
+per-capability behavior is
+[docs/ANDMAR-AI-CAPABILITIES.md](docs/ANDMAR-AI-CAPABILITIES.md).
 
-## Model-routing examples
+## Model routing in one example
 
 ```text
 "Change button text"             -> fast
@@ -188,119 +178,50 @@ Names are primitives, not methodologies. A future ODD skill can use these withou
 "Architecture/migration"         -> frontier
 ```
 
-A task may request a stronger profile. It may **not** request a profile lower than the deterministic minimum.
-
-Escalation is monotonic:
-
-```text
-fast -> standard -> frontier
-```
-
-There is no automatic downgrade loop.
-
-## Optional semantic observability
-
-AndMar can emit six content-free semantic signals to a compatible local
-`POST /events` endpoint such as
-`JhonMA82/opencodev2-observability`:
-
-```text
-andmar.routing
-andmar.delegation
-andmar.verification
-andmar.completion
-andmar.contract
-andmar.review
-```
-
-This is a best-effort sink, not a dependency. If the observability server is
-offline, AndMar continues normally. Events contain structured outcome metadata
-only — never prompts, task text, commands, code, tool outputs or reasoning.
-The default endpoint is `http://localhost:4000`; set
-`ANDMAR_OBSERVABILITY_ENABLED=0` to disable it.
-
-## Documentation integrity
-
-Documentation mappings are data, not hard-coded `if` statements:
-
-```jsonc
-{
-  "documentation": {
-    "rules": [
-      {
-        "id": "public-api",
-        "code": ["src/api/**"],
-        "docs": ["docs/api/**", "README.md"]
-      }
-    ]
-  }
-}
-```
-
-If `src/api/users.ts` changes without a mapped documentation file changing, the lifecycle capability reports the documentation as potentially stale. The agent still writes the documentation; code only detects the obligation.
-
-## Adding a capability
-
-Create one folder:
-
-```text
-src/capabilities/my-capability/index.ts
-```
-
-Export a `Capability`, then run:
-
-```bash
-bun run generate
-```
-
-The manifest is generated automatically. You should not need to edit the core, root plugin, model policy or other capabilities.
-
-See [`docs/EXTENDING.md`](docs/EXTENDING.md).
+Work is routed to a **profile** (`fast`, `standard`, `frontier`), never to a
+concrete model ID; profiles map to models once in configuration. A task may
+request a stronger profile, never a weaker one than the deterministic minimum,
+and escalation is monotonic with no downgrade loop. Structured examples live in
+[`examples/task-routing.md`](examples/task-routing.md).
 
 ## Checks
-
-The project includes pure deterministic tests for routing, path mapping, semver impact, exact-revision completion and verification receipts.
 
 ```bash
 bun run check
 ```
 
-The repository uses Bun/OpenCode at runtime, but the deterministic core is intentionally plain TypeScript and has no framework dependency.
+Runs manifest generation, the architecture check, typecheck and the pure
+deterministic test suite (routing, path mapping, semver impact, exact-revision
+completion, verification receipts, task contract). The deterministic core is
+plain TypeScript with no framework dependency.
 
-## Deliberately not in the MVP
+## Next reading
 
-- no custom agent runtime;
-- no taxonomy of 10–20 agents;
-- no complex workflow engine yet;
-- no vector memory;
-- no Jev free-text generation (intake pilot answers typed questions only);
-- no file leases;
-- no custom dashboard;
-- no autonomous release/publish pipeline;
-- no shell shortcut that bypasses OpenCode permissions;
-- no Pi/Gentle compatibility layer.
+Start here:
 
-These are omissions by design, not missing TODOs.
+1. [`docs/OVERVIEW.md`](docs/OVERVIEW.md) — the problem, the components, the
+   real flow of a task, and how skills and capabilities relate.
+2. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — boundaries, ownership and
+   data flow.
+3. [`docs/CAPABILITIES.md`](docs/CAPABILITIES.md) — generated capability and
+   tool inventory.
 
-## Documentation map
+Then by topic:
 
-- [`AGENTS.md`](AGENTS.md) — mandatory guidance for coding agents.
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system boundaries and data flow.
-- [`docs/CAPABILITY-CONTRACT.md`](docs/CAPABILITY-CONTRACT.md) — canonical contract for adding or changing a capability.
-- [`docs/ANDMAR-AI-CAPABILITIES.md`](docs/ANDMAR-AI-CAPABILITIES.md) — canonical per-capability reference.
-- [`docs/CAPABILITIES.md`](docs/CAPABILITIES.md) — generated objective index (id, version, tools); do not edit manually.
-- [`docs/MVP-SCOPE.md`](docs/MVP-SCOPE.md) — what the current MVP promises and does not promise.
-- [`docs/EXTENDING.md`](docs/EXTENDING.md) — how to add capabilities safely.
-- [`docs/DECISIONS.md`](docs/DECISIONS.md) — architectural decisions and rationale.
-- [`docs/INSPIRATIONS.md`](docs/INSPIRATIONS.md) — patterns extracted from reviewed projects.
-- [`docs/ROADMAP.md`](docs/ROADMAP.md) — evidence-driven expansion path.
-- [`docs/OPENCODE-V2.md`](docs/OPENCODE-V2.md) — V2 API assumptions used by this MVP.
-- [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) — validated plugin options.
-- [`docs/INTAKE.md`](docs/INTAKE.md) — request-refinement pilot, Jev contract, trace.
-- [`docs/STATE.md`](docs/STATE.md) — durable operational state contract.
-- [`docs/VERIFICATION.md`](docs/VERIFICATION.md) — what the verification capability does, in plain language.
-- [`docs/TESTING.md`](docs/TESTING.md) — first real-world test matrix and current limitations.
-- [`docs/VERSIONING.md`](docs/VERSIONING.md) — single-source version/changelog policy.
+- **Extend:** [`docs/CAPABILITY-CONTRACT.md`](docs/CAPABILITY-CONTRACT.md),
+  [`docs/EXTENDING.md`](docs/EXTENDING.md)
+- **Configure:** [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md)
+- **State:** [`docs/STATE.md`](docs/STATE.md)
+- **Verification:** [`docs/VERIFICATION.md`](docs/VERIFICATION.md)
+- **Intake / Jev:** [`docs/INTAKE.md`](docs/INTAKE.md)
+- **Testing:** [`docs/TESTING.md`](docs/TESTING.md)
+- **Versioning:** [`docs/VERSIONING.md`](docs/VERSIONING.md)
+- **Scope and roadmap:** [`docs/MVP-SCOPE.md`](docs/MVP-SCOPE.md),
+  [`docs/ROADMAP.md`](docs/ROADMAP.md)
+- **Rationale and history:** [`docs/DECISIONS.md`](docs/DECISIONS.md),
+  [`docs/INSPIRATIONS.md`](docs/INSPIRATIONS.md)
+- **OpenCode V2 API assumptions:** [`docs/OPENCODE-V2.md`](docs/OPENCODE-V2.md)
+- **Rules for coding agents:** [`AGENTS.md`](AGENTS.md)
 
 ## License
 

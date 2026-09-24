@@ -6,6 +6,10 @@ skill. The integration rules for adding one live in
 [CAPABILITY-CONTRACT.md](CAPABILITY-CONTRACT.md); the objective id/version/tool
 index is generated in [CAPABILITIES.md](CAPABILITIES.md).
 
+**Scope:** behavior and boundary tests per capability. System-level
+explanation lives in [OVERVIEW.md](OVERVIEW.md) and
+[ARCHITECTURE.md](ARCHITECTURE.md); this document does not restate them.
+
 ## Principles
 
 AndMar AI is capability-oriented, not agent-oriented. OpenCode V2 owns execution, sessions, permissions, models, VCS, worktrees, and UI. AndMar adds small reusable constraints and stateful primitives only where prompts are not reliable enough.

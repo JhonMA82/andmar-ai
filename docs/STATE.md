@@ -1,5 +1,9 @@
 # Durable State
 
+**Scope:** state key families, their owners, readers and lifecycle. The
+ownership *rules* are [CAPABILITY-CONTRACT.md](CAPABILITY-CONTRACT.md) §3; the
+state-vs-context-vs-memory boundary is [ARCHITECTURE.md](ARCHITECTURE.md) §6.
+
 AndMar AI uses OpenCode V2 plugin storage for operational facts. This state is deliberately small and JSON-serializable. It is durable execution state, not semantic memory, history, or context.
 
 ## Key families and owners
@@ -94,11 +98,8 @@ reviewer output is never stored and consumes no round.
 
 ## State rules
 
-- A capability owns the keys it writes; another capability may read foreign
-  keys only through documented helpers and must never write them.
-- Do not store full transcripts; OpenCode owns session history.
-- Do not store semantic project memory here.
-- Do not store secrets unless OpenCode's storage contract explicitly makes that appropriate and a feature requires it.
-- Do not store full tool inputs/outputs; digests and truncation only.
-- New persistent shapes should include an obvious migration strategy before changing existing keys.
-- Do not introduce a migration framework until the project has real persisted-state migrations to manage.
+Ownership, permitted reads, prohibited content and migration expectations are
+defined once in [CAPABILITY-CONTRACT.md](CAPABILITY-CONTRACT.md) §3 and are not
+restated here. In short: a capability owns the keys it writes, foreign keys are
+read-only through documented helpers, and transcripts, semantic memory, secrets
+and full tool inputs/outputs never go into these keys.
