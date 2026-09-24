@@ -255,7 +255,8 @@ known limitations.
   called/available flags, source, reason, latency, raw typed answers, and the
   refinement outcome. Full request text only with `ANDMAR_INTAKE_TRACE_CONTENT=1`.
 - **Configuration:** capability-local `intake.model` / `intake.timeoutMs`
-  (kept out of core so core stays free of Jev/OpenRouter specifics) plus
+  (model resolution stays capability-local; `src/core/jev-client.ts` holds
+  only the shared Decisions transport reused by review routing) plus
   environment: `OPENROUTER_API_KEY` (required for live Jev, never stored or
   logged), `ANDMAR_INTAKE_MODEL`, `ANDMAR_INTAKE_TIMEOUT_MS`,
   `ANDMAR_INTAKE_TRACE`, `ANDMAR_INTAKE_TRACE_CONTENT`. Plugin options win over
@@ -307,8 +308,11 @@ known limitations.
   a requirement; `steer` appending new obligations without removing;
   `close` marking `completed`/`blocked`); `andmar_request_review` (input:
   `revision` plus bounded `changedPaths`/`verificationSummary`/
-  `knownLimitations`; builds a compact adversarial packet from the stored
-  contract and runs it in a fresh frontier-profile child session).
+  `knownLimitations`; deterministic routing sets a `none | audit | deep`
+  review floor, `mode=none` returns `skipped` and stores nothing, otherwise a
+  sanitized compact packet (no receipt/execution identifiers) runs in a fresh
+  frontier-profile child session restricted to `read`/`glob`/`grep` when the
+  host exposes `ctx.permission.rules`).
 - **Produces:** the session's active contract and up to two review records.
   **Consumes:** routing-adjacent triviality/review-need helpers from core.
 - **Owns:** `task-contract/<sessionID>`,
@@ -319,13 +323,19 @@ known limitations.
   records (`round`, fresh `reviewSessionID`, `revision`, `verdict`,
   `findings`, `notes`). No transcripts, chain-of-thought, prompts, or
   source code.
-- **Configuration:** none of its own; reviewer model is the configured
+- **Configuration:** reviewer model is the configured
   `frontier` profile or the parent session model (never a hard-coded id).
+  Review routing reads `ANDMAR_REVIEW_MODEL` / `ANDMAR_REVIEW_TIMEOUT_MS`
+  (fail open; see [CONFIGURATION.md](CONFIGURATION.md)).
 - **External contracts:** `ctx.session.get/create/prompt` (same native
   pattern as `delegation`; verified against the installed
   `@opencode/plugin@2.0.4` types — see [OPENCODE-V2.md](OPENCODE-V2.md) for
   the read-only and compaction findings).
-- **Interaction:** `lifecycle`'s completion gate reads the contract and
+- **Interaction:** review routing is deterministic first (`minimumReviewMode`:
+  trivial/non-code `none`, security/migration/architecture `deep`, ordinary
+  code-changing work `audit`); one Jev call in the `audit` gray zone may only
+  escalate to `deep` and never blocks (fallback is the deterministic
+  minimum). `lifecycle`'s completion gate reads the contract and
   reviews through core key helpers (never writes them); `delegation`
   ownership is untouched (review sessions are not worker records, so
   `andmar_resume` denies them).
@@ -334,21 +344,28 @@ known limitations.
   without reason refused; steering a `completed` contract refused; review
   without a contract refused; review on a `completed` contract refused (operational
   continuations must not re-review approved work); rounds beyond two return `blocked`; invalid
-  reviewer output is reported and consumes no round. Trivial tasks skip the
+  reviewer output is reported and consumes no round; child timeouts store
+  nothing and consume no round (4 min `audit`, 8 min `deep`). Trivial tasks skip the
   contract entirely (proportional escape hatch).
 - **Security / trust:** review sessions inherit parent permissions like any
-  native child and are additionally prompt-constrained to read-only review
-  (no technical read-only primitive exists in the installed V2 API);
-  reviewers never edit or fix. Evidence stores pointers, never content.
+  native child and are additionally constrained to read/search-only review:
+  deny-all plus `read`/`glob`/`grep` session rules via
+  `ctx.permission.rules` when the host exposes it (otherwise prompt-only and
+  the result surfaces `permissionsApplied=false`);
+  reviewers never edit or fix. Reviewer packets and Jev routing state redact
+  opaque hashes and `receipt/...`/`execution/...`/`verification/...` internal
+  references. Evidence stores pointers, never content.
 - **Testing contract:** deterministic unit tests for creation, steering,
   pending/evidence/blocked/stale gates, review validation, freshness, round
   cap, and trivial bypass, plus tool-level positive/negative smoke through
   the completion gate (`tests/task-contract.test.ts`).
 - **Observability:** emits `andmar.contract` (action plus requirement
   counts, never texts) and `andmar.review` (round, verdict, finding
-  counts, never packet or output).
-- **Known limitations:** reviewer read-only is prompt-enforced, not
-  API-enforced; compaction continuity is pull-based (`status`) because
+  counts, plus routing `mode`/`source`/`permissionsApplied` metadata, never
+  packet or output).
+- **Known limitations:** reviewer read-only is API-enforced only when the
+  host exposes `ctx.permission.rules`; older hosts fall back to prompt
+  enforcement; compaction continuity is pull-based (`status`) because
   hijacking the compaction summary would destroy context; reviewer output
   quality depends on the model behind the `frontier` profile (without a
   mapping it inherits the parent model — a weak reviewer may need several

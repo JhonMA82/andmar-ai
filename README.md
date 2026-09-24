@@ -173,7 +173,7 @@ The namespace is `andmar`:
 - `andmar_intake` — classify one request as sufficient or needing refinement.
 - `andmar_intake_trace` — list recent structured intake decisions.
 - `andmar_task_contract` — create, project, update, evidence, steer, or close the active Task Contract.
-- `andmar_request_review` — one independent review round in a fresh child session.
+- `andmar_request_review` — one routed (`none | audit | deep`) review round in a fresh read/search-only child session.
 
 Names are primitives, not methodologies. A future ODD skill can use these without AndMar AI knowing what ODD is.
 

@@ -18,6 +18,7 @@ export type ContractStatus = "active" | "blocked" | "completed"
 export type EvidenceType = "verification" | "runtime" | "diff" | "review" | "user-decision" | "external"
 
 export type ReviewVerdict = "approve" | "reject"
+export type ReviewMode = "none" | "audit" | "deep"
 
 export const EVIDENCE_TYPES: readonly EvidenceType[] = [
   "verification",
@@ -171,6 +172,18 @@ const CODE_CHANGING_KINDS = new Set([
 export function requiresIndependentReview(kind: string | undefined): boolean {
   if (kind === undefined) return true
   return CODE_CHANGING_KINDS.has(kind)
+}
+
+/**
+ * Deterministic review floor. Jev may only escalate audit -> deep; it may
+ * never lower this result. This is deliberately categorical, not a score.
+ */
+export function minimumReviewMode(kind: string | undefined, scopeFiles?: number): ReviewMode {
+  if (kind === undefined) return "deep"
+  if (isTrivialTask(kind, scopeFiles) || kind === "review" || kind === "internal") return "none"
+  if (kind === "security" || kind === "migration" || kind === "architecture") return "deep"
+  if (CODE_CHANGING_KINDS.has(kind)) return "audit"
+  return "none"
 }
 
 // ---------------------------------------------------------------------------
@@ -762,19 +775,38 @@ export function formatContractBrief(contract: TaskContract, reviews: readonly Re
 
 export interface ReviewPacketInput {
   revision: string
+  reviewMode?: ReviewMode | undefined
   changedPaths?: string[] | undefined
   verificationSummary?: string | undefined
   knownLimitations?: string | undefined
 }
 
+function sanitizeReviewerText(value: string): string {
+  return value
+    .replace(/\b[a-f0-9]{32,64}\b/gi, "[opaque-id-omitted]")
+    .replace(/\b(?:receipt|execution|verification)[/:][^\s,;]+/gi, "[internal-ref-omitted]")
+}
+
+function reviewerEvidence(entry: EvidenceRef, revision: string): string {
+  const binding = entry.revision === undefined ? "recorded" : entry.revision === revision ? "current revision" : "stale revision"
+  // Receipt keys / execution IDs are provenance for AndMar, not semantic evidence for an LLM.
+  if (entry.type === "user-decision") return "user-decision (" + binding + "): " + sanitizeReviewerText(entry.reference).slice(0, 240)
+  return entry.type + " evidence recorded (" + binding + ")"
+}
+
 export function buildReviewPacket(contract: TaskContract, input: ReviewPacketInput): string {
+  const reviewMode = input.reviewMode ?? "audit"
   const lines = [
-    "You are an independent final reviewer. You are read-only: inspect the diff, relevant code/tests and repository context; search when needed; use only bounded targeted spot-checks for a concrete unresolved uncertainty. Do not edit files, apply fixes, or record anything. Judge only the work described below.",
+    "REVIEW MODE: " + reviewMode,
+    "You are an independent final evidence auditor. You are read-only. Inspect code, diff and repository context only; never edit or apply fixes.",
     "",
-    "Your job is to audit semantic completeness and the sufficiency of existing exact-revision evidence, not to reproduce the verification phase.",
-    "Verification runs before review. Recorded exact-revision evidence proves that the referenced commands executed with their recorded outcomes; independently judge whether those checks and their scope are sufficient for the claims being made.",
-    "Do NOT rerun broad test suites, full typechecks, builds, lints, installs, dependency restores, repository-wide scans, or other verification already represented by current-revision evidence. Prefer inspection, targeted search and the smallest useful spot-check.",
-    "If evidence is missing, stale, too narrow, or otherwise insufficient, report a blocking finding with target=missing-evidence. Do not recreate the whole verification phase yourself.",
+    "Your job is semantic completeness and evidence sufficiency, not verification execution.",
+    "The parent session already executed verification. Evidence identifiers/storage keys are intentionally omitted: NEVER search for receipt IDs, execution IDs, hashes, state-store keys, or similarly opaque identifiers.",
+    "Do NOT use shell, curl, package managers, test runners, builds, typechecks, lints, installs, dependency restores, web requests, filesystem-wide scans, or repository-wide verification. Use read/glob/grep-style inspection only.",
+    reviewMode === "audit"
+      ? "AUDIT scope: stay bounded to changed paths plus directly referenced dependencies needed to decide a concrete requirement."
+      : "DEEP scope: inspect broader semantic dependencies and contracts when needed, but still do not recreate verification or execute the project.",
+    "If evidence is missing, stale, too narrow, or otherwise insufficient, report target=missing-evidence and stop. Do not obtain the missing evidence yourself.",
     "Compare: (1) original goal against final behavior; (2) requirements against implementation; (3) constraints against the diff; (4) claims against verification evidence; (5) external contracts against implementation; (6) tests against what they actually prove.",
     "Look specifically for: explicit requirements missed; constraints violated; unsupported completion claims; stale or deprecated upstream API use; mock-only verification represented as runtime proof; missing observable-surface verification; scope drift; incomplete error or failure behavior when explicitly required.",
     "Do not invent new requirements. Do not reject for architecture taste. Do not expand scope. A finding blocks only when it is linked to a real requirementId/constraintId below, or target=desired-outcome/missing-evidence.",
@@ -788,7 +820,7 @@ export function buildReviewPacket(contract: TaskContract, input: ReviewPacketInp
   lines.push("", "Requirements:")
   for (const req of contract.requirements) {
     const evidence =
-      req.evidence.length === 0 ? "no evidence" : req.evidence.map((entry) => `${entry.type}:${entry.reference}`).join(", ")
+      req.evidence.length === 0 ? "no evidence" : req.evidence.map((entry) => reviewerEvidence(entry, input.revision)).join(", ")
     lines.push(`- ${req.id} [${req.status}] ${req.text} (evidence: ${evidence})${req.reason ? ` reason: ${req.reason}` : ""}`)
   }
   lines.push("Constraints:")
@@ -799,7 +831,7 @@ export function buildReviewPacket(contract: TaskContract, input: ReviewPacketInp
     lines.push(`Changed paths: ${input.changedPaths.join(", ")}`)
   }
   if (input.verificationSummary) {
-    lines.push(`Existing exact-revision verification summary: ${input.verificationSummary}`)
+    lines.push(`Existing exact-revision verification summary: ${sanitizeReviewerText(input.verificationSummary)}`)
   } else {
     lines.push(
       "Existing exact-revision verification summary: not supplied. Do not compensate by running broad verification; report target=missing-evidence if the missing summary materially prevents approval.",

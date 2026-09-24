@@ -107,7 +107,11 @@ unread through the wrong shape.
 
 OpenCode V2 child sessions inherit the permission rules in effect at
 creation. AndMar AI relies on that native behavior instead of constructing
-a parallel permission model.
+a parallel permission model. Since 0.7.0, review children additionally get
+explicit session-scoped rules through `ctx.permission.rules` when the host
+exposes it (deny `*`, allow only `read`/`glob`/`grep`), and the review result
+surfaces `permissionsApplied`; when the host lacks that API the reviewer
+stays prompt-restricted only.
 
 Verified 2026-09-22 against the same types (`SessionCreateInput`): the
 typed shape exposes `id/title/agent/model/location/metadata/permissions`

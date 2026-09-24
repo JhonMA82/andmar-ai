@@ -165,8 +165,9 @@ otherwise the default:
 { "intake": { "model": "typesafe/jev-1.13", "timeoutMs": 8000 } }
 ```
 
-Core is untouched: model resolution lives in the capability so `src/core`
-stays free of Jev/OpenRouter specifics.
+Model resolution lives in the capability. `src/core/jev-client.ts` holds only
+the shared Decisions transport (endpoint, fetch and payload shape) reused by
+review routing in `task-contract`; no provider policy lives in core.
 
 ## Contract verification (2026-09-21)
 

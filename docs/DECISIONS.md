@@ -224,3 +224,12 @@ missing.
 **Why:** Real use on small repositories showed reviewers spending roughly the entire child-session budget repeating verification that AndMar had already completed, causing `session.wait` timeouts without finding implementation defects. The same behavior would scale poorly on large repositories and duplicates responsibilities already owned by Verification.
 
 **Consequence:** `andmar_request_review` remains independent and fresh-session-based, but its packet explicitly treats exact-revision verification as existing execution evidence and asks the reviewer to judge its sufficiency. The 10-minute child-session safety ceiling is not increased. A timeout stores nothing, consumes no review round, emits `andmar.review action=timeout`, and may be retried at most once by policy without rerunning verification.
+
+
+## D-023 — Review depth is routed deterministically; Jev may only escalate
+
+**Decision:** Final review uses three categorical modes: `none`, `audit`, and `deep`. Deterministic policy sets the minimum: trivial/non-code work may use `none`; security, migration and architecture use `deep`; ordinary code-changing work uses `audit`. Jev is called only for the ordinary `audit` gray zone, receives semantic facts rather than internal receipt identifiers, and may only escalate to `deep`. Jev unavailability falls back to the deterministic minimum.
+
+**Why:** Repeated production-like trials showed the prior reviewer spending its child-session window rediscovering evidence, including treating opaque receipt keys as filesystem names and launching whole-disk searches. Task kind alone was also too coarse: a localized bugfix and a cross-cutting bugfix should not receive identical review depth.
+
+**Consequence:** Review routing is cheap and deterministic first, semantic classification is delegated to Jev only where useful, and the frontier reviewer receives a bounded role. When supported by OpenCode V2, the review child is physically restricted to read/glob/grep operations, so prompt drift cannot turn Review back into Verification.

@@ -2,6 +2,19 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
+## [0.7.0] - 2026-09-23
+
+### Added
+
+- Review routing now has deterministic `none | audit | deep` modes. Security, migration and architecture are hard `deep`; ordinary code-changing work starts at `audit`; trivial/non-code work bypasses review.
+- Jev complements only ambiguous `audit` routing and may escalate to `deep`; it can never downgrade deterministic policy and its failure falls back to the deterministic minimum.
+- Review child sessions receive a strict read/search-only session policy when the OpenCode V2 permission API is available, preventing shell/curl/tests/builds/network/edits and filesystem-wide scans.
+
+### Fixed
+
+- Reviewer packets no longer expose raw receipt references, execution IDs, state-store keys or opaque hashes that a reviewer could misinterpret as filesystem paths. Verification summaries are sanitized before Review/Jev routing.
+- Audit and deep review use bounded mode-specific child deadlines (4m/8m) instead of allowing a small audit to consume the generic 10-minute ceiling.
+
 ## [0.6.3] - 2026-09-22
 
 ### Fixed

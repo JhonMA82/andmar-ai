@@ -148,8 +148,10 @@ Verification (`andmar_suggest_checks` → run via native shell
        requirement evidence recorded per Task Contract requirement)
 Lifecycle (`andmar_change_impact` for docs/version obligations)
    ↓
-Independent review (`andmar_request_review`: fresh frontier child
-   ↓     session per round, compact adversarial packet, max two rounds)
+Independent review (`andmar_request_review`: deterministic `none | audit | deep`
+   ↓     routing, fresh frontier child session per round restricted to
+         read/glob/grep when available, sanitized compact evidence-audit
+         packet, max two rounds)
 Completion (`andmar_completion_gate`: exact-revision evidence +
    requirement gate + approved current review + clean lifecycle
    gates + satisfied required verification)

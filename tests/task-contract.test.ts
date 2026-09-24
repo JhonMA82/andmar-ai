@@ -10,6 +10,7 @@ import {
   formatContractBrief,
   isBlockingFinding,
   isTrivialTask,
+  minimumReviewMode,
   recordRequirementEvidence,
   requiresIndependentReview,
   steerTaskContract,
@@ -234,9 +235,9 @@ test("review packet audits existing evidence and forbids broad re-verification",
     verificationSummary: "tests: passed; typecheck: passed; runtime smoke: passed",
   })
   assert.match(packet, /read-only/i)
-  assert.match(packet, /not to reproduce the verification phase/i)
-  assert.match(packet, /Do NOT rerun broad test suites/i)
-  assert.match(packet, /bounded targeted spot-checks/i)
+  assert.match(packet, /not verification execution/i)
+  assert.match(packet, /Do NOT use shell, curl, package managers, test runners/i)
+  assert.match(packet, /stay bounded to changed paths/i)
   assert.match(packet, /target=missing-evidence/i)
   assert.match(packet, /Existing exact-revision verification summary:/i)
   assert.match(packet, /exactly the lowercase string "approve" or "reject"/)
@@ -806,6 +807,35 @@ test("revision-sensitive requirement evidence is refused without a revision", ()
     }).ok,
     true,
   )
+})
+
+test("review routing floor is categorical and deterministic", () => {
+  assert.equal(minimumReviewMode("docs-format", 1), "none")
+  assert.equal(minimumReviewMode("feature", 2), "audit")
+  assert.equal(minimumReviewMode("bugfix", 5), "audit")
+  assert.equal(minimumReviewMode("security", 1), "deep")
+  assert.equal(minimumReviewMode("migration", 1), "deep")
+  assert.equal(minimumReviewMode("architecture", 1), "deep")
+})
+
+test("review packet never exposes opaque evidence references", () => {
+  let contract = makeContract()
+  contract = (recordRequirementEvidence(contract, "REQ-1", {
+    type: "verification",
+    reference: "d9aadf0b1f2e3d4c5b6a79800112233445566778899aabbccddeeff001122334",
+    revision: "rev-a",
+  }) as { ok: true; contract: TaskContract }).contract
+  const packet = buildReviewPacket(contract, {
+    revision: "rev-a",
+    reviewMode: "audit",
+    changedPaths: ["src/x.ts"],
+    verificationSummary: "tests passed; receipt/d9aadf0b1f2e3d4c5b6a79800112233445566778899aabbccddeeff001122334",
+  })
+  assert.match(packet, /REVIEW MODE: audit/)
+  assert.match(packet, /verification evidence recorded \(current revision\)/)
+  assert.ok(!packet.includes("d9aadf0b1f2e3d4c5b6a79800112233445566778899aabbccddeeff001122334"))
+  assert.match(packet, /opaque-id-omitted|internal-ref-omitted/)
+  assert.match(packet, /NEVER search for receipt IDs/)
 })
 
 test("task contract review policy is derived from taskKind", () => {
