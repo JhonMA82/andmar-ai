@@ -324,3 +324,23 @@ Intake can route requests correctly without lossy summarization, without new wor
 **Consequence:**
 - Synchronization between Work Ledger and Task Contract is initially governed by AndMar agent policy and verification gates.
 - Measured drift and developer friction in 0.8.2 will inform future potential capabilities or work-unit checkpoint commit automation.
+
+---
+
+## D-028 — Work Ledger metadata does not participate in code revision identity
+
+**Decision:**
+- `.andmar/work/**` is designated as operational metadata and is strictly excluded from the working-state revision used to bind code/product verification receipts and evidence.
+- The runtime Task Contract expands requirement capacity to 100 (`MAX_REQUIREMENTS = 100`) and enforces a strict 1:1 mapping with Work Ledger obligations, eliminating requirement grouping.
+- A deterministic structural validator (`scripts/validate-work-ledger.mjs`) is introduced to verify Work Ledger schemas, IDs, active unit limits, and references without semantic interference.
+- Work Ledger continues to operate without a new runtime capability or plugin storage namespace.
+
+**Why:**
+- Modifying operational metadata (such as recording evidence pointers or updating work unit status in the Ledger) previously altered the dirty working tree fingerprint, creating self-invalidating verification cycles.
+- Requirement grouping weakened runtime gates by leaving atomic user obligations un-evidenced at the contract level.
+- Prompt-only compliance caused structural drift; deterministic validation provides fast, verifiable feedback.
+
+**Consequence:**
+- Code and product verification receipts remain stable across Ledger bookkeeping updates.
+- Tasks up to 100 requirements benefit from atomic, uncompressed contract verification.
+- Work Ledger structural integrity is validated deterministically before completion without runtime bloat.

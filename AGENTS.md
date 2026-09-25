@@ -100,7 +100,9 @@ Do not add a semantic router until real ambiguous routing cases demonstrate the 
 - Work Ledger is portable project state under `.andmar/work/<work-id>/`, not model memory or `ctx.storage`.
 - Never rely on invisible context; every durable assertion must trace to the request, repository, or Ledger itself.
 - Do not create a capability merely to manage Markdown files.
-- Update the runtime Task Contract from the Work Ledger for non-trivial tasks.
+- Maintain strict 1:1 requirement mapping between Work Ledger and Task Contract; never group or merge independent requirements merely to fit runtime limits.
+- `.andmar/work/**` is operational metadata and is excluded from the working-state revision fingerprint.
+- Validate ledger structural integrity deterministically with `node scripts/validate-work-ledger.mjs .andmar/work/<work-id>` at key events.
 - Use native OpenCode tools (`read`, `write`, `edit`) for all file mutations.
 
 ## Documentation map (read before changing)

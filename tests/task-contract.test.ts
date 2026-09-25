@@ -1,6 +1,7 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import {
+  MAX_REQUIREMENTS,
   MAX_REVIEW_ROUNDS,
   buildReviewPacket,
   contractStateToken,
@@ -1133,4 +1134,75 @@ test("completion gate keeps deep review unavailable fail-closed", async () => {
   assert.equal(parsed.review.degraded, false)
   assert.equal(parsed.review.unavailable.mode, "deep")
   assert.match(parsed.reasons.join(" "), /deep review unavailable/)
+})
+
+test("contract creation supports 25 requirements with 1:1 REQ-N IDs", () => {
+  const reqs = Array.from({ length: 25 }, (_, i) => `Real explicit obligation number ${i + 1}`)
+  const result = createTaskContract("ses-25", {
+    taskKind: "feature",
+    goal: "Handle 25 requirements 1:1",
+    requirements: reqs,
+    constraints: ["no grouping"],
+  })
+  assert.equal(result.ok, true)
+  if (result.ok) {
+    assert.equal(result.contract.requirements.length, 25)
+    for (let i = 0; i < 25; i++) {
+      assert.equal(result.contract.requirements[i].id, `REQ-${i + 1}`)
+      assert.equal(result.contract.requirements[i].text, reqs[i])
+      assert.equal(result.contract.requirements[i].status, "pending")
+    }
+  }
+})
+
+test("steering can increase total requirements beyond 20 up to 100", () => {
+  const initialReqs = Array.from({ length: 18 }, (_, i) => `Initial requirement ${i + 1}`)
+  const initial = createTaskContract("ses-steer", {
+    taskKind: "feature",
+    goal: "Initial contract",
+    requirements: initialReqs,
+    constraints: [],
+  })
+  assert.equal(initial.ok, true)
+  if (!initial.ok) return
+
+  const additionalReqs = Array.from({ length: 10 }, (_, i) => `Additional requirement ${i + 1}`)
+  const steered = steerTaskContract(initial.contract, {
+    addRequirements: additionalReqs,
+  })
+  assert.equal(steered.ok, true)
+  if (steered.ok) {
+    assert.equal(steered.contract.requirements.length, 28)
+    assert.equal(steered.contract.requirements[27].id, "REQ-28")
+  }
+})
+
+test("contract creation accepts up to 100 requirements", () => {
+  const reqs = Array.from({ length: 100 }, (_, i) => `Requirement ${i + 1}`)
+  const result = createTaskContract("ses-100", {
+    taskKind: "feature",
+    goal: "Handle 100 requirements",
+    requirements: reqs,
+    constraints: [],
+  })
+  assert.equal(result.ok, true)
+  if (result.ok) {
+    assert.equal(result.contract.requirements.length, 100)
+    assert.equal(result.contract.requirements[99].id, "REQ-100")
+  }
+})
+
+test("contract creation rejects 101 requirements with explicit limit error", () => {
+  const reqs = Array.from({ length: 101 }, (_, i) => `Requirement ${i + 1}`)
+  const result = createTaskContract("ses-101", {
+    taskKind: "feature",
+    goal: "Exceed 100 requirements",
+    requirements: reqs,
+    constraints: [],
+  })
+  assert.equal(result.ok, false)
+  if (!result.ok) {
+    assert.match(result.error, /100/)
+    assert.match(result.error, /limited to 100/i)
+  }
 })

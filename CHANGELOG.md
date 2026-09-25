@@ -2,6 +2,16 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
+## [0.8.3] - 2026-09-25
+
+### Fixed
+
+- Canonical Work Ledger documentation: added `docs/WORK-LEDGER.md` providing the authoritative specification for repository-native operational state, layouts, work unit lifecycle, and boundaries.
+- Atomic 1:1 requirement projection: expanded `MAX_REQUIREMENTS` from 20 to 100 in `src/core/task-contract.ts` and eliminated requirement grouping from agent policy, ensuring every user obligation is verified atomically up to 100 requirements.
+- Stable working-state revision: designated `.andmar/work/**` as operational metadata and created deterministic fingerprinting script `scripts/working-state-revision.mjs` (excluding `.andmar/work/**`) to prevent self-invalidating verification cycles during ledger updates.
+- Deterministic structural validation: added `scripts/validate-work-ledger.mjs` to validate ledger schemas, IDs (`REQ-N`, `CON-N`, `WU-N`, `EV-N`), active unit constraints, Next action pointers, and cross-references without semantic interference.
+- Package files: included `scripts/` in `package.json.files` for consumer availability.
+
 ## [0.8.2] - 2026-09-25
 
 ### Added

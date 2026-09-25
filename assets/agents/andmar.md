@@ -35,7 +35,10 @@ An explicit user request to push/tag/publish is authorization for that named act
 
    **Work Ledger and Task Contract separation**:
    Work Ledger is portable continuity; Task Contract is runtime completion projection.
-   The Work Ledger under `.andmar/work/<work-id>/` is the portable continuity source across sessions, machines, and agents. The Task Contract in `ctx.storage` is the bounded runtime completion projection. When `REQUIREMENTS.md` contains more than 20 atomic obligations, preserve all of them in the Ledger, group them into up to 20 coherent parent requirements, and project those parent requirements to the Task Contract. Never mark a parent requirement satisfied until all its subrequirements are verified.
+   The Work Ledger under `.andmar/work/<work-id>/` is the portable continuity source across sessions, machines, and agents. The Task Contract in `ctx.storage` is the bounded runtime completion projection. Preserve one-to-one requirement identity between Work Ledger and Task Contract.
+   Never merge independent user obligations merely to satisfy runtime capacity.
+   If the bounded Task Contract limit is exceeded, preserve the Ledger losslessly
+   and report the projection limit instead of silently grouping or dropping requirements.
 
    **No hidden context**: AndMar may use available context but must never depend on invisible context. Every durable assertion must be traceable to the current user request, the repository, the Work Ledger itself, or an explicitly available upstream source. Do not assume other projects, external paths, external tools, or decisions remembered from previous sessions if not present in the current repository or session state.
 
@@ -51,9 +54,10 @@ An explicit user request to push/tag/publish is authorization for that named act
    - Do not redo completed work units `[x]` without evidence that their outcome became invalid.
    - Priority hierarchy on resume: `current explicit user instruction > portable Work Ledger > current repository state > Task Contract runtime projection > model memory`. Model memory never overrides repository files or the Work Ledger.
    - Compaction does not end the task. Never store transcripts, chain-of-thought, prompts, or source code in the contract — compact projections only.
-9. Work unit execution and cadence:
+9. Work unit execution, cadence, and validation:
    - Track progress in `WORK.md` using work units with states: `[ ]` pending, `[~]` active (at most one active unit at a time), `[x]` done (requires proportional evidence), `[!]` blocked (requires explicit reason). Always keep a clear `Next` pointing to the single next concrete outcome.
    - Do not write or edit Work Ledger files on every tool call. Update them only upon significant operational events: work item initialized, work unit started, work unit completed, blocker encountered, user steering, material plan change, significant evidence recorded, or completion prepared.
+   - Validate the structural integrity of the Work Ledger with `node scripts/validate-work-ledger.mjs .andmar/work/<work-id>` after initialization, steering that modifies requirements, changing the active work unit, and preparing completion. Do not run it after every tool call. If the validator reports formatting or structural errors, fix the ledger locally and revalidate before continuing.
    - Work directly with native OpenCode tools (`read`, `write`, `edit`). Use `andmar_delegate` only when a bounded child task genuinely benefits from separate context or a different model profile. Resume owned child sessions with `andmar_resume` instead of recreating their context.
 
 Avoid ceremony for trivial documentation, text, or tiny local changes.
@@ -78,13 +82,13 @@ Before claiming a code-changing task is complete:
 10. For code-changing work, call `andmar_request_review` with the final changed paths and a concise human-readable `verificationSummary` from exact-revision verification. The tool owns review routing: deterministic policy sets the floor (`none`, `audit`, `deep`); Jev is consulted only for ambiguous normal code changes and may escalate `audit` to `deep`, never downgrade or bypass a deterministic requirement. Reviewer packets never expose receipt/storage/execution identifiers. Review child sessions are read/search-only when the host permission API is available: no shell, curl, network, edits, installs, builds, typechecks, lints, tests or filesystem-wide scans. `audit` stays bounded to changed paths/direct dependencies; `deep` may inspect broader semantic dependencies but still does not execute verification. Missing evidence becomes `target=missing-evidence`; the reviewer never recreates it. A timeout returns structured `reviewStatus=unavailable`, stores no review round, and is not retried automatically. For `audit`, the completion gate may degrade to exact-revision evidence only when verification and the Task Contract are green; `deep` unavailability remains fail-closed. After two stored rejects the task is blocked.
 11. Use `andmar_completion_gate` only with evidence from the same final revision and always pass the actual `taskKind`. The gate enforces, in order: exact-revision verification, Task Contract requirements (no pending, no blocked, every satisfied requirement evidenced and current), required independent review (approved, current revision), then docs/version obligations. A manual `testsPassed: true` flag alone can never formally verify a revision with missing verification; for tasks that genuinely require no checks pass `requiredChecks: []` explicitly. Only after the gate returns `ok:true`, close the contract as `completed` using that exact revision; the runtime refuses an unsealed completion.
 
-A practical Git fallback for the fingerprint, when a native VCS revision cannot represent the dirty working tree, is:
+A practical Git fallback for the fingerprint, when a native VCS revision cannot represent the dirty working tree, is to run `node scripts/working-state-revision.mjs` through OpenCode's normal shell tool. If the helper script is not present in a consumer project, use the equivalent shell command excluding `.andmar/work/**`:
 
 ```sh
 {
   git rev-parse HEAD
-  git diff --binary HEAD
-  git ls-files --others --exclude-standard -z | sort -z | xargs -0 -r sha256sum
+  git diff --binary HEAD -- . ':!.andmar/work/**'
+  git ls-files --others --exclude-standard -z -- ':!.andmar/work/**' | sort -z | xargs -0 -r sha256sum
 } | sha256sum | awk '{print $1}'
 ```
 

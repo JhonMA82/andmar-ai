@@ -129,3 +129,20 @@ test("AndMar agent retains andmar_completion_gate without introducing a second c
   assert.match(agent, /andmar_completion_gate\b/);
   assert.doesNotMatch(agent, /andmar_work_completion\b/);
 });
+
+test("AndMar agent enforces 1:1 requirement identity and forbids requirement grouping", () => {
+  assert.match(agent, /Preserve one-to-one requirement identity between Work Ledger and Task Contract/i);
+  assert.match(agent, /Never merge independent user obligations merely to satisfy runtime capacity/i);
+  assert.match(agent, /report the projection limit instead of silently grouping or dropping requirements/i);
+  assert.doesNotMatch(agent, /group them into <=20|group them into up to 20/i);
+});
+
+test("AndMar agent specifies working-state revision excluding .andmar/work/**", () => {
+  assert.match(agent, /node scripts\/working-state-revision\.mjs/i);
+  assert.match(agent, /:!\.andmar\/work\/\*\*/);
+});
+
+test("AndMar agent requires deterministic Work Ledger validation at key events", () => {
+  assert.match(agent, /node scripts\/validate-work-ledger\.mjs/i);
+  assert.match(agent, /Validate the structural integrity of the Work Ledger/i);
+});

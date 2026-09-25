@@ -16,19 +16,23 @@ Work Ledger provides a durable, portable, and human-readable representation of w
 - indexing evidence references without context bloat;
 - preparing future commits by work unit.
 
-Work Ledger is **not** a workflow engine, a mandatory planner, a DAG scheduler, general semantic memory, or a second runtime. It does not replace the Task Contract or completion gates.
+Work Ledger is **portable repository state**. It is **not**:
+- `ctx.storage` state;
+- a workflow engine;
+- a planner;
+- a memory system;
+- a runtime capability.
 
-## 2. Capability vs repository artifact (D-027)
+## 2. Capability vs repository artifact (D-027, D-028)
 
 AndMar AI defines a capability as a *runtime guarantee requiring state, hooks, ownership, or gates*.
 
-In version 0.8.2, Work Ledger is deliberately **not** a capability:
+In AndMar AI, Work Ledger is deliberately **not** a capability:
 - It uses repository-native durable markdown files under `.andmar/work/<work-id>/`.
 - It is read and written using OpenCode native tools (`read`, `write`, `edit`).
 - It does not introduce new `ctx.storage` keys or bypass OpenCode permission systems.
 - It travels with Git, remaining visible and portable across machines, branches, and agents.
-
-If demonstrated runtime friction or synchronization defects emerge that cannot be governed by agent policy and existing gates, a narrow runtime capability may be evaluated in future versions. It is not created preventively.
+- **Operational metadata:** `.andmar/work/**` is operational metadata and is strictly excluded from the working-state revision fingerprint used to bind code/product verification evidence.
 
 ## 3. Relationship with Task Contract
 
@@ -37,7 +41,7 @@ Work Ledger and Task Contract have distinct, complementary roles:
 ```text
 SOURCE / REQUIREMENTS (User Request + Repo Context)
        ↓
-Work Ledger (Portable continuity source in repository)
+Work Ledger (Portable continuity source in repository: .andmar/work/)
        ↓
 Task Contract (Bounded runtime completion projection in ctx.storage)
 ```
@@ -46,10 +50,23 @@ Task Contract (Bounded runtime completion projection in ctx.storage)
 |---|---|---|
 | **Primary purpose** | Durable, portable continuity across sessions/machines | Bounded runtime execution gate and receipt binding |
 | **Storage medium** | Repository files in Markdown | Plugin key-value storage (`task-contract/<sessionID>`) |
-| **Requirements scope** | All atomic obligations (unbounded, structured/subrequirements) | Bounded projection (max 20 parent requirement groups) |
+| **Requirements mapping** | Source of atomic obligations (`REQ-1`, `REQ-2`...) | Strict **1:1 mapping** up to `MAX_REQUIREMENTS = 100` |
 | **Lifecycle** | Persists with the repository / branch | Bounded to session runtime, seals on completion |
 | **Evidence role** | Portable index of check results and pointers | Cryptographically bound to exact working-state revisions |
 | **Gate authority** | None (no independent completion gate) | Authoritative runtime gate for `andmar_completion_gate` |
+
+### One-to-one requirement mapping (no grouping)
+
+The Task Contract provides runtime capacity for up to **100 requirements** (`MAX_REQUIREMENTS = 100`).
+- Every requirement in the Work Ledger maps 1:1 to a requirement in the Task Contract:
+  ```text
+  Ledger REQ-1 → Contract REQ-1
+  Ledger REQ-2 → Contract REQ-2
+  ...
+  Ledger REQ-N → Contract REQ-N
+  ```
+- **No grouping:** Independent user obligations are never grouped or merged into artificial parent requirements.
+- **Capacity boundary (>100):** If a specification exceeds 100 requirements, the Work Ledger preserves all obligations losslessly, while the Task Contract rejects the bounded projection with an explicit limitation error (`requirements is limited to 100 real obligations`). It does not truncate, group, or falsely claim formal completion.
 
 ### Reconciliation rule
 
@@ -103,51 +120,71 @@ Intake determines the initial work projection mode via `workProjection.mode`:
 
 ## 6. Artifact schemas and specifications
 
-### 6.1 Lightweight `WORK.md`
+### 6.1 Identifiers
+
+Standard identifiers across all ledger files:
+- Requirements: `REQ-1`, `REQ-2`, ...
+- Constraints: `CON-1`, `CON-2`, ...
+- Work Units: `WU-1`, `WU-2`, ... (or `W1`, `W2`, ...)
+- Evidence Pointers: `EV-1`, `EV-2`, ...
+
+Never recycle or reassign previously deleted IDs.
+
+### 6.2 Lightweight `WORK.md`
 
 ```md
 # Work — <title>
 
 Work ID: <work-id>
 Status: active
-Task kind: <taskKind>
-Intake mode: <mode>
+Mode: lightweight
 
 ## Goal
 
 <one clear outcome>
 
+## Source
+
+- current user request
+
 ## Constraints
 
-- <constraint 1>
+- CON-1: <constraint 1>
 
 ## Requirements
 
-- REQ-01 — <short requirement description>
-- REQ-02 — <short requirement description>
+- REQ-1: <short requirement description>
+- REQ-2: <short requirement description>
 
 ## Work Units
 
-- [~] W1 — <coherent outcome>
-- [ ] W2 — <coherent outcome>
+- [~] WU-1 — <coherent outcome>
+  - Requirements: REQ-1
+- [ ] WU-2 — <coherent outcome>
+  - Requirements: REQ-2
 
 ## Evidence
 
-- <small pointers to tests or runtime smoke>
+- EV-1: <small pointers to tests or runtime smoke>
+
+## Decisions
+
+- <recorded technical decisions if any>
 
 ## Next
 
-W1 — <next concrete outcome>
+WU-1 — <next concrete outcome>
 ```
 
-### 6.2 Structured `SOURCE.md`
+### 6.3 Structured `SOURCE.md`
 
 `SOURCE.md` preserves the authoritative intent and obligations without transcript noise.
 
 **Preservation rules (lossless regarding obligations):**
 - Retain all requirements, exceptions, boundary conditions, compatibility constraints, acceptance criteria, and explicitly requested actions.
 - Omit conversational filler, social exchanges, and redundant prose.
-- **Secret redaction rule:** Never persist literal API keys, passwords, bearer tokens, cookies, or secrets. Redact literal secrets while preserving the operational obligation (e.g., *"Authenticate using the provided API token from the secure environment"*).
+- **Secret redaction rule:** Never persist literal API keys, passwords, bearer tokens, cookies, or secrets. Redact literal secrets using `[REDACTED_SECRET]` while preserving the operational obligation (e.g., *"Authenticate using [REDACTED_SECRET] provided in the session environment"*).
+- Do not store model chain-of-thought or raw transcripts.
 - If the authoritative specification already exists as a versioned repository file, prefer referencing its path rather than duplicating its contents.
 
 ```md
@@ -176,14 +213,14 @@ W1 — <next concrete outcome>
 <unresolved product questions if any>
 ```
 
-### 6.3 Structured `REQUIREMENTS.md`
+### 6.4 Structured `REQUIREMENTS.md`
 
-`REQUIREMENTS.md` records all atomic obligations with stable IDs (`REQ-01`, `REQ-02`, etc.) and subrequirements (`REQ-01.1`, `REQ-01.2`).
+`REQUIREMENTS.md` records all atomic obligations with stable IDs (`REQ-1`, `REQ-2`, etc.) and subrequirements (`REQ-1.1`, `REQ-1.2`).
 
 ```md
 # Requirements
 
-## REQ-01 — <short title>
+## REQ-1 — <short title>
 
 Status: pending
 
@@ -197,26 +234,13 @@ Acceptance:
 Source:
 - user request
 
-### Subrequirements
-
-- REQ-01.1 — <atomic subrequirement>
-- REQ-01.2 — <atomic subrequirement>
-
 ---
 
-## REQ-02 — <short title>
+## REQ-2 — <short title>
 ...
 ```
 
-**Handling > 20 Requirements:**
-The runtime Task Contract is strictly bounded to at most 20 requirements. When `REQUIREMENTS.md` exceeds 20 atomic obligations:
-1. Retain **all** atomic obligations in `REQUIREMENTS.md`.
-2. Group related atomic obligations into at most 20 coherent parent requirements (`REQ-01` to `REQ-20`).
-3. Project these parent requirements to the Task Contract.
-4. Maintain the atomic subrequirements under each parent.
-5. A parent requirement cannot be marked satisfied until all its subrequirements are verified.
-
-### 6.4 Structured `WORK.md`
+### 6.5 Structured `WORK.md`
 
 `WORK.md` represents the active execution state and daily operational view.
 
@@ -225,8 +249,7 @@ The runtime Task Contract is strictly bounded to at most 20 requirements. When `
 
 Work ID: <work-id>
 Status: active
-Task kind: <taskKind>
-Intake mode: structure
+Mode: structured
 
 ## Goal
 
@@ -234,16 +257,16 @@ Intake mode: structure
 
 ## Constraints
 
-- CON-01 — <constraint>
+- CON-1: <constraint>
 
 ## Work Units
 
-- [x] W1 — <completed outcome>
-  - Requirements: REQ-01, REQ-02.1
-  - Evidence: EV-001, EV-002
-- [~] W2 — <active outcome>
-  - Requirements: REQ-03
-- [ ] W3 — <pending outcome>
+- [x] WU-1 — <completed outcome>
+  - Requirements: REQ-1
+  - Evidence: EV-1
+- [~] WU-2 — <active outcome>
+  - Requirements: REQ-2
+- [ ] WU-3 — <pending outcome>
 
 ## Blockers
 
@@ -251,7 +274,7 @@ None.
 
 ## Next
 
-W2 — <single next concrete outcome>
+WU-2 — <single next concrete outcome>
 ```
 
 **Work Unit states:**
@@ -262,27 +285,27 @@ W2 — <single next concrete outcome>
 
 **Work Unit rules:**
 - Units represent recoverable, verifiable outcomes (e.g. `Add target parser`, `Integrate routing table`), not trivial microsteps (`rename variable`, `run linter`).
-- If an active unit turns out to be larger than anticipated, it may be subdivided or new units appended (`W4 added for newly discovered outcome`). Avoid renumbering units already referenced by evidence.
+- If an active unit turns out to be larger than anticipated, it may be subdivided or new units appended (`WU-4 added for newly discovered outcome`). Avoid renumbering units already referenced by evidence.
 
-### 6.5 Structured `EVIDENCE.md`
+### 6.6 Structured `EVIDENCE.md`
 
 `EVIDENCE.md` stores an index of pointers to verification results.
 
 ```md
 # Evidence
 
-## EV-001
+## EV-1
 
-Work unit: W1
-Requirements: REQ-01, REQ-02.1
+Work unit: WU-1
+Requirements: REQ-1
 Type: verification
 Revision: <working-state revision if applicable>
-Reference: `bun test tests/unit.test.ts`
+Reference: `node --test tests/unit.test.ts`
 Result: passed
 
-## EV-002
+## EV-2
 
-Work unit: W1
+Work unit: WU-1
 Type: runtime
 Reference: <short description of runtime verification>
 Result: passed
@@ -313,19 +336,19 @@ If a session restarts on a new machine or after session reset where `.andmar/wor
 
 ```text
 Current explicit user instruction
-       ↓
-Portable Work Ledger (.andmar/work/)
-       ↓
+       >
+Work Ledger (.andmar/work/)
+       >
 Current repository state
-       ↓
+       >
 Task Contract runtime projection (ctx.storage)
-       ↓
+       >
 Model memory / assumptions
 ```
 
 Model memory never overrides repository files or the Work Ledger.
 
-### 7.4 Update cadence (churn prevention)
+### 7.4 Update cadence (churn prevention) and validation
 
 Work Ledger files must **not** be modified on every tool call. Updates are made only upon significant operational events:
 - Work item initialized;
@@ -336,6 +359,8 @@ Work Ledger files must **not** be modified on every tool call. Updates are made 
 - Plan of outcomes materially changes;
 - Key verification evidence is recorded;
 - Task completion is being prepared.
+
+Run deterministic structure validation with `node scripts/validate-work-ledger.mjs .andmar/work/<work-id>` after initialization, requirement-modifying steering, active work unit change, or completion preparation.
 
 ### 7.5 User steering
 
@@ -351,7 +376,7 @@ When the user provides new instructions during execution:
 
 Work Ledger does **not** create a new completion tool or gate. Final verification and closure proceed strictly through existing primitives:
 1. Reconcile `WORK.md` (all required units `[x]`, none `[~]`).
-2. Verify that Task Contract requirements reflect Ledger obligations.
+2. Verify that Task Contract requirements reflect Ledger obligations 1:1.
 3. Record exact-revision requirement evidence with `andmar_task_contract(op=record_evidence)`.
 4. Run verification and `andmar_verify_revision`.
 5. Run review with `andmar_request_review`.

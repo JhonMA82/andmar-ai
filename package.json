@@ -1,6 +1,6 @@
 {
   "name": "andmar-ai",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "description": "A thin, deterministic-first harness for OpenCode V2.",
   "type": "module",
   "exports": {
@@ -15,7 +15,8 @@
     "README.md",
     "AGENTS.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "scripts"
   ],
   "scripts": {
     "generate": "node scripts/generate-capability-manifest.mjs",
