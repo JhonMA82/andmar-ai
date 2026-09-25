@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { StateStore } from "../src/core/contracts.ts";
 import { CONTINUATION_QUESTIONS, INTAKE_QUESTIONS, INTAKE_QUESTION_IDS } from "../src/capabilities/intake/questions.ts";
-import { callJev, DEFAULT_JEV_MODEL, readApiKey, resolveJevModel, truncateState } from "../src/capabilities/intake/jev.ts";
+import { callJev, DEFAULT_JEV_MODEL, MAX_STATE_CHARS, readApiKey, resolveJevModel, truncateState } from "../src/capabilities/intake/jev.ts";
 import {
   decisionDeterministic,
   decisionFallback,
@@ -12,6 +12,7 @@ import {
   isTrivialBypass,
   parseContinuationAnswers,
   parseJevAnswers,
+  requireFullRequestReview,
   withContinuationDecision,
 } from "../src/capabilities/intake/decide.ts";
 import {
@@ -156,6 +157,20 @@ test("invalid Jev response throws invalid_response", () => {
   assert.throws(() => parseJevAnswers(jevAnswers({ risk: { type: "score" } })), /risk/);
 });
 
+test("partial decision context forces full-request review", () => {
+  const parsed = parseJevAnswers(jevAnswers({
+    needs_refinement: { type: "noul", noul: 0.01 },
+    specification_sufficiency: { type: "score", score: 4 },
+  }));
+  const decision = decisionFromJev(parsed, { jevModel: DEFAULT_JEV_MODEL, latencyMs: 5 });
+  const guarded = requireFullRequestReview(decision, MAX_STATE_CHARS + 1, MAX_STATE_CHARS);
+  assert.equal(guarded.needsRefinement, true);
+  assert.equal(guarded.brief.required, true);
+  assert.ok(guarded.specificationSufficiency <= 2);
+  assert.equal(guarded.reason, "decision_context_truncated");
+  assert.notEqual(guarded.routeSignals.uncertainty, "low");
+});
+
 // --- Jev client ---
 
 test("missing api key fails explicitly", async () => {
@@ -209,6 +224,17 @@ test("missing api key falls back without blocking", async () => {
   });
 });
 
+test("long request with missing Jev key still requires full-request refinement", async () => {
+  await withEnv({ OPENROUTER_API_KEY: undefined, ANDMAR_INTAKE_TRACE: undefined }, async () => {
+    const request = `Implementa un cambio con especificación extensa.\n${"x".repeat(MAX_STATE_CHARS + 256)}`;
+    const decision = await runIntake(request, {}, {}, memoryState());
+    assert.equal(decision.source, "fallback");
+    assert.equal(decision.reason, "missing_api_key");
+    assert.equal(decision.needsRefinement, true);
+    assert.equal(decision.brief.required, true);
+  });
+});
+
 test("invalid Jev response falls back with jevCalled true", async () => {
   await withEnv({ OPENROUTER_API_KEY: "test-key", ANDMAR_INTAKE_TRACE: undefined }, async () => {
     const bad = async () => ({ ok: true, status: 200, json: async () => ({ answers: { nope: true } }), text: async () => "{}" });
@@ -239,6 +265,27 @@ test("successful Jev call returns jev decision", async () => {
       assert.equal(decision.taskKind, "migration");
       assert.equal(decision.needsRefinement, true);
       assert.equal(decision.externalContract, true);
+    } finally {
+      (globalThis as { fetch?: unknown }).fetch = original;
+    }
+  });
+});
+
+test("long Jev request cannot be declared sufficient from truncated decision context", async () => {
+  await withEnv({ OPENROUTER_API_KEY: "test-key", ANDMAR_INTAKE_TRACE: undefined }, async () => {
+    const original = (globalThis as { fetch?: unknown }).fetch;
+    (globalThis as { fetch?: unknown }).fetch = mockFetchSuccess(jevAnswers({
+      needs_refinement: { type: "noul", noul: 0.01 },
+      specification_sufficiency: { type: "score", score: 4 },
+    })) as never;
+    try {
+      const request = `Implementa un cambio con especificación extensa.\n${"x".repeat(MAX_STATE_CHARS + 256)}`;
+      const decision = await runIntake(request, {}, {}, memoryState());
+      assert.equal(decision.source, "jev");
+      assert.equal(decision.needsRefinement, true);
+      assert.equal(decision.brief.required, true);
+      assert.ok(decision.specificationSufficiency <= 2);
+      assert.equal(decision.reason, "decision_context_truncated");
     } finally {
       (globalThis as { fetch?: unknown }).fetch = original;
     }

@@ -391,6 +391,32 @@ export function decisionFromJev(parsed: ParsedJev, meta: { jevModel: string; lat
   };
 }
 
+export function requireFullRequestReview(
+  decision: IntakeDecision,
+  requestLength: number,
+  decisionContextLimit: number,
+): IntakeDecision {
+  if (requestLength <= decisionContextLimit) return decision;
+
+  const continuation = decision.continuation
+    ? { ...decision.continuation, fastPath: false }
+    : undefined;
+
+  return {
+    ...decision,
+    needsRefinement: true,
+    specificationSufficiency: Math.min(decision.specificationSufficiency, 2),
+    reason: decision.reason ?? "decision_context_truncated",
+    routeSignals: {
+      ...decision.routeSignals,
+      uncertainty: decision.routeSignals.uncertainty === "high" ? "high" : "medium",
+      reasoning: decision.routeSignals.reasoning === "high" ? "high" : "medium",
+    },
+    brief: { ...decision.brief, required: true },
+    ...(continuation === undefined ? {} : { continuation }),
+  };
+}
+
 export function decisionDeterministic(request: string, jevModel: string): IntakeDecision {
   const guess = deterministicClassify(request);
   const sufficiency = guess.trivial ? 4 : 2;

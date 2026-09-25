@@ -54,8 +54,10 @@ Jev second
 generative reasoning only when necessary
 ```
 
-1. **Invalid** (`""`, whitespace, `>20000` chars) → immediate `fallback`
-   (`invalid_request` / `request_too_large`), no Jev.
+1. **Invalid** (`""`, whitespace, `>100000` chars) → immediate `fallback`
+   (`invalid_request` / `request_too_large`), no Jev. The higher raw-request
+   ceiling exists so long human specifications can reach Intake intact; it
+   does not enlarge Jev's decision context.
 2. **Trivial bypass** — short UI/text change with no migration, security,
    external, or bug signals (e.g. `Cambia Save por Guardar`) → `deterministic`,
    `jevCalled=false`, no Jev call. Proportionality for tiny work.
@@ -97,16 +99,27 @@ Full definitions live in `src/capabilities/intake/questions.ts`.
 ```
 
 Reasons: `missing_api_key`, `timeout`, `request_failed`, `auth_failed`,
-`invalid_response`, `invalid_request`, `request_too_large`. `needsRefinement`
-is always `false` in fallback so AndMar continues with current capabilities.
-The deterministic `taskKind` guess is labeled `fallback`, never `jev`.
+`invalid_response`, `invalid_request`, `request_too_large`. Fallback never
+blocks AndMar. Normally it keeps `needsRefinement=false`; however, when the
+raw request is larger than Jev's decision-state window, Intake forces
+`needsRefinement=true` so the primary model reviews the **full raw request**
+before execution. The deterministic `taskKind` guess is still labeled
+`fallback`, never `jev`.
 
 ## Internal Task Brief (primary model, not Jev)
 
-When `needsRefinement=true`, build internally from repo, package manager,
-config, code, tests, docs, upstream, and AndMar capabilities. Do not ask the
-user for anything discoverable. Sections only — no rigid phases, no PRD for
-small tasks:
+When `needsRefinement=true`, build internally from the **full raw user
+request** plus repo, package manager, config, code, tests, docs, upstream, and
+AndMar capabilities. Do not ask the user for anything discoverable.
+
+The brief is a derived execution aid, not a replacement specification. The raw
+request remains authoritative for explicit requirements and constraints.
+Compression may remove repetition or explanatory prose, but never obligations.
+Contradictory requirements must be surfaced and resolved from authoritative
+context when possible; if a real product choice remains, ask the user rather
+than silently choosing a side.
+
+Sections only — no rigid phases, no PRD for small tasks:
 
 ```text
 Intent
@@ -116,6 +129,10 @@ Acceptance criteria
 Risks / external contracts
 Unresolved product decisions
 ```
+
+Before creating the Task Contract, compare the compact projection against the
+raw request. Every explicit requirement and constraint must remain represented
+or be explicitly identified as contradictory/unresolved.
 
 Ask the user only for a real product decision that cannot be resolved
 responsibly from context (`productDecisionMissing=true` is the signal).
@@ -215,6 +232,11 @@ never prints the key.
 
 ## Limits
 
+- Jev receives at most `MAX_STATE_CHARS` (currently 8,000 chars). Intake accepts
+  a larger raw request, but a decision made from partial Jev context can never
+  certify specification sufficiency. Requests beyond that decision window
+  force an Internal Task Brief built by the primary model from the full raw
+  request.
 - Mocked unit tests prove fallback/parsing, not live Jev quality.
 - Deterministic heuristics are cheap guesses (Spanish/English keywords);
   Jev is the authority when available.

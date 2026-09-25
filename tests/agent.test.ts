@@ -47,6 +47,15 @@ test("AndMar agent uses intake before non-trivial execution", () => {
   assert.match(agent, /fallback.*never blocks|never blocks.*fallback/i)
 })
 
+test("AndMar agent preserves raw-request obligations through intake compression", () => {
+  assert.match(agent, /raw user request remains authoritative/i)
+  assert.match(agent, /brief.*never replace|never replace.*brief/i)
+  assert.match(agent, /never remove obligations/i)
+  assert.match(agent, /surface contradictions|contradictions.*surface/i)
+  assert.match(agent, /every explicit requirement and constraint/i)
+  assert.match(agent, /Never derive the contract solely from a compressed brief/i)
+})
+
 test("AndMar agent works through a Task Contract and separates tests from completion", () => {
   assert.match(agent, /andmar_task_contract\b/)
   assert.match(agent, /andmar_request_review\b/)

@@ -1,6 +1,6 @@
 import type { Capability, StateStore } from "../../core/contracts.ts";
 import { contractKey, type TaskContract } from "../../core/task-contract.ts";
-import { callJev, readApiKey, resolveJevModel, resolveJevTimeout, type RawAnswers } from "./jev.ts";
+import { callJev, MAX_STATE_CHARS, readApiKey, resolveJevModel, resolveJevTimeout, type RawAnswers } from "./jev.ts";
 import {
   decisionDeterministic,
   decisionFallback,
@@ -9,6 +9,7 @@ import {
   isTrivialBypass,
   parseContinuationAnswers,
   parseJevAnswers,
+  requireFullRequestReview,
   withContinuationDecision,
   type IntakeDecision,
 } from "./decide.ts";
@@ -16,7 +17,7 @@ import { CONTINUATION_QUESTIONS } from "./questions.ts";
 import { INTAKE_QUESTIONS } from "./questions.ts";
 import { buildTraceEntry, isTraceEnabled, listTraces, saveTrace } from "./trace.ts";
 
-const MAX_REQUEST_CHARS = 20_000;
+const MAX_REQUEST_CHARS = 100_000;
 
 function sessionIDFrom(toolContext: unknown): string {
   const ctx = toolContext as { sessionID?: unknown; session?: { id?: unknown }; metadata?: { sessionID?: unknown } } | undefined;
@@ -121,7 +122,11 @@ export async function runIntake(
 
   const apiKey = readApiKey();
   if (apiKey === "") {
-    const decision = decisionFallback({ request, jevModel, reason: "missing_api_key", jevCalled: false, latencyMs: Date.now() - started });
+    const decision = requireFullRequestReview(
+      decisionFallback({ request, jevModel, reason: "missing_api_key", jevCalled: false, latencyMs: Date.now() - started }),
+      request.length,
+      MAX_STATE_CHARS,
+    );
     if (isTraceEnabled()) {
       await saveTrace(state, buildTraceEntry({
         sessionID, request, jevModel, jevCalled: false, jevAvailable: false,
@@ -151,12 +156,14 @@ export async function runIntake(
     const result = await callJev(jevState, { model: jevModel, apiKey, timeoutMs, ...(questions === undefined ? {} : { questions }) });
     const parsed = parseJevAnswers(result.answers as RawAnswers);
     let decision = decisionFromJev(parsed, { jevModel: result.modelReturned, latencyMs: result.latencyMs });
+    const decisionContextPartial = request.length > MAX_STATE_CHARS;
     if (completedContract) {
-      decision = withContinuationDecision(
-        decision,
-        parseContinuationAnswers(result.answers as RawAnswers),
-      );
+      const continuation = parseContinuationAnswers(result.answers as RawAnswers);
+      decision = decisionContextPartial
+        ? { ...decision, continuation: { ...continuation, fastPath: false } }
+        : withContinuationDecision(decision, continuation);
     }
+    decision = requireFullRequestReview(decision, request.length, MAX_STATE_CHARS);
     if (isTraceEnabled()) {
       await saveTrace(state, buildTraceEntry({
         sessionID, request, jevModel: result.modelReturned, jevCalled: true, jevAvailable: true,
@@ -175,7 +182,11 @@ export async function runIntake(
     return decision;
   } catch (error) {
     const reason = errorReason(error);
-    const decision = decisionFallback({ request, jevModel, reason, jevCalled: true, latencyMs: Date.now() - started });
+    const decision = requireFullRequestReview(
+      decisionFallback({ request, jevModel, reason, jevCalled: true, latencyMs: Date.now() - started }),
+      request.length,
+      MAX_STATE_CHARS,
+    );
     if (isTraceEnabled()) {
       await saveTrace(state, buildTraceEntry({
         sessionID, request, jevModel, jevCalled: true, jevAvailable: false,

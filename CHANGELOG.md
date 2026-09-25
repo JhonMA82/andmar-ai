@@ -2,6 +2,23 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
+## [0.7.2] - 2026-09-24
+
+### Fixed
+
+- Intake no longer allows a compact Internal Task Brief to replace or narrow
+  the original user request. The raw request remains authoritative; explicit
+  requirements and constraints must survive projection into the Task Contract,
+  and contradictions must be surfaced instead of silently resolved.
+- Long requests may exceed Jev's 8,000-character decision-state window without
+  being pre-compressed. Intake accepts raw requests up to 100,000 characters
+  and forces primary-model refinement whenever Jev could only inspect a
+  partial request, even when Jev reports the visible prefix as sufficient.
+- Partial-context continuation decisions cannot enter the operational fast
+  path; they return to full-request review instead.
+- Added regression coverage for lossless brief policy, long-request fallback,
+  and Jev partial-context sufficiency.
+
 ## [0.7.1] - 2026-09-24
 
 ### Fixed
