@@ -95,6 +95,14 @@ The current deterministic policy is intentionally conservative:
 
 Do not add a semantic router until real ambiguous routing cases demonstrate the need. The narrow implemented slice is the `intake` pilot (one typed Jev decision on whether a request needs refinement), not a frontier-model router.
 
+## Work Ledger (portable continuity)
+
+- Work Ledger is portable project state under `.andmar/work/<work-id>/`, not model memory or `ctx.storage`.
+- Never rely on invisible context; every durable assertion must trace to the request, repository, or Ledger itself.
+- Do not create a capability merely to manage Markdown files.
+- Update the runtime Task Contract from the Work Ledger for non-trivial tasks.
+- Use native OpenCode tools (`read`, `write`, `edit`) for all file mutations.
+
 ## Documentation map (read before changing)
 
 `AGENTS.md` is the operational contract, not the architecture. Consult the
@@ -110,6 +118,7 @@ state keys / ownership / lifecycle     -> docs/STATE.md
 options / environment variables        -> docs/CONFIGURATION.md
 receipts / evidence / revision binding -> docs/VERIFICATION.md
 intake / Jev / trace / fallback        -> docs/INTAKE.md
+work ledger / portable continuity      -> docs/WORK-LEDGER.md
 request flow / completion policy       -> assets/agents/andmar.md
 why the architecture is this way       -> docs/DECISIONS.md
 what is in / out of the MVP            -> docs/MVP-SCOPE.md

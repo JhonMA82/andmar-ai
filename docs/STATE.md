@@ -6,6 +6,8 @@ state-vs-context-vs-memory boundary is [ARCHITECTURE.md](ARCHITECTURE.md) §6.
 
 AndMar AI uses OpenCode V2 plugin storage for operational facts. This state is deliberately small and JSON-serializable. It is durable execution state, not semantic memory, history, or context.
 
+> **Repository vs runtime state:** Work Ledger is repository state under `.andmar/work/<work-id>/`, not `ctx.storage` state. It must not be mirrored as `work-ledger/<sessionID>` in plugin storage. See [WORK-LEDGER.md](WORK-LEDGER.md) and [DECISIONS.md](DECISIONS.md) D-027.
+
 ## Key families and owners
 
 | Keys | Owner | Readers | Lifecycle / cleanup |

@@ -303,3 +303,24 @@ itself, which requests refinement instead of guessing.
 
 **Consequence:**
 Intake can route requests correctly without lossy summarization, without new workflow infrastructure and without another LLM call.
+
+---
+
+## D-027 — Work Ledger starts as repository-native portable state, not a capability
+
+**Decision:**
+- Work Ledger files live under `.andmar/work/<work-id>/` as repository-native durable Markdown artifacts.
+- Native OpenCode file tools (`read`, `write`, `edit`) manage Ledger files; no dedicated capability is created in 0.8.2.
+- The existing Task Contract remains the bounded runtime completion projection in `ctx.storage`.
+- The Work Ledger serves as the portable, unbounded continuity source across sessions, machines, and agents.
+- Promotion of any part of Work Ledger to a runtime capability is deferred until demonstrated synchronization or lifecycle friction justifies it.
+
+**Why:**
+- Work artifacts can be committed and shared across machines and branches via Git.
+- Avoids duplicating state in `ctx.storage` and avoids bypasses of OpenCode's native permission model.
+- Prevents premature infrastructure investments before observing actual agent behavior in real projects.
+- Eliminates reliance on hidden, invisible model context across compactions and restarts.
+
+**Consequence:**
+- Synchronization between Work Ledger and Task Contract is initially governed by AndMar agent policy and verification gates.
+- Measured drift and developer friction in 0.8.2 will inform future potential capabilities or work-unit checkpoint commit automation.

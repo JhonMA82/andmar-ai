@@ -120,14 +120,17 @@ no durable state and no permission boundary.
 ### Rule: capability vs skill
 
 ```text
-Can it be solved correctly with skill + script, using the generic
-guarantees that already exist?
+Can it be solved correctly with repository artifacts or skill + script,
+using the generic guarantees that already exist?
 
     Yes -> do not create a capability.
 
     No: it needs runtime integration, state, hooks, ownership or a gate
         -> evaluate a capability.
 ```
+
+In 0.8.2, **Work Ledger = repository-native operational artifact** (`.andmar/work/<work-id>/`), not a capability. It uses OpenCode native file tools and Git portability rather than plugin storage (`ctx.storage`) or capability code. See [WORK-LEDGER.md](WORK-LEDGER.md) and [DECISIONS.md](DECISIONS.md) D-027.
+
 
 The same test exists in executable form in
 [ANDMAR-AI-CAPABILITIES.md](ANDMAR-AI-CAPABILITIES.md) ("Boundary test for a
@@ -168,13 +171,15 @@ For a non-trivial request handled by the `AndMar` agent today:
 ```text
 Request
    ↓
-Intake (`andmar_intake`: deterministic first, one typed Jev
-   ↓    decision when useful, explicit non-blocking fallback;
-        modes: direct, enrich [operational brief], structure [Work-Ledger projection])
-Task Contract (`andmar_task_contract create`: goal, requirements,
-   ↓     constraints, verification surface; trivial edits skip it;
-         later user instructions `steer` it; `status` recovers it
-         after compaction — compaction never ends the task)
+Intake (`andmar_intake`: deterministic first, one typed Jev decision when useful,
+   ↓    explicit non-blocking fallback; modes: direct, enrich, structure)
+Work Projection (intake signals `workProjection.mode`: none | lightweight | structured)
+   ↓
+Optional repository Work Ledger (`.andmar/work/<work-id>/`: portable continuity source,
+   ↓    lossless requirements and work units; see docs/WORK-LEDGER.md)
+Task Contract runtime projection (`andmar_task_contract create`: goal, bounded requirements,
+   ↓     constraints, verification surface; trivial edits skip it; later user instructions `steer` it;
+         `status` recovers it after compaction — compaction never ends the task)
 Routing (`andmar_route`: deterministic minimum profile from
    ↓     TaskSignals; intake `routeSignals` reused, same taxonomy)
 Execution / Delegation (native OpenCode tools; `andmar_delegate`

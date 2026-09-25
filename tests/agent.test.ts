@@ -98,3 +98,34 @@ test("AndMar agent definitions in assets and .opencode are synchronized and clea
   assert.match(agent, /No hidden context/i);
   assert.match(agent, /AndMar may use available context but must never depend on invisible context/i);
 });
+
+test("AndMar agent uses intake workProjection and manages repository Work Ledger", () => {
+  assert.match(agent, /workProjection\.mode/i);
+  assert.match(agent, /lightweight/i);
+  assert.match(agent, /structured/i);
+  assert.match(agent, /\.andmar\/work/i);
+});
+
+test("AndMar agent preserves separation between Work Ledger and Task Contract", () => {
+  assert.match(agent, /Work Ledger is portable continuity;\s*Task Contract is runtime completion projection/i);
+});
+
+test("AndMar agent resumes from Work Ledger before restarting from scratch", () => {
+  assert.match(agent, /Consult `?\.andmar\/work\/\*\/WORK\.md`? before restarting from scratch/i);
+  assert.match(agent, /reconstruct the Task Contract from the Ledger's Goal, requirements, and constraints/i);
+  assert.match(agent, /Do not redo completed work units/i);
+});
+
+test("AndMar agent manipulates Work Ledger files with native OpenCode tools", () => {
+  assert.match(agent, /using native OpenCode tools \(`read`, `write`, `edit`\)/i);
+});
+
+test("AndMar agent forbids hidden context across all modes and ledger assertions", () => {
+  assert.match(agent, /invisible context/i);
+  assert.match(agent, /Every durable assertion must be traceable to the current user request, the repository, the Work Ledger itself/i);
+});
+
+test("AndMar agent retains andmar_completion_gate without introducing a second completion gate", () => {
+  assert.match(agent, /andmar_completion_gate\b/);
+  assert.doesNotMatch(agent, /andmar_work_completion\b/);
+});

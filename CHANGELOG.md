@@ -2,6 +2,20 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
+## [0.8.2] - 2026-09-25
+
+### Added
+
+- Work Ledger foundation: introduced repository-native durable operational state under `.andmar/work/<work-id>/` as specified in `docs/WORK-LEDGER.md` and architectural decision `D-027`.
+- Portable continuity: Work Ledger serves as the durable, Git-portable continuity source across sessions, compactions, machines, and agents, while Task Contract remains the bounded runtime completion projection in `ctx.storage`.
+- Work Projection consumption: agent policy consumes `workProjection.mode` from Intake:
+  - `none`: no ledger created by default for trivial/direct tasks.
+  - `lightweight`: single `.andmar/work/<work-id>/WORK.md` tracking Goal, Constraints, Requirements, Work Units, Evidence pointers, and `Next`.
+  - `structured`: full ledger suite containing `SOURCE.md` (lossless obligations, literal secrets redacted), `REQUIREMENTS.md` (stable IDs, subrequirements), `WORK.md` (work units, single active unit `[~]`, `Next`), and `EVIDENCE.md` (verification and smoke pointers).
+- Handling > 20 requirements: retains all atomic obligations in `REQUIREMENTS.md` and groups them into up to 20 parent requirements projected to the runtime Task Contract without losing detail.
+- Resume and steering policies: progressive context retrieval on resume; Task Contract reconstruction when missing; user steering updates Ledger first before contract steering; churn prevention restricting Ledger updates to significant operational events.
+- Architecture and agent invariants: updated `ARCHITECTURE.md`, `OVERVIEW.md`, `STATE.md`, `AGENTS.md`, `assets/agents/andmar.md`, `.opencode/agents/andmar.md`, and added agent test suite invariants.
+
 ## [0.8.1] - 2026-09-25
 
 ### Fixed
