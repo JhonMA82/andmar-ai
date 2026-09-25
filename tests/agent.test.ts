@@ -56,6 +56,11 @@ test("AndMar agent preserves raw-request obligations through intake compression"
   assert.match(agent, /Never derive the contract solely from a compressed brief/i)
 })
 
+test("AndMar agent does not summarize requests before intake", () => {
+  assert.match(agent, /reads the authoritative raw user request directly from the current OpenCode session/i)
+  assert.match(agent, /Do not paraphrase, summarize, or pass the request as a tool argument/i)
+})
+
 test("AndMar agent works through a Task Contract and separates tests from completion", () => {
   assert.match(agent, /andmar_task_contract\b/)
   assert.match(agent, /andmar_request_review\b/)

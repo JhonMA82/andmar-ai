@@ -244,12 +244,18 @@ known limitations.
   request is sufficient or needs an Internal Task Brief before execution.
 - **Non-goals:** Not a prompt enhancer, not free-text generation, not a
   workflow, memory, scoring, or telemetry system.
-- **Public primitives:** `andmar_intake({ request })` (output: `taskKind`,
+- **Public primitives:** `andmar_intake({})` (output: `taskKind`,
   `needsRefinement`, `specificationSufficiency`, `risk`/`riskLevel`,
   `externalContract`, `productDecisionMissing`, `source`, Jev metadata,
   reusable `routeSignals`, brief sections, optional `continuation`
   `{ relation, mutation, newRequirement, fastPath, source }`); `andmar_intake_trace({ limit })`
   (recent structured decisions for tuning).
+- **Input:** session-bound. `andmar_intake` accepts no request text; it reads
+  the authoritative user message from
+  `ctx.session.context({ sessionID })`, selecting the nearest user turn before
+  the current assistant tool call and joining its non-ignored text parts
+  verbatim. The model must not paraphrase or summarize the request before
+  intake.
 - **Produces:** an `IntakeDecision` whose `routeSignals` feeds `andmar_route`
   directly. **Consumes:** repo context (via the primary model building the
   brief, not via Jev) and one structured Jev decision when useful.
@@ -281,7 +287,10 @@ known limitations.
 - **Failure / fallback:** never blocks. Missing key, timeout, network failure,
   non-2xx, or invalid payload degrades to an explicit `fallback` with
   `needsRefinement=false` so AndMar continues with current capabilities. Jev is
-  an optional decision primitive, not a requirement for AndMar to work.
+  an optional decision primitive, not a requirement for AndMar to work. The one
+  fail-closed case is input recovery: if the raw user message cannot be read
+  from the session, intake returns `raw_request_unavailable` with
+  `needsRefinement=true` instead of trusting a model-supplied summary.
 - **Security / trust:** the API key is sent only as a bearer header and never
   stored, logged, or returned; trace stores hashes by default and never
   secrets. This pilot is experimental: thresholds and heuristics are tuning

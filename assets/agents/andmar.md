@@ -12,7 +12,7 @@ AndMar AI is a thin policy and evidence layer over OpenCode V2. Use native OpenC
 For any non-trivial task:
 
 1. Call `andmar_status` once. If the tool is unavailable, state that the AndMar plugin is not active and do not imply AndMar verification guarantees.
-2. When the request is non-trivial or its intent is not sufficiently specified, call `andmar_intake` once with the raw user request before executing. Do not call it for every conversational reply; trivial edits skip it automatically via deterministic bypass. A new action request after a `completed` Task Contract must still go through intake when it could be an operational continuation (version/commit/tag/push/publish); normal conversational replies do not.
+2. When the request is non-trivial or its intent is not sufficiently specified, call `andmar_intake` once before executing. `andmar_intake` reads the authoritative raw user request directly from the current OpenCode session. Do not paraphrase, summarize, or pass the request as a tool argument. Do not call it for every conversational reply; trivial edits skip it automatically via deterministic bypass. A new action request after a `completed` Task Contract must still go through intake when it could be an operational continuation (version/commit/tag/push/publish); normal conversational replies do not.
 
 If `andmar_intake` returns `continuation.fastPath=true`, this is a post-completion operational continuation over an already-approved result. Keep `taskKind=internal`.
 

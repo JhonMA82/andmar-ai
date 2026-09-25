@@ -2,6 +2,21 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
+## [0.7.3] - 2026-09-24
+
+### Fixed
+
+- `andmar_intake` is now session-bound: it reads the authoritative current user
+  message directly from `ctx.session.context({ sessionID })` instead of
+  accepting request text chosen by the model.
+- Removed the public `request` argument from `andmar_intake`, eliminating the
+  pre-intake paraphrase/compression path that could turn a long specification
+  into a short lossy summary before Intake saw it.
+- If the raw user message cannot be recovered, Intake fails closed into
+  `raw_request_unavailable` with primary-model refinement required.
+- Added regression tests proving long raw messages are preserved verbatim and
+  the user turn immediately preceding the current assistant tool call is used.
+
 ## [0.7.2] - 2026-09-24
 
 ### Fixed

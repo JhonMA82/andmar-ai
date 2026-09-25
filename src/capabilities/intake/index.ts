@@ -5,6 +5,7 @@ import {
   decisionDeterministic,
   decisionFallback,
   decisionFromJev,
+  decisionRawRequestUnavailable,
   deterministicContinuation,
   isTrivialBypass,
   parseContinuationAnswers,
@@ -18,6 +19,58 @@ import { INTAKE_QUESTIONS } from "./questions.ts";
 import { buildTraceEntry, isTraceEnabled, listTraces, saveTrace } from "./trace.ts";
 
 const MAX_REQUEST_CHARS = 100_000;
+
+export function assistantMessageIDFrom(toolContext: unknown): string | undefined {
+  const ctx = toolContext as {
+    assistantMessageID?: unknown;
+    messageID?: unknown;
+  } | undefined;
+
+  if (typeof ctx?.assistantMessageID === "string" && ctx.assistantMessageID !== "") {
+    return ctx.assistantMessageID;
+  }
+  if (typeof ctx?.messageID === "string" && ctx.messageID !== "") {
+    return ctx.messageID;
+  }
+  return undefined;
+}
+
+export function extractRawUserRequest(
+  messages: readonly any[],
+  assistantMessageID?: string,
+): string | undefined {
+  let end = messages.length;
+
+  if (assistantMessageID) {
+    const assistantIndex = messages.findIndex(
+      (message: any) => message?.info?.id === assistantMessageID,
+    );
+    if (assistantIndex >= 0) end = assistantIndex;
+  }
+
+  for (let index = end - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.info?.role !== "user") continue;
+
+    const text = Array.isArray(message?.parts)
+      ? message.parts
+          .filter(
+            (part: any) =>
+              part?.type === "text" &&
+              part?.ignored !== true &&
+              typeof part?.text === "string" &&
+              part.text !== "",
+          )
+          .map((part: any) => part.text)
+          .join("\n")
+          .trim()
+      : "";
+
+    if (text !== "") return text;
+  }
+
+  return undefined;
+}
 
 function sessionIDFrom(toolContext: unknown): string {
   const ctx = toolContext as { sessionID?: unknown; session?: { id?: unknown }; metadata?: { sessionID?: unknown } } | undefined;
@@ -202,26 +255,50 @@ export async function runIntake(
 
 export const intakeCapability: Capability = {
   id: "intake",
-  version: 1,
+  version: 2,
   description: "Request refinement intake: deterministic-first classification with a single structured Jev decision and explicit fallback.",
   async setup({ ctx, config, state }) {
     const registration = await ctx.tool.transform((editor: any) => {
       editor.namespace({ name: "andmar", description: "AndMar AI harness primitives" });
       editor.add({
         name: "intake",
-        description: "Classify one user request as sufficient or needing internal refinement. Deterministic first, one structured Jev decision when useful, explicit fallback when Jev is unavailable. Feeds andmar_route via routeSignals; when needsRefinement is true build an Internal Task Brief from repo context and ask the user only for real product decisions.",
+        description: "Classify the current raw user request as sufficient or needing internal refinement. The capability reads the authoritative user message directly from the OpenCode session; callers must not summarize or pass request text. Deterministic first, one structured Jev decision when useful, explicit fallback when unavailable.",
         input: {
           type: "object",
-          properties: {
-            request: { type: "string", minLength: 1, maxLength: MAX_REQUEST_CHARS },
-          },
-          required: ["request"],
+          properties: {},
           additionalProperties: false,
         },
         options: { namespace: "andmar", codemode: true },
-        execute: async (input: { request: string }, toolContext: unknown) => {
-          const decision = await runIntake(input.request, toolContext, config, state);
-          return { content: JSON.stringify(decision, null, 2) };
+        execute: async (_input: Record<string, never>, toolContext: unknown) => {
+          const sessionID = sessionIDFrom(toolContext);
+          const assistantMessageID = assistantMessageIDFrom(toolContext);
+
+          if (sessionID === "unknown") {
+            const decision = decisionRawRequestUnavailable(
+              resolveJevModel(intakeOptions(config).model),
+            );
+            return { content: JSON.stringify(decision, null, 2) };
+          }
+
+          try {
+            const messages = await ctx.session.context({ sessionID });
+            const request = extractRawUserRequest(messages, assistantMessageID);
+
+            if (!request) {
+              const decision = decisionRawRequestUnavailable(
+                resolveJevModel(intakeOptions(config).model),
+              );
+              return { content: JSON.stringify(decision, null, 2) };
+            }
+
+            const decision = await runIntake(request, toolContext, config, state);
+            return { content: JSON.stringify(decision, null, 2) };
+          } catch {
+            const decision = decisionRawRequestUnavailable(
+              resolveJevModel(intakeOptions(config).model),
+            );
+            return { content: JSON.stringify(decision, null, 2) };
+          }
         },
       });
       editor.add({

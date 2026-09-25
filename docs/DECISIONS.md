@@ -265,3 +265,24 @@ holding otherwise verified work for several minutes.
 **Consequence:** Delegation/resume keep the existing generic child runner and
 10-minute safety ceiling unchanged. Review timeout handling is explicit,
 observable and proportional without introducing a new workflow engine.
+
+## D-025 — Intake is session-bound; the model never supplies the request text
+
+**Decision:** `andmar_intake` accepts no request argument. On execution it uses
+the tool-call session id and `ctx.session.context({ sessionID })` to recover
+the authoritative current user message directly from the OpenCode session:
+the nearest user turn before the current assistant tool call, with its
+non-ignored text parts joined verbatim. If that message cannot be recovered,
+intake fails closed into `raw_request_unavailable` with
+`needsRefinement=true`, never into a model-supplied replacement.
+
+**Why:** The 0.7.2 lossless-brief guards could not work in practice: the
+primary model was summarizing long specifications *before* invoking intake, so
+Intake only ever saw the summary. Any tool contract that accepts request text
+from the model leaves that paraphrase/compression path open, no matter how
+large the input limit is.
+
+**Consequence:** The public tool schema is `{}` and the agent instructions
+forbid passing or paraphrasing the request. Long specifications reach Jev and
+the brief builder verbatim. The single fail-closed case is session recovery
+itself, which requests refinement instead of guessing.

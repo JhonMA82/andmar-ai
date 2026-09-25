@@ -39,9 +39,21 @@ model builds the brief when `needsRefinement=true`.
 
 `src/capabilities/intake/` — no new agent, workflow, service, or runtime.
 
+### Session-bound input
+
+`andmar_intake` does **not** accept request text from the model. On execution it
+uses the tool-call session id to read the current OpenCode session and extracts
+the nearest authoritative user text message before the current assistant turn.
+This prevents the primary model from paraphrasing or compressing a long request
+before Intake can evaluate it.
+
+If the raw request cannot be recovered, Intake returns an explicit
+`raw_request_unavailable` fallback with refinement required. It never silently
+accepts model-supplied replacement text.
+
 Primitives:
 
-- `andmar_intake({ request })` — structured decision for one request.
+- `andmar_intake({})` — structured decision for the current authoritative user request.
 - `andmar_intake_trace({ limit })` — recent structured decisions for tuning.
 
 ## When Jev is called

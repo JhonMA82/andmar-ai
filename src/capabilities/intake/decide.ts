@@ -417,6 +417,28 @@ export function requireFullRequestReview(
   };
 }
 
+export function decisionRawRequestUnavailable(jevModel: string): IntakeDecision {
+  const base = decisionFallback({
+    request: "",
+    jevModel,
+    reason: "raw_request_unavailable",
+    jevCalled: false,
+  });
+
+  return {
+    ...base,
+    needsRefinement: true,
+    specificationSufficiency: 0,
+    reason: "raw_request_unavailable",
+    routeSignals: {
+      ...base.routeSignals,
+      uncertainty: "high",
+      reasoning: "high",
+    },
+    brief: { ...base.brief, required: true },
+  };
+}
+
 export function decisionDeterministic(request: string, jevModel: string): IntakeDecision {
   const guess = deterministicClassify(request);
   const sufficiency = guess.trivial ? 4 : 2;

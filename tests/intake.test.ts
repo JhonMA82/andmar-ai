@@ -25,7 +25,7 @@ import {
   traceContainsSecret,
   MAX_TRACE_ENTRIES,
 } from "../src/capabilities/intake/trace.ts";
-import { runIntake } from "../src/capabilities/intake/index.ts";
+import { assistantMessageIDFrom, extractRawUserRequest, runIntake } from "../src/capabilities/intake/index.ts";
 
 function memoryState(): StateStore {
   const map = new Map<string, unknown>();
@@ -207,6 +207,48 @@ test("model resolution prefers config, then env, then default", async () => {
   await withEnv({ ANDMAR_INTAKE_MODEL: undefined }, () => {
     assert.equal(resolveJevModel(undefined), DEFAULT_JEV_MODEL);
   });
+});
+
+test("extractRawUserRequest preserves the complete current user message", () => {
+  const raw = `FIX 1\n${"requirement\n".repeat(1200)}DONE`;
+  const messages = [
+    { info: { id: "u1", role: "user" }, parts: [{ type: "text", text: raw }] },
+    { info: { id: "a1", role: "assistant" }, parts: [] },
+  ];
+  assert.equal(extractRawUserRequest(messages, "a1"), raw);
+});
+
+test("extractRawUserRequest selects the user message before the current assistant turn", () => {
+  const messages = [
+    { info: { id: "u-old", role: "user" }, parts: [{ type: "text", text: "old" }] },
+    { info: { id: "a-old", role: "assistant" }, parts: [{ type: "text", text: "old answer" }] },
+    { info: { id: "u-current", role: "user" }, parts: [{ type: "text", text: "RAW CURRENT REQUEST" }] },
+    { info: { id: "a-current", role: "assistant" }, parts: [] },
+    { info: { id: "u-future", role: "user" }, parts: [{ type: "text", text: "must not select" }] },
+  ];
+  assert.equal(
+    extractRawUserRequest(messages, "a-current"),
+    "RAW CURRENT REQUEST",
+  );
+});
+
+test("extractRawUserRequest ignores ignored text parts", () => {
+  const messages = [
+    {
+      info: { id: "u1", role: "user" },
+      parts: [
+        { type: "text", text: "ignored", ignored: true },
+        { type: "text", text: "authoritative" },
+      ],
+    },
+  ];
+  assert.equal(extractRawUserRequest(messages), "authoritative");
+});
+
+test("assistantMessageIDFrom supports current and compatibility field names", () => {
+  assert.equal(assistantMessageIDFrom({ assistantMessageID: "a1" }), "a1");
+  assert.equal(assistantMessageIDFrom({ messageID: "a2" }), "a2");
+  assert.equal(assistantMessageIDFrom({}), undefined);
 });
 
 // --- runIntake fallback ---
