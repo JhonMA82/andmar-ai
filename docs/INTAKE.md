@@ -43,7 +43,7 @@ model builds the brief when `needsRefinement=true`.
 
 `andmar_intake` does **not** accept request text from the model. On execution it
 uses the tool-call session id to read the current OpenCode session and extracts
-the nearest authoritative user text message before the current assistant turn.
+the nearest `SessionMessageInfo` with `type="user"` before the current tool's `messageID`, reading its flattened `text` field.
 This prevents the primary model from paraphrasing or compressing a long request
 before Intake can evaluate it.
 

@@ -25,7 +25,7 @@ import {
   traceContainsSecret,
   MAX_TRACE_ENTRIES,
 } from "../src/capabilities/intake/trace.ts";
-import { assistantMessageIDFrom, extractRawUserRequest, runIntake } from "../src/capabilities/intake/index.ts";
+import { extractRawUserRequest, runIntake, toolMessageIDFrom } from "../src/capabilities/intake/index.ts";
 
 function memoryState(): StateStore {
   const map = new Map<string, unknown>();
@@ -212,19 +212,19 @@ test("model resolution prefers config, then env, then default", async () => {
 test("extractRawUserRequest preserves the complete current user message", () => {
   const raw = `FIX 1\n${"requirement\n".repeat(1200)}DONE`;
   const messages = [
-    { info: { id: "u1", role: "user" }, parts: [{ type: "text", text: raw }] },
-    { info: { id: "a1", role: "assistant" }, parts: [] },
+    { id: "u1", type: "user", text: raw, time: { created: 1 } },
+    { id: "a1", type: "assistant", content: [], time: { created: 2 } },
   ];
   assert.equal(extractRawUserRequest(messages, "a1"), raw);
 });
 
 test("extractRawUserRequest selects the user message before the current assistant turn", () => {
   const messages = [
-    { info: { id: "u-old", role: "user" }, parts: [{ type: "text", text: "old" }] },
-    { info: { id: "a-old", role: "assistant" }, parts: [{ type: "text", text: "old answer" }] },
-    { info: { id: "u-current", role: "user" }, parts: [{ type: "text", text: "RAW CURRENT REQUEST" }] },
-    { info: { id: "a-current", role: "assistant" }, parts: [] },
-    { info: { id: "u-future", role: "user" }, parts: [{ type: "text", text: "must not select" }] },
+    { id: "u-old", type: "user", text: "old", time: { created: 1 } },
+    { id: "a-old", type: "assistant", content: [{ type: "text", text: "old answer" }], time: { created: 2 } },
+    { id: "u-current", type: "user", text: "RAW CURRENT REQUEST", time: { created: 3 } },
+    { id: "a-current", type: "assistant", content: [], time: { created: 4 } },
+    { id: "u-future", type: "user", text: "must not select", time: { created: 5 } },
   ];
   assert.equal(
     extractRawUserRequest(messages, "a-current"),
@@ -232,23 +232,21 @@ test("extractRawUserRequest selects the user message before the current assistan
   );
 });
 
-test("extractRawUserRequest ignores ignored text parts", () => {
+test("extractRawUserRequest falls back to the latest user message when current assistant is not hydrated", () => {
   const messages = [
-    {
-      info: { id: "u1", role: "user" },
-      parts: [
-        { type: "text", text: "ignored", ignored: true },
-        { type: "text", text: "authoritative" },
-      ],
-    },
+    { id: "u-old", type: "user", text: "old", time: { created: 1 } },
+    { id: "a-old", type: "assistant", content: [], time: { created: 2 } },
+    { id: "u-current", type: "user", text: "RAW CURRENT REQUEST", time: { created: 3 } },
   ];
-  assert.equal(extractRawUserRequest(messages), "authoritative");
+  assert.equal(
+    extractRawUserRequest(messages, "a-current-not-yet-hydrated"),
+    "RAW CURRENT REQUEST",
+  );
 });
 
-test("assistantMessageIDFrom supports current and compatibility field names", () => {
-  assert.equal(assistantMessageIDFrom({ assistantMessageID: "a1" }), "a1");
-  assert.equal(assistantMessageIDFrom({ messageID: "a2" }), "a2");
-  assert.equal(assistantMessageIDFrom({}), undefined);
+test("toolMessageIDFrom uses the OpenCode V2 ToolContext messageID", () => {
+  assert.equal(toolMessageIDFrom({ messageID: "a2" }), "a2");
+  assert.equal(toolMessageIDFrom({}), undefined);
 });
 
 // --- runIntake fallback ---

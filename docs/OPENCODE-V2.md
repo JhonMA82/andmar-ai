@@ -94,8 +94,9 @@ ctx.session.prompt({ sessionID, text })  // QUEUES the user message and
                                          // resolves immediately with a
                                          // SessionInboxUser record
 ctx.session.wait({ sessionID })          // resolves when the session is idle
-ctx.session.context({ sessionID })       // SessionMessageInfo[]; assistant
-                                         // messages carry
+ctx.session.context({ sessionID })       // SessionMessageInfo[]
+                                         // user messages carry `text` directly
+                                         // assistant messages carry
                                          // content: [{ type: "text", text }]
 ```
 

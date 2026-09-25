@@ -20,52 +20,32 @@ import { buildTraceEntry, isTraceEnabled, listTraces, saveTrace } from "./trace.
 
 const MAX_REQUEST_CHARS = 100_000;
 
-export function assistantMessageIDFrom(toolContext: unknown): string | undefined {
-  const ctx = toolContext as {
-    assistantMessageID?: unknown;
-    messageID?: unknown;
-  } | undefined;
-
-  if (typeof ctx?.assistantMessageID === "string" && ctx.assistantMessageID !== "") {
-    return ctx.assistantMessageID;
-  }
-  if (typeof ctx?.messageID === "string" && ctx.messageID !== "") {
-    return ctx.messageID;
-  }
-  return undefined;
+export function toolMessageIDFrom(toolContext: unknown): string | undefined {
+  const ctx = toolContext as { messageID?: unknown } | undefined;
+  return typeof ctx?.messageID === "string" && ctx.messageID !== ""
+    ? ctx.messageID
+    : undefined;
 }
 
 export function extractRawUserRequest(
   messages: readonly any[],
-  assistantMessageID?: string,
+  currentAssistantMessageID?: string,
 ): string | undefined {
   let end = messages.length;
 
-  if (assistantMessageID) {
+  if (currentAssistantMessageID) {
     const assistantIndex = messages.findIndex(
-      (message: any) => message?.info?.id === assistantMessageID,
+      (message: any) => message?.id === currentAssistantMessageID,
     );
     if (assistantIndex >= 0) end = assistantIndex;
   }
 
   for (let index = end - 1; index >= 0; index -= 1) {
     const message = messages[index];
-    if (message?.info?.role !== "user") continue;
+    if (message?.type !== "user") continue;
+    if (typeof message?.text !== "string") continue;
 
-    const text = Array.isArray(message?.parts)
-      ? message.parts
-          .filter(
-            (part: any) =>
-              part?.type === "text" &&
-              part?.ignored !== true &&
-              typeof part?.text === "string" &&
-              part.text !== "",
-          )
-          .map((part: any) => part.text)
-          .join("\n")
-          .trim()
-      : "";
-
+    const text = message.text.trim();
     if (text !== "") return text;
   }
 
@@ -271,7 +251,7 @@ export const intakeCapability: Capability = {
         options: { namespace: "andmar", codemode: true },
         execute: async (_input: Record<string, never>, toolContext: unknown) => {
           const sessionID = sessionIDFrom(toolContext);
-          const assistantMessageID = assistantMessageIDFrom(toolContext);
+          const currentAssistantMessageID = toolMessageIDFrom(toolContext);
 
           if (sessionID === "unknown") {
             const decision = decisionRawRequestUnavailable(
@@ -282,7 +262,7 @@ export const intakeCapability: Capability = {
 
           try {
             const messages = await ctx.session.context({ sessionID });
-            const request = extractRawUserRequest(messages, assistantMessageID);
+            const request = extractRawUserRequest(messages, currentAssistantMessageID);
 
             if (!request) {
               const decision = decisionRawRequestUnavailable(

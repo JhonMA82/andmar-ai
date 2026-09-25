@@ -252,10 +252,10 @@ known limitations.
   (recent structured decisions for tuning).
 - **Input:** session-bound. `andmar_intake` accepts no request text; it reads
   the authoritative user message from
-  `ctx.session.context({ sessionID })`, selecting the nearest user turn before
-  the current assistant tool call and joining its non-ignored text parts
-  verbatim. The model must not paraphrase or summarize the request before
-  intake.
+  `ctx.session.context({ sessionID })`, selecting the nearest
+  `SessionMessageInfo` with `type="user"` before the current tool's
+  `messageID` and reading its flattened `text` field verbatim. The model must
+  not paraphrase or summarize the request before intake.
 - **Produces:** an `IntakeDecision` whose `routeSignals` feeds `andmar_route`
   directly. **Consumes:** repo context (via the primary model building the
   brief, not via Jev) and one structured Jev decision when useful.

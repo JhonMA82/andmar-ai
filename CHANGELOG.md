@@ -2,6 +2,20 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
+## [0.7.4] - 2026-09-24
+
+### Fixed
+
+- Session-bound Intake now parses the actual OpenCode V2 `SessionMessageInfo`
+  shape. User messages are flattened as `{ id, type: "user", text }`; the
+  previous 0.7.3 parser incorrectly expected legacy `{ info, parts }` records
+  and therefore returned `raw_request_unavailable`.
+- Intake anchors lookup to `ToolContext.messageID`, the current assistant
+  message id exposed by OpenCode V2, and falls back to the latest user message
+  if that assistant record has not yet been hydrated into session context.
+- Regression tests now use the real flattened session-message shape, including
+  a >1000-line raw request.
+
 ## [0.7.3] - 2026-09-24
 
 ### Fixed

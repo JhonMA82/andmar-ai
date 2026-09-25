@@ -271,9 +271,9 @@ observable and proportional without introducing a new workflow engine.
 **Decision:** `andmar_intake` accepts no request argument. On execution it uses
 the tool-call session id and `ctx.session.context({ sessionID })` to recover
 the authoritative current user message directly from the OpenCode session:
-the nearest user turn before the current assistant tool call, with its
-non-ignored text parts joined verbatim. If that message cannot be recovered,
-intake fails closed into `raw_request_unavailable` with
+the nearest `SessionMessageInfo` with `type="user"` before the current tool's
+`messageID`, reading its flattened `text` field verbatim. If that message
+cannot be recovered, intake fails closed into `raw_request_unavailable` with
 `needsRefinement=true`, never into a model-supplied replacement.
 
 **Why:** The 0.7.2 lossless-brief guards could not work in practice: the
