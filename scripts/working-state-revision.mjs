@@ -83,6 +83,6 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.
     }
   } catch (error) {
     console.error(error.message || String(error));
-    process.exit(1);
+    process.exit(2);
   }
 }

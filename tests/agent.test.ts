@@ -146,3 +146,9 @@ test("AndMar agent requires deterministic Work Ledger validation at key events",
   assert.match(agent, /node scripts\/validate-work-ledger\.mjs/i);
   assert.match(agent, /Validate the structural integrity of the Work Ledger/i);
 });
+
+test("AndMar agent uses canonical REQ-1/REQ-2 IDs and avoids REQ-01 padding", () => {
+  assert.match(agent, /`REQ-1`/);
+  assert.match(agent, /`REQ-2`/);
+  assert.doesNotMatch(agent, /\bREQ-0\d\b/);
+});

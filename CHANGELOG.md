@@ -2,6 +2,16 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
+## [0.8.4] - 2026-09-25
+
+### Fixed
+
+- Materialized revision helper: implemented and verified `scripts/working-state-revision.mjs` (previously referenced in documentation), computing stable SHA-256 fingerprints of product state while strictly excluding `.andmar/work/**`.
+- Materialized deterministic Work Ledger validator: implemented and verified `scripts/validate-work-ledger.mjs`, ensuring fast structural validation of ledger schemas, unique identifiers, active unit constraints, and referential integrity.
+- Real execution test suites: added `tests/working-state-revision.test.ts` (using real temporary Git repositories) and `tests/work-ledger.test.ts` (exercising all validator rules and edge cases).
+- Work Ledger requirement ID format: normalized requirement IDs from `REQ-01`/`REQ-02` to canonical `REQ-1`/`REQ-2` in agent policy and added doc regression tests.
+- Intake typing: fixed `exactOptionalPropertyTypes` compatibility in `src/capabilities/intake/decide.ts` when evaluating `requestShape`.
+
 ## [0.8.3] - 2026-09-25
 
 ### Fixed
