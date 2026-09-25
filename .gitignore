@@ -53,3 +53,10 @@ desktop.ini
 # OpenCode local state
 .opencode/cache/
 .opencode/logs/
+
+# Local tooling state (AIContext, harness, backlog)
+.aicontext/
+.tgrep/
+.engineering/
+.harness/
+backlog/
