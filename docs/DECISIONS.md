@@ -344,3 +344,22 @@ Intake can route requests correctly without lossy summarization, without new wor
 - Code and product verification receipts remain stable across Ledger bookkeeping updates.
 - Tasks up to 100 requirements benefit from atomic, uncompressed contract verification.
 - Work Ledger structural integrity is validated deterministically before completion without runtime bloat.
+
+## D-029 — Work Unit lifecycle is a deterministic repository helper, not a runtime capability
+
+**Decision:**
+- Work Unit state transitions in `WORK.md` are performed by `scripts/work-ledger-lifecycle.mjs`.
+- The supported lifecycle is intentionally small: `pending -> active`, `active -> done`, `active -> blocked`, `blocked -> active`, and explicit `done -> active` reopening.
+- Completing a Work Unit requires already-declared portable evidence (`EV-N`); the helper refuses unknown evidence and rolls back any mutation that fails structural validation.
+- The helper may atomically activate the next pending Work Unit, but it does not execute implementation work, verification commands, Task Contract operations, Git commits, or completion gates.
+- Work Ledger remains repository-native portable state; no new AndMar capability, workflow runtime, or `ctx.storage` namespace is introduced.
+
+**Why:**
+- Manual marker edits are simple but fragile once resume/recovery depends on exact Work Unit state.
+- The demonstrated problem is deterministic state transition integrity, not semantic planning or orchestration.
+- A small script solves duplicate-active-unit, stale `Next`, unsupported transitions, missing completion evidence, and explicit reopen semantics without growing the core or introducing a workflow engine.
+
+**Consequence:**
+- Agents retain freedom inside each Work Unit while AndMar makes progress transitions reproducible and auditable.
+- Work Unit completion and recovery cost become reliable repository facts rather than prompt-only conventions.
+- Future automatic checkpoint commits can consume these lifecycle events without changing the Work Ledger state model.

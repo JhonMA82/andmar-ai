@@ -2,12 +2,26 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
+## [0.9.0] - 2026-09-26
+
+### Added
+
+- Deterministic Work Unit lifecycle helper: `scripts/work-ledger-lifecycle.mjs` implements bounded `status`, `activate`, `complete`, `block`, `resume`, and `reopen` transitions over repository Work Ledgers without introducing a workflow capability or new runtime state.
+- Evidence-gated Work Unit completion: `complete` requires declared `EV-N` evidence, refuses unknown evidence, atomically promotes the next pending unit (or explicit `--next`), and rolls back mutations that fail structural validation.
+- Explicit recovery semantics: blocked units require a reason, resume requires a resolution reason, reopening done work requires a reason and clears the unit's current evidence pointer so stale proof cannot masquerade as current.
+- Real lifecycle regression coverage, including consumer-repository execution through the globally installed AndMar plugin path.
+
+### Changed
+
+- AndMar agent policy now uses deterministic lifecycle commands for Work Unit markers and `Next` transitions instead of hand-editing state during normal execution. Native OpenCode edits remain authoritative for Ledger source, requirements, evidence content, steering, and material Work Unit list changes.
+- Work Ledger documentation and architecture now define lifecycle transitions as a small deterministic repository helper, not a workflow runtime or capability (D-029).
+
 ## [0.8.5] - 2026-09-26
 
 ### Fixed
 
 - Consumer helper invocation: agent/docs now resolve Work Ledger helpers from the installed AndMar plugin root (`${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai`) so commands work from arbitrary target repositories instead of assuming a local `scripts/` directory.
-- Symlink-safe helper CLIs: both runtime helpers now detect direct execution through the globally installed plugin symlink, matching the actual `install:dev` topology.
+- Symlink-safe helper CLIs: both runtime helpers now detect direct execution through the globally installed AndMar plugin symlink, matching the actual `install:dev` topology.
 - Work Ledger mode validation: validator now accepts only the canonical portable modes `lightweight | structured`; Intake modes `enrich | structure` are no longer accepted as Ledger modes.
 
 ## [0.8.4] - 2026-09-25

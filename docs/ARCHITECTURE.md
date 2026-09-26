@@ -129,7 +129,7 @@ using the generic guarantees that already exist?
         -> evaluate a capability.
 ```
 
-In 0.8.2, **Work Ledger = repository-native operational artifact** (`.andmar/work/<work-id>/`), not a capability. It uses OpenCode native file tools and Git portability rather than plugin storage (`ctx.storage`) or capability code. See [WORK-LEDGER.md](WORK-LEDGER.md) and [DECISIONS.md](DECISIONS.md) D-027.
+**Work Ledger = repository-native operational artifact** (`.andmar/work/<work-id>/`), not a capability. It uses OpenCode native file tools and Git portability rather than plugin storage (`ctx.storage`) or capability code. Work Unit state transitions are handled by a small deterministic script (`scripts/work-ledger-lifecycle.mjs`) rather than a workflow runtime. See [WORK-LEDGER.md](WORK-LEDGER.md) and [DECISIONS.md](DECISIONS.md) D-027/D-029.
 
 
 The same test exists in executable form in
@@ -176,7 +176,7 @@ Intake (`andmar_intake`: deterministic first, one typed Jev decision when useful
 Work Projection (intake signals `workProjection.mode`: none | lightweight | structured)
    ↓
 Optional repository Work Ledger (`.andmar/work/<work-id>/`: portable continuity source,
-   ↓    lossless requirements and work units; see docs/WORK-LEDGER.md)
+   ↓    lossless requirements and deterministic Work Unit lifecycle; see docs/WORK-LEDGER.md)
 Task Contract runtime projection (`andmar_task_contract create`: goal, bounded requirements,
    ↓     constraints, verification surface; trivial edits skip it; later user instructions `steer` it;
          `status` recovers it after compaction — compaction never ends the task)

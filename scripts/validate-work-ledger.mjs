@@ -243,19 +243,24 @@ export async function validateWorkLedger(targetDir, options = {}) {
   let activeWUs = 0;
   const referencedReqsInWUs = [];
   const referencedEvsInWUs = [];
+  const unitStates = new Map();
+  const unitEvidenceRefs = new Map();
 
   for (const [secName, lines] of workSections) {
     if (secName.includes("WORK UNIT") || secName.includes("UNITS")) {
+      let currentWuId = null;
       for (const line of lines) {
         const wuMatch = line.match(/^[-*]\s+\[([ ~x!])\]\s+((?:WU-|W)\d+)/i);
         if (wuMatch) {
           const state = wuMatch[1];
           const id = wuMatch[2].toUpperCase().replace(/^W(?=\d)/, "WU-");
+          currentWuId = id;
           if (declaredWUs.has(id)) {
             errors.push(`Duplicate ID: ${id}`);
           } else {
             declaredWUs.add(id);
           }
+          unitStates.set(id, state);
           if (state === "~") {
             activeWUs++;
           }
@@ -274,6 +279,7 @@ export async function validateWorkLedger(targetDir, options = {}) {
           const ids = evRefMatch[1].match(/EV-\d+/gi);
           if (ids) {
             for (const id of ids) referencedEvsInWUs.push(id.toUpperCase());
+            if (currentWuId) unitEvidenceRefs.set(currentWuId, ids.map((id) => id.toUpperCase()));
           }
         }
       }
@@ -282,6 +288,16 @@ export async function validateWorkLedger(targetDir, options = {}) {
 
   if (activeWUs > 1) {
     errors.push(`At most one active Work Unit [~] allowed; found ${activeWUs}`);
+  }
+
+  for (const [id, state] of unitStates) {
+    if (state === "x" && !(unitEvidenceRefs.get(id)?.length > 0)) {
+      errors.push(`Done Work Unit ${id} requires an Evidence: EV-N reference`);
+    }
+  }
+
+  if (status === "completed" && [...unitStates.values()].some((state) => state !== "x")) {
+    errors.push("Completed ledger cannot contain pending, active, or blocked Work Units");
   }
 
   // 5. Next pointer validation

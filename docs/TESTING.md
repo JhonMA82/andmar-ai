@@ -141,3 +141,8 @@ profile; without a mapping the reviewer inherits the parent model.
 `bun run check` is the authoritative repository check. After `bun install`, it typechecks against the pinned real `@opencode/plugin` package.
 
 For environments without registry/network access, `bun run check:offline` exists only as a structural fallback and uses the local type shim. A passing offline check is **not** evidence of OpenCode API compatibility and must never replace `bun run check` in CI or release validation.
+
+
+## Work Unit lifecycle regression coverage
+
+`tests/work-unit-lifecycle.test.ts` exercises the repository-native Work Unit lifecycle helper against real `WORK.md` files. Coverage includes pending→active, active→done with declared evidence, automatic/explicit next-unit selection, blocking/resume, explicit reopen, rollback on invalid evidence, completed-ledger immutability, and preservation of structural validity. `tests/install-dev.test.ts` also executes the lifecycle helper through the installed global AndMar plugin path from an unrelated consumer repository.

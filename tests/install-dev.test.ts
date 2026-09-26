@@ -56,6 +56,7 @@ test("installed AndMar helpers execute from an unrelated consumer repository", a
     const pluginPath = join(configDir, "plugins", "andmar-ai")
     const revisionHelper = join(pluginPath, "scripts", "working-state-revision.mjs")
     const validatorHelper = join(pluginPath, "scripts", "validate-work-ledger.mjs")
+    const lifecycleHelper = join(pluginPath, "scripts", "work-ledger-lifecycle.mjs")
 
     const git = (...args: string[]) => spawnSync("git", args, { cwd: projectDir, encoding: "utf8" })
     assert.equal(git("init").status, 0)
@@ -76,7 +77,7 @@ test("installed AndMar helpers execute from an unrelated consumer repository", a
     await mkdir(ledgerDir, { recursive: true })
     await writeFile(
       join(ledgerDir, "WORK.md"),
-      `# Work\nWork ID: consumer-task\nStatus: active\nMode: lightweight\n\n## Work Units\n- [~] WU-1 — Continue\n\n## Next\nWU-1\n`,
+      `# Work\nWork ID: consumer-task\nStatus: active\nMode: lightweight\n\n## Work Units\n- [~] WU-1 — Continue\n\n## Evidence\n- EV-1: consumer smoke passed\n\n## Next\nWU-1\n`,
     )
 
     const after = spawnSync(node, [revisionHelper], { cwd: projectDir, env: helperEnv, encoding: "utf8" })
@@ -92,6 +93,21 @@ test("installed AndMar helpers execute from an unrelated consumer repository", a
     const result = JSON.parse(validation.stdout)
     assert.equal(result.valid, true)
     assert.equal(result.mode, "lightweight")
+
+    const transition = spawnSync(node, [lifecycleHelper, "complete", ".andmar/work/consumer-task", "WU-1", "--evidence", "EV-1"], {
+      cwd: projectDir,
+      env: helperEnv,
+      encoding: "utf8",
+    })
+    assert.equal(transition.status, 0, transition.stderr || transition.stdout)
+    const lifecycleResult = JSON.parse(transition.stdout)
+    assert.equal(lifecycleResult.ok, true)
+    assert.equal(lifecycleResult.active, null)
+    assert.deepEqual(lifecycleResult.done, ["WU-1"])
+
+    const afterLifecycle = spawnSync(node, [revisionHelper], { cwd: projectDir, env: helperEnv, encoding: "utf8" })
+    assert.equal(afterLifecycle.status, 0, afterLifecycle.stderr || afterLifecycle.stdout)
+    assert.equal(afterLifecycle.stdout.trim(), revision)
   } finally {
     await rm(configDir, { recursive: true, force: true })
     await rm(projectDir, { recursive: true, force: true })

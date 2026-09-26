@@ -104,7 +104,7 @@ Do not add a semantic router until real ambiguous routing cases demonstrate the 
 - `.andmar/work/**` is operational metadata and is excluded from the working-state revision fingerprint.
 - Validate ledger structural integrity deterministically with `node "${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai/scripts/validate-work-ledger.mjs" .andmar/work/<work-id>` at key events.
 - Resolve AndMar runtime helpers from `${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai`; never assume the target repository contains AndMar's `scripts/` directory.
-- Use native OpenCode tools (`read`, `write`, `edit`) for all file mutations.
+- Use native OpenCode tools (`read`, `write`, `edit`) for Work Ledger content, but use the installed deterministic `work-ledger-lifecycle.mjs` helper for normal Work Unit state transitions (`activate`, `complete`, `block`, `resume`, `reopen`).
 
 ## Documentation map (read before changing)
 

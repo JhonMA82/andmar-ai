@@ -440,3 +440,30 @@ WU-1
     await rm(base, { recursive: true, force: true });
   }
 });
+
+test("validator: done Work Unit without evidence reference fails", async () => {
+  const base = await mkdtemp(join(tmpdir(), "andmar-ledger-test-"));
+  const dir = join(base, "done-without-evidence");
+  try {
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      join(dir, "WORK.md"),
+      `# Work
+Work ID: done-without-evidence
+Status: active
+Mode: lightweight
+
+## Work Units
+- [x] WU-1 — Finished without proof
+
+## Next
+WU-1 — prepare final verification
+`
+    );
+    const res = await validateWorkLedger(dir);
+    assert.equal(res.valid, false);
+    assert.ok(res.errors.some((e: string) => e.includes("requires an Evidence")));
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});

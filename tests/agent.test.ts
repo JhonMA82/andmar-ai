@@ -154,3 +154,14 @@ test("AndMar agent uses canonical REQ-1/REQ-2 IDs and avoids REQ-01 padding", ()
   assert.match(agent, /`REQ-2`/);
   assert.doesNotMatch(agent, /\bREQ-0\d\b/);
 });
+
+test("AndMar agent uses deterministic Work Unit lifecycle transitions from the installed plugin", () => {
+  assert.match(agent, /plugins\/andmar-ai\/scripts\/work-ledger-lifecycle\.mjs/i)
+  assert.match(agent, /activate \.andmar\/work\/<work-id> WU-N/i)
+  assert.match(agent, /complete .*--evidence EV-N/i)
+  assert.match(agent, /block .*--reason/i)
+  assert.match(agent, /resume .*--reason/i)
+  assert.match(agent, /reopen .*--reason/i)
+  assert.match(agent, /do not hand-edit those markers/i)
+  assert.match(agent, /rolls back a transition that would make the Ledger structurally invalid/i)
+})

@@ -360,11 +360,53 @@ Work Ledger files must **not** be modified on every tool call. Updates are made 
 - Key verification evidence is recorded;
 - Task completion is being prepared.
 
-Run deterministic structure validation with `node "${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai/scripts/validate-work-ledger.mjs" .andmar/work/<work-id>` after initialization, requirement-modifying steering, active work unit change, or completion preparation.
+Run deterministic structure validation with `node "${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai/scripts/validate-work-ledger.mjs" .andmar/work/<work-id>` after initialization, requirement-modifying steering, material Work Unit list changes, or completion preparation. Deterministic lifecycle transitions validate atomically before and after mutation, so do not rerun the validator mechanically after each lifecycle command.
 
 **Runtime helper location:** AndMar helpers live under the installed plugin root `${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai`. Commands must resolve helpers there rather than assuming the consumer repository has an AndMar `scripts/` directory.
 
-### 7.5 User steering
+### 7.5 Deterministic Work Unit lifecycle
+
+Normal Work Unit state transitions are performed with the installed deterministic helper rather than by hand-editing markers:
+
+```text
+${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai/scripts/work-ledger-lifecycle.mjs
+```
+
+Supported commands:
+
+```text
+status <ledger-dir>
+activate <ledger-dir> WU-N
+complete <ledger-dir> WU-N --evidence EV-N[,EV-N] [--next WU-N]
+block <ledger-dir> WU-N --reason "..."
+resume <ledger-dir> WU-N --reason "..."
+reopen <ledger-dir> WU-N --reason "..."
+```
+
+Transition contract:
+
+```text
+pending  --activate--> active
+active   --complete + evidence--> done
+active   --block + reason--> blocked
+blocked  --resume + resolution reason--> active
+done     --reopen + reason--> active
+```
+
+Rules:
+- At most one Work Unit is active.
+- `complete` requires at least one already-declared `EV-N`; it refuses unknown evidence.
+- `complete` atomically promotes the next pending unit in file order, or an explicitly selected pending unit via `--next`. When none remain, no Work Unit is active and `Next` points to final verification.
+- `block` records the reason and moves the ledger to `Status: blocked`.
+- `resume` removes the active blocker field and records why work can continue.
+- `reopen` is explicit and only valid for a done unit whose outcome/evidence became invalid; it removes that unit's current evidence pointer before returning it to active. Historical evidence may remain in the evidence index, but it is no longer attached as proof of the reopened unit.
+- A ledger already marked `Status: completed` is immutable to Work Unit lifecycle commands. Post-completion operational continuations use the existing Intake fast-path instead of reopening the Ledger.
+- Every mutation validates the Ledger before and after writing. A post-mutation validation failure rolls the `WORK.md` mutation back.
+- The helper only mutates `.andmar/work/<work-id>/WORK.md`; it does not run tests, create evidence, modify source code, call Task Contract tools, commit Git state, or decide semantics. OpenCode remains the executor.
+
+Use native OpenCode edits for initialization, requirements, evidence content, steering, and material Work Unit list changes. Use the lifecycle helper for state transitions.
+
+### 7.6 User steering
 
 When the user provides new instructions during execution:
 1. Determine whether the instruction extends or replaces the goal.
@@ -374,7 +416,7 @@ When the user provides new instructions during execution:
    - Steer the runtime contract with `andmar_task_contract(op=steer)`.
 3. Never delete existing requirements unless explicitly superseded or cancelled by the user.
 
-### 7.6 Completion integration
+### 7.7 Completion integration
 
 Work Ledger does **not** create a new completion tool or gate. Final verification and closure proceed strictly through existing primitives:
 1. Reconcile `WORK.md` (all required units `[x]`, none `[~]`).
@@ -383,6 +425,7 @@ Work Ledger does **not** create a new completion tool or gate. Final verificatio
 4. Run verification and `andmar_verify_revision`.
 5. Run review with `andmar_request_review`.
 6. Seal completion with `andmar_completion_gate`.
+7. After the gate succeeds and the Task Contract is closed as completed, update the Ledger metadata to `Status: completed`; this metadata-only write does not change the code/product revision fingerprint.
 
 ## 8. No hidden context
 
