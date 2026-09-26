@@ -81,7 +81,7 @@ request
 intake            (andmar_intake)
    ↓                deterministic first; one typed Jev decision when useful;
    ↓                fallback never blocks; trivial wording bypasses Jev
-   ↓                needsRefinement=true -> Internal Task Brief by the primary model
+   ↓                canonical modes: direct, enrich (operational brief), structure (Work-Ledger projection)
 task contract     (andmar_task_contract create)
    ↓                goal, requirements (REQ-N), constraints (CON-N);
    ↓                skipped entirely for trivial edits
@@ -124,7 +124,7 @@ Request: **"Add a new option to the CLI."**
 
 ```text
 1. intake
-      classify the request; build an Internal Task Brief if it is vague
+      classify into direct, enrich, or structure; build an operational brief if underspecified
 
 2. obligations
       task contract records the explicit requirements, including the

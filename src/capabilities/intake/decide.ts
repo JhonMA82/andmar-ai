@@ -6,7 +6,7 @@
 // unavailable.
 
 import type { ChangeKind, Risk } from "../../core/contracts.ts";
-import type { RawAnswers } from "./jev.ts";
+import { MAX_STATE_CHARS, type RawAnswers } from "./jev.ts";
 import { INTAKE_QUESTION_IDS } from "./questions.ts";
 
 export const ALLOWED_KINDS: readonly ChangeKind[] = [
@@ -26,6 +26,94 @@ export const ALLOWED_KINDS: readonly ChangeKind[] = [
 
 export type IntakeSource = "jev" | "deterministic" | "fallback";
 
+export type IntakeMode = "direct" | "enrich" | "structure";
+
+export type WorkProjectionMode = "none" | "lightweight" | "structured";
+
+export interface WorkProjection {
+  mode: WorkProjectionMode;
+  preserveSource: boolean;
+}
+
+export type RequestShape = "compact" | "underspecified" | "structured";
+export const ALLOWED_SHAPES: readonly RequestShape[] = ["compact", "underspecified", "structured"];
+
+export function workProjectionFor(mode: IntakeMode): WorkProjection {
+  switch (mode) {
+    case "direct":
+      return { mode: "none", preserveSource: false };
+    case "enrich":
+      return { mode: "lightweight", preserveSource: true };
+    case "structure":
+      return { mode: "structured", preserveSource: true };
+  }
+}
+
+export interface DeriveIntakeModeInput {
+  requestLength: number;
+  maxStateChars?: number;
+  trivial?: boolean;
+  needsRefinement?: boolean;
+  specificationSufficiency?: number;
+  requestShape?: RequestShape;
+  continuationFastPath?: boolean;
+}
+
+export function deriveIntakeMode(input: DeriveIntakeModeInput): IntakeMode {
+  // Priority 1 — continuation fast path
+  if (input.continuationFastPath) {
+    return "direct";
+  }
+
+  const limit = input.maxStateChars ?? MAX_STATE_CHARS;
+
+  // Priority 2 — partial decision context
+  // Requests exceeding the decision window must deterministically be "structure".
+  // Jev can never downgrade this.
+  if (input.requestLength > limit) {
+    return "structure";
+  }
+
+  // Priority 3 — trivial deterministic bypass
+  if (input.trivial) {
+    return "direct";
+  }
+
+  // Priority 4 — explicit structured shape
+  // Allows detailed specs under MAX_STATE_CHARS to be structured without losing obligations.
+  if (input.requestShape === "structured") {
+    return "structure";
+  }
+
+  // Priority 5 — insufficient specification
+  // Any of: underspecified shape, needsRefinement=true, or sufficiency <= 2
+  if (
+    input.requestShape === "underspecified" ||
+    input.needsRefinement === true ||
+    (input.specificationSufficiency !== undefined && input.specificationSufficiency <= 2)
+  ) {
+    return "enrich";
+  }
+
+  // Priority 6 — direct
+  // Only when coherent sufficiency evidence exists (needsRefinement=false && sufficiency >= 3)
+  if (
+    input.needsRefinement === false &&
+    input.specificationSufficiency !== undefined &&
+    input.specificationSufficiency >= 3
+  ) {
+    return "direct";
+  }
+
+  // If needsRefinement is explicitly false without sufficiency score (e.g. legacy/direct tests)
+  if (input.needsRefinement === false && input.specificationSufficiency === undefined) {
+    return "direct";
+  }
+
+  // Default conservative fallback
+  return "enrich";
+}
+
 export interface RouteSignals {
   kind: ChangeKind;
   risk: Risk;
@@ -36,6 +124,8 @@ export interface RouteSignals {
 }
 
 export interface IntakeDecision {
+  mode: IntakeMode;
+  workProjection: WorkProjection;
   taskKind: ChangeKind;
   needsRefinement: boolean;
   specificationSufficiency: number;
@@ -267,8 +357,12 @@ export function withContinuationDecision(
   const externalSideEffects =
     continuation.mutation === "operational_only" ||
     continuation.mutation === "metadata_and_operational";
+  const mode: IntakeMode = "direct";
+  const workProjection = workProjectionFor(mode);
   return {
     ...decision,
+    mode,
+    workProjection,
     taskKind: "internal",
     needsRefinement: false,
     specificationSufficiency: 4,
@@ -299,6 +393,7 @@ export interface ParsedJev {
   externalContractProb: number;
   productDecisionMissing: boolean;
   productDecisionMissingProb: number;
+  requestShape: RequestShape;
 }
 
 export function parseJevAnswers(raw: RawAnswers): ParsedJev {
@@ -330,10 +425,15 @@ export function parseJevAnswers(raw: RawAnswers): ParsedJev {
   if (prodRaw["type"] !== "noul" || prodProb === undefined || prodProb < 0 || prodProb > 1) {
     throw new Error("invalid_response:product_decision_missing");
   }
+  const shapeRaw = raw["request_shape"] as Record<string, unknown>;
+  if (shapeRaw["type"] !== "choice" || typeof shapeRaw["choice"] !== "string" || !(ALLOWED_SHAPES as readonly string[]).includes(shapeRaw["choice"] as string)) {
+    throw new Error("invalid_response:request_shape");
+  }
 
   const sufficiency = Math.min(Math.max(Math.round(suffScore), 0), 4);
   const risk = Math.min(Math.max(Math.round(riskScore), 0), 3);
   const taskKind = taskRaw["choice"] as ChangeKind;
+  const requestShape = shapeRaw["choice"] as RequestShape;
   return {
     taskKind,
     needsRefinement: needsProb >= 0.5,
@@ -345,6 +445,7 @@ export function parseJevAnswers(raw: RawAnswers): ParsedJev {
     externalContractProb: extProb,
     productDecisionMissing: prodProb >= 0.5,
     productDecisionMissingProb: prodProb,
+    requestShape,
   };
 }
 
@@ -367,10 +468,25 @@ function briefFor(needsRefinement: boolean): IntakeDecision["brief"] {
   };
 }
 
-export function decisionFromJev(parsed: ParsedJev, meta: { jevModel: string; latencyMs: number }): IntakeDecision {
-  return {
-    taskKind: parsed.taskKind,
+export function decisionFromJev(
+  parsed: ParsedJev,
+  meta: { jevModel: string; latencyMs: number; requestLength?: number },
+): IntakeDecision {
+  const mode = deriveIntakeMode({
+    requestLength: meta.requestLength ?? 0,
+    maxStateChars: MAX_STATE_CHARS,
+    trivial: false,
     needsRefinement: parsed.needsRefinement,
+    specificationSufficiency: parsed.specificationSufficiency,
+    requestShape: parsed.requestShape,
+  });
+  const workProjection = workProjectionFor(mode);
+  const needsRefinement = mode !== "direct";
+  return {
+    mode,
+    workProjection,
+    taskKind: parsed.taskKind,
+    needsRefinement,
     specificationSufficiency: parsed.specificationSufficiency,
     risk: parsed.risk,
     riskLevel: parsed.riskLevel,
@@ -387,7 +503,7 @@ export function decisionFromJev(parsed: ParsedJev, meta: { jevModel: string; lat
       sufficiency: parsed.specificationSufficiency,
       externalContract: parsed.externalContract,
     }),
-    brief: briefFor(parsed.needsRefinement),
+    brief: briefFor(needsRefinement),
   };
 }
 
@@ -402,8 +518,13 @@ export function requireFullRequestReview(
     ? { ...decision.continuation, fastPath: false }
     : undefined;
 
+  const mode: IntakeMode = "structure";
+  const workProjection = workProjectionFor(mode);
+
   return {
     ...decision,
+    mode,
+    workProjection,
     needsRefinement: true,
     specificationSufficiency: Math.min(decision.specificationSufficiency, 2),
     reason: decision.reason ?? "decision_context_truncated",
@@ -425,8 +546,13 @@ export function decisionRawRequestUnavailable(jevModel: string): IntakeDecision 
     jevCalled: false,
   });
 
+  const mode: IntakeMode = "enrich";
+  const workProjection = workProjectionFor(mode);
+
   return {
     ...base,
+    mode,
+    workProjection,
     needsRefinement: true,
     specificationSufficiency: 0,
     reason: "raw_request_unavailable",
@@ -444,9 +570,21 @@ export function decisionDeterministic(request: string, jevModel: string): Intake
   const sufficiency = guess.trivial ? 4 : 2;
   const riskLevel: Risk = guess.taskKind === "migration" || guess.taskKind === "security" ? "high" : "low";
   const risk = RISK_LEVELS.indexOf(riskLevel);
-  return {
-    taskKind: guess.taskKind,
+  const mode = deriveIntakeMode({
+    requestLength: request.length,
+    maxStateChars: MAX_STATE_CHARS,
+    trivial: guess.trivial,
     needsRefinement: false,
+    specificationSufficiency: sufficiency,
+    ...(guess.trivial ? { requestShape: "compact" as const } : {}),
+  });
+  const workProjection = workProjectionFor(mode);
+  const needsRefinement = mode !== "direct";
+  return {
+    mode,
+    workProjection,
+    taskKind: guess.taskKind,
+    needsRefinement,
     specificationSufficiency: sufficiency,
     risk,
     riskLevel,
@@ -458,7 +596,7 @@ export function decisionDeterministic(request: string, jevModel: string): Intake
     jevModel,
     reason: "trivial_bypass",
     routeSignals: buildRouteSignals({ kind: guess.taskKind, riskLevel, sufficiency, externalContract: guess.externalContractSuspected }),
-    brief: briefFor(false),
+    brief: briefFor(needsRefinement),
   };
 }
 
@@ -470,15 +608,30 @@ export function decisionFallback(input: {
   latencyMs?: number;
 }): IntakeDecision {
   const guess = deterministicClassify(input.request);
-  const sufficiency = guess.trivial ? 4 : 2;
+  const isLong = input.request.length > MAX_STATE_CHARS;
+  const isTrivial = guess.trivial;
+  const sufficiency = isTrivial ? 4 : 2;
   const riskLevel: Risk = guess.taskKind === "migration" || guess.taskKind === "security" ? "high" : "low";
   const risk = RISK_LEVELS.indexOf(riskLevel);
-  // Fallback never blocks AndMar: report the deterministic guess explicitly as
-  // fallback, never as a Jev classification.
+
+  let mode: IntakeMode;
+  if (isLong) {
+    mode = "structure";
+  } else if (isTrivial) {
+    mode = "direct";
+  } else {
+    mode = "enrich";
+  }
+
+  const workProjection = workProjectionFor(mode);
+  const needsRefinement = mode !== "direct";
+
   return {
+    mode,
+    workProjection,
     taskKind: guess.taskKind,
-    needsRefinement: false,
-    specificationSufficiency: sufficiency,
+    needsRefinement,
+    specificationSufficiency: isLong ? Math.min(sufficiency, 2) : sufficiency,
     risk,
     riskLevel,
     externalContract: guess.externalContractSuspected,
@@ -489,7 +642,12 @@ export function decisionFallback(input: {
     jevModel: input.jevModel,
     reason: input.reason,
     ...(input.latencyMs === undefined ? {} : { latencyMs: input.latencyMs }),
-    routeSignals: buildRouteSignals({ kind: guess.taskKind, riskLevel, sufficiency, externalContract: guess.externalContractSuspected }),
-    brief: briefFor(false),
+    routeSignals: buildRouteSignals({
+      kind: guess.taskKind,
+      riskLevel,
+      sufficiency: isLong ? Math.min(sufficiency, 2) : sufficiency,
+      externalContract: guess.externalContractSuspected,
+    }),
+    brief: briefFor(needsRefinement),
   };
 }

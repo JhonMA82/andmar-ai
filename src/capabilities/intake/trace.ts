@@ -6,6 +6,7 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import type { StateStore } from "../../core/contracts.ts";
+import type { IntakeMode, WorkProjectionMode } from "./decide.ts";
 import type { RawAnswers } from "./jev.ts";
 
 export const TRACE_PREFIX = "intake-trace/";
@@ -35,9 +36,13 @@ export interface IntakeTraceEntry {
   source: string;
   reason?: string;
   latencyMs: number;
+  mode: IntakeMode;
+  workProjectionMode: WorkProjectionMode;
   answers: TraceAnswers;
   decision: {
     refine: boolean;
+    mode?: IntakeMode;
+    workProjectionMode?: WorkProjectionMode;
     taskKind?: string;
     needsRefinement?: boolean;
     externalContract?: boolean;
@@ -99,6 +104,8 @@ export function buildTraceEntry(input: {
   latencyMs: number;
   rawAnswers: RawAnswers;
   refine: boolean;
+  mode?: IntakeMode;
+  workProjectionMode?: WorkProjectionMode;
   taskKind?: string | undefined;
   needsRefinement?: boolean | undefined;
   externalContract?: boolean | undefined;
@@ -120,9 +127,13 @@ export function buildTraceEntry(input: {
     source: input.source,
     ...(input.reason === undefined ? {} : { reason: input.reason }),
     latencyMs: input.latencyMs,
+    mode: input.mode ?? (input.refine ? "enrich" : "direct"),
+    workProjectionMode: input.workProjectionMode ?? ((input.mode ?? (input.refine ? "enrich" : "direct")) === "direct" ? "none" : (input.mode ?? (input.refine ? "enrich" : "direct")) === "enrich" ? "lightweight" : "structured"),
     answers: sanitizeAnswers(input.rawAnswers),
     decision: {
       refine: input.refine,
+      mode: input.mode ?? (input.refine ? "enrich" : "direct"),
+      workProjectionMode: input.workProjectionMode ?? ((input.mode ?? (input.refine ? "enrich" : "direct")) === "direct" ? "none" : (input.mode ?? (input.refine ? "enrich" : "direct")) === "enrich" ? "lightweight" : "structured"),
       ...(input.taskKind === undefined ? {} : { taskKind: input.taskKind }),
       ...(input.needsRefinement === undefined ? {} : { needsRefinement: input.needsRefinement }),
       ...(input.externalContract === undefined ? {} : { externalContract: input.externalContract }),

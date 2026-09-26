@@ -6,19 +6,27 @@ import {
   decisionFallback,
   decisionFromJev,
   decisionRawRequestUnavailable,
+  deriveIntakeMode,
   deterministicContinuation,
   isTrivialBypass,
   parseContinuationAnswers,
   parseJevAnswers,
   requireFullRequestReview,
   withContinuationDecision,
+  workProjectionFor,
   type IntakeDecision,
+  type IntakeMode,
+  type WorkProjection,
+  type WorkProjectionMode,
 } from "./decide.ts";
 import { CONTINUATION_QUESTIONS } from "./questions.ts";
 import { INTAKE_QUESTIONS } from "./questions.ts";
 import { buildTraceEntry, isTraceEnabled, listTraces, saveTrace } from "./trace.ts";
 
 const MAX_REQUEST_CHARS = 100_000;
+
+export { deriveIntakeMode, workProjectionFor };
+export type { IntakeMode, WorkProjection, WorkProjectionMode };
 
 export function toolMessageIDFrom(toolContext: unknown): string | undefined {
   const ctx = toolContext as { messageID?: unknown } | undefined;
@@ -99,7 +107,8 @@ export async function runIntake(
       await saveTrace(state, buildTraceEntry({
         sessionID, request, jevModel, jevCalled: false, jevAvailable: false,
         source: invalid.source, reason: invalid.reason, latencyMs: Date.now() - started,
-        rawAnswers: {}, refine: invalid.needsRefinement, taskKind: invalid.taskKind,
+        rawAnswers: {}, refine: invalid.needsRefinement, mode: invalid.mode,
+        workProjectionMode: invalid.workProjection.mode, taskKind: invalid.taskKind,
         needsRefinement: invalid.needsRefinement, externalContract: invalid.externalContract,
         productDecisionMissing: invalid.productDecisionMissing,
       }));
@@ -126,7 +135,8 @@ export async function runIntake(
         await saveTrace(state, buildTraceEntry({
           sessionID, request, jevModel, jevCalled: false, jevAvailable: true,
           source: decision.source, reason: decision.reason, latencyMs: Date.now() - started,
-          rawAnswers: {}, refine: decision.needsRefinement, taskKind: decision.taskKind,
+          rawAnswers: {}, refine: decision.needsRefinement, mode: decision.mode,
+          workProjectionMode: decision.workProjection.mode, taskKind: decision.taskKind,
           needsRefinement: decision.needsRefinement, externalContract: decision.externalContract,
           productDecisionMissing: decision.productDecisionMissing,
           continuationFastPath: continuation.fastPath,
@@ -145,7 +155,8 @@ export async function runIntake(
       await saveTrace(state, buildTraceEntry({
         sessionID, request, jevModel, jevCalled: false, jevAvailable: true,
         source: decision.source, reason: decision.reason, latencyMs: Date.now() - started,
-        rawAnswers: {}, refine: decision.needsRefinement, taskKind: decision.taskKind,
+        rawAnswers: {}, refine: decision.needsRefinement, mode: decision.mode,
+        workProjectionMode: decision.workProjection.mode, taskKind: decision.taskKind,
         needsRefinement: decision.needsRefinement, externalContract: decision.externalContract,
         productDecisionMissing: decision.productDecisionMissing,
       }));
@@ -164,7 +175,8 @@ export async function runIntake(
       await saveTrace(state, buildTraceEntry({
         sessionID, request, jevModel, jevCalled: false, jevAvailable: false,
         source: decision.source, reason: decision.reason, latencyMs: Date.now() - started,
-        rawAnswers: {}, refine: decision.needsRefinement, taskKind: decision.taskKind,
+        rawAnswers: {}, refine: decision.needsRefinement, mode: decision.mode,
+        workProjectionMode: decision.workProjection.mode, taskKind: decision.taskKind,
         needsRefinement: decision.needsRefinement, externalContract: decision.externalContract,
         productDecisionMissing: decision.productDecisionMissing,
       }));
@@ -188,7 +200,11 @@ export async function runIntake(
       : request;
     const result = await callJev(jevState, { model: jevModel, apiKey, timeoutMs, ...(questions === undefined ? {} : { questions }) });
     const parsed = parseJevAnswers(result.answers as RawAnswers);
-    let decision = decisionFromJev(parsed, { jevModel: result.modelReturned, latencyMs: result.latencyMs });
+    let decision = decisionFromJev(parsed, {
+      jevModel: result.modelReturned,
+      latencyMs: result.latencyMs,
+      requestLength: request.length,
+    });
     const decisionContextPartial = request.length > MAX_STATE_CHARS;
     if (completedContract) {
       const continuation = parseContinuationAnswers(result.answers as RawAnswers);
@@ -201,7 +217,8 @@ export async function runIntake(
       await saveTrace(state, buildTraceEntry({
         sessionID, request, jevModel: result.modelReturned, jevCalled: true, jevAvailable: true,
         source: decision.source, latencyMs: result.latencyMs, rawAnswers: result.answers as RawAnswers,
-        refine: decision.needsRefinement, taskKind: decision.taskKind,
+        refine: decision.needsRefinement, mode: decision.mode,
+        workProjectionMode: decision.workProjection.mode, taskKind: decision.taskKind,
         needsRefinement: decision.needsRefinement, externalContract: decision.externalContract,
         productDecisionMissing: decision.productDecisionMissing,
         ...(decision.continuation === undefined ? {} : {
@@ -224,7 +241,8 @@ export async function runIntake(
       await saveTrace(state, buildTraceEntry({
         sessionID, request, jevModel, jevCalled: true, jevAvailable: false,
         source: decision.source, reason, latencyMs: Date.now() - started,
-        rawAnswers: {}, refine: decision.needsRefinement, taskKind: decision.taskKind,
+        rawAnswers: {}, refine: decision.needsRefinement, mode: decision.mode,
+        workProjectionMode: decision.workProjection.mode, taskKind: decision.taskKind,
         needsRefinement: decision.needsRefinement, externalContract: decision.externalContract,
         productDecisionMissing: decision.productDecisionMissing,
       }));
@@ -236,13 +254,13 @@ export async function runIntake(
 export const intakeCapability: Capability = {
   id: "intake",
   version: 2,
-  description: "Request refinement intake: deterministic-first classification with a single structured Jev decision and explicit fallback.",
+  description: "Request refinement intake: deterministic-first classification into direct, enrich, or structure with a single structured Jev decision and explicit fallback.",
   async setup({ ctx, config, state }) {
     const registration = await ctx.tool.transform((editor: any) => {
       editor.namespace({ name: "andmar", description: "AndMar AI harness primitives" });
       editor.add({
         name: "intake",
-        description: "Classify the current raw user request as sufficient or needing internal refinement. The capability reads the authoritative user message directly from the OpenCode session; callers must not summarize or pass request text. Deterministic first, one structured Jev decision when useful, explicit fallback when unavailable.",
+        description: "Classify the current raw user request into direct, enrich, or structure mode. The capability reads the authoritative user message directly from the OpenCode session; callers must not summarize or pass request text. Deterministic first, one structured Jev decision when useful, explicit fallback when unavailable.",
         input: {
           type: "object",
           properties: {},
@@ -283,7 +301,7 @@ export const intakeCapability: Capability = {
       });
       editor.add({
         name: "intake_trace",
-        description: "List recent structured intake decisions (request hash, Jev answers, refinement outcome, latency, fallback reason). No prompt content unless ANDMAR_INTAKE_TRACE_CONTENT=1. Never contains secrets.",
+        description: "List recent structured intake decisions (request hash, Jev answers, mode, work projection, latency, fallback reason). No prompt content unless ANDMAR_INTAKE_TRACE_CONTENT=1. Never contains secrets.",
         input: {
           type: "object",
           properties: {

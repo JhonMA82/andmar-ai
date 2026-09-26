@@ -2,6 +2,47 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
+## [0.8.1] - 2026-09-25
+
+### Fixed
+
+- Fallback semantics: non-trivial short requests under fallback now correctly yield `mode="enrich"` (`needsRefinement=true`, `workProjection.mode="lightweight"`) instead of falsely certifying sufficiency with `mode="direct"`. Trivial requests keep `direct` and long requests keep `structure`.
+- Sufficiency enforcement in `deriveIntakeMode`: low specification sufficiency (`specificationSufficiency <= 2`) can never produce `direct` mode; `direct` requires coherent sufficiency (`needsRefinement=false` and `specificationSufficiency >= 3`).
+- Request shape classification: added typed Jev question `request_shape` (`compact | underspecified | structured`). Detailed specifications under `MAX_STATE_CHARS` (8,000 chars) are now correctly recognized as `structure` with `preserveSource=true`.
+- Documentation hardening: corrected outdated statements asserting that all `needsRefinement=true` requests produce a compact Internal Task Brief. In `structure` mode, the agent creates a Work-Ledger-shaped projection and never compresses or summarizes away requirements. Fixed literal `OpenCode\x27s` bug in agent definitions.
+- Decision log: added `D-026` recording rationale for separating sufficiency from request shape.
+
+## [0.8.0] - 2026-09-25
+
+### Added
+
+- Intake modes: `IntakeDecision` now explicitly distinguishes `direct`, `enrich`,
+  and `structure` modes (`IntakeMode`).
+- Work projection handoff: added `workProjection` (`WorkProjection`) containing
+  `mode: "none" | "lightweight" | "structured"` and `preserveSource: boolean`,
+  preparing AndMar for a future durable Work Ledger without implementing persistence yet.
+- Deterministic mode policy: pure, testable `deriveIntakeMode` policy function.
+  Requests longer than `MAX_STATE_CHARS` (8,000 characters) are deterministically
+  forced into `structure` with `preserveSource=true`, preventing partial-context
+  decisions by Jev from declaring a long request sufficient.
+- "No hidden context" invariant added to agent guidance: all assertions during
+  enrich or structure must strictly proceed from user request, repository context,
+  or explicitly available upstream sources.
+- User decision guidelines: 3-step check before asking the user; agent uses
+  native OpenCode question tools when asking is necessary.
+- Trace schema updated: `intake_trace` records `mode` and `workProjectionMode`
+  in bounded history while preserving prompt privacy defaults.
+
+### Changed
+
+- Backwards compatibility: `needsRefinement` and `brief.required` are preserved
+  as derived compatibility properties (`direct` -> `needsRefinement: false`,
+  `enrich` and `structure` -> `needsRefinement: true`).
+- Agent policy updated in `assets/agents/andmar.md` and `.opencode/agents/andmar.md`
+  to handle requests according to `mode` (`direct`: execute normally; `enrich`:
+  gather repo context into operational intent; `structure`: structure obligations
+  into Work-Ledger-shaped projection without lossy summarization).
+
 ## [0.7.4] - 2026-09-24
 
 ### Fixed

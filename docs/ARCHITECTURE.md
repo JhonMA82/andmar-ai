@@ -170,7 +170,7 @@ Request
    ↓
 Intake (`andmar_intake`: deterministic first, one typed Jev
    ↓    decision when useful, explicit non-blocking fallback;
-        `needsRefinement=true` → Internal Task Brief by the primary model)
+        modes: direct, enrich [operational brief], structure [Work-Ledger projection])
 Task Contract (`andmar_task_contract create`: goal, requirements,
    ↓     constraints, verification surface; trivial edits skip it;
          later user instructions `steer` it; `status` recovers it
@@ -270,7 +270,7 @@ Examples:
 - whether a semantic API change is breaking;
 - whether old context still matters.
 
-The narrowest slice of this is implemented: the `intake` pilot answers six
+The narrowest slice of this is implemented: the `intake` pilot answers seven
 typed Jev questions per request, and deterministic constraints still validate
 the result. Broader semantic classification still waits for measured friction.
 

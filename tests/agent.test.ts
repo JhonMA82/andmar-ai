@@ -89,3 +89,12 @@ test("AndMar agent passes taskKind through contract and completion boundaries", 
   assert.match(agent, /completion_gate.*taskKind|taskKind.*completion_gate/i)
   assert.match(agent, /runtime.*derived.*taskKind|taskKind.*runtime.*derived/i)
 })
+
+test("AndMar agent definitions in assets and .opencode are synchronized and clean of escaped literals", async () => {
+  const opencodeAgent = await readFile(new URL("../.opencode/agents/andmar.md", import.meta.url), "utf8");
+  assert.equal(agent, opencodeAgent);
+  assert.doesNotMatch(agent, /\\x27/);
+  assert.match(agent, /OpenCode's/);
+  assert.match(agent, /No hidden context/i);
+  assert.match(agent, /AndMar may use available context but must never depend on invisible context/i);
+});

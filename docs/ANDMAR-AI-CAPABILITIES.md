@@ -244,8 +244,9 @@ known limitations.
   request is sufficient or needs an Internal Task Brief before execution.
 - **Non-goals:** Not a prompt enhancer, not free-text generation, not a
   workflow, memory, scoring, or telemetry system.
-- **Public primitives:** `andmar_intake({})` (output: `taskKind`,
-  `needsRefinement`, `specificationSufficiency`, `risk`/`riskLevel`,
+- **Public primitives:** `andmar_intake({})` (output: `mode` (`direct | enrich | structure`),
+  `workProjection` (`mode: none | lightweight | structured`, `preserveSource`),
+  `taskKind`, `needsRefinement`, `specificationSufficiency`, `risk`/`riskLevel`,
   `externalContract`, `productDecisionMissing`, `source`, Jev metadata,
   reusable `routeSignals`, brief sections, optional `continuation`
   `{ relation, mutation, newRequirement, fastPath, source }`); `andmar_intake_trace({ limit })`
@@ -256,9 +257,10 @@ known limitations.
   `SessionMessageInfo` with `type="user"` before the current tool's
   `messageID` and reading its flattened `text` field verbatim. The model must
   not paraphrase or summarize the request before intake.
-- **Produces:** an `IntakeDecision` whose `routeSignals` feeds `andmar_route`
-  directly. **Consumes:** repo context (via the primary model building the
-  brief, not via Jev) and one structured Jev decision when useful.
+- **Produces:** an `IntakeDecision` with canonical `mode` and `workProjection`
+  whose `routeSignals` feeds `andmar_route` directly. **Consumes:** repo context
+  (via the primary model building the brief, not via Jev) and one structured Jev
+  decision when useful.
 - **Owns:** `intake-trace/*`. **Must not own:** any other capability's keys.
 - **State:** `intake-trace/<timestamp>-<rand>` (max 20 entries, pruned oldest
   first): timestamp, session, request sha256 hash + length, Jev model,
@@ -272,21 +274,23 @@ known limitations.
   `ANDMAR_INTAKE_TRACE`, `ANDMAR_INTAKE_TRACE_CONTENT`. Plugin options win over
   environment only when explicitly set; timeout clamps to 1000–60000 ms.
 - **External contracts:** exactly one `POST /api/alpha/decisions` per
-  non-trivial request with six typed questions (`task_kind` as `choice` over
+  non-trivial request with seven typed questions (`task_kind`, `needs_refinement`, `specification_sufficiency`, `risk`, `external_contract`, `product_decision_missing`, `request_shape`) (`task_kind` as `choice` over
   the existing 12 `ChangeKind` values, `needs_refinement` /
   `external_contract` / `product_decision_missing` as `noul`,
   `specification_sufficiency` / `risk` as `score`); no free text, no SDK
   (plain `fetch`).
 - **Interaction:** strict order — deterministic first, Jev second, generative
-  reasoning only when necessary. Empty/oversized requests and the trivial
+  reasoning only when necessary. Categorizes requests into `direct` (short + clear),
+  `enrich` (underspecified + ambiguous), and `structure` (detailed/extensive specifications).
+  Requests exceeding Jev decision window (`MAX_STATE_CHARS`) are deterministically forced
+  into `structure` with `preserveSource=true`. Empty/oversized requests and the trivial
   bypass (short UI/text change, no migration/security/external/bug signals)
   never call Jev. `routeSignals` reuse the `ChangeKind`/`Risk` taxonomy.
   After a `completed` contract, obvious operational continuations bypass Jev
-  via `deterministicContinuation`; ambiguous ones use the same single Jev
+  via `deterministicContinuation` into `mode=direct`; ambiguous ones use the same single Jev
   call with three conditional continuation questions (D-021).
 - **Failure / fallback:** never blocks. Missing key, timeout, network failure,
-  non-2xx, or invalid payload degrades to an explicit `fallback` with
-  `needsRefinement=false` so AndMar continues with current capabilities. Jev is
+  non-2xx, or invalid payload degrades to an explicit `fallback`: trivial requests yield `direct`, non-trivial short requests yield `enrich` (non-blocking, inspect repo context), and long requests yield `structure`. Jev is
   an optional decision primitive, not a requirement for AndMar to work. The one
   fail-closed case is input recovery: if the raw user message cannot be read
   from the session, intake returns `raw_request_unavailable` with

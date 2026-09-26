@@ -17,23 +17,20 @@ User request
 AndMar primary agent
      ↓
 andmar_intake
-     ↓ deterministic checks
+     ↓ deterministic checks (length, trivial bypass, continuation)
      ↓ when useful
-Jev decision (one call, six questions)
+Jev decision (one call, seven questions)
      ↓
-sufficient ──────────────→ normal execution
-     │
-     └── needs refinement
-                 ↓
-       Internal Task Brief (primary model + repo context)
-                 ↓
-              andmar_route
-                 ↓
-             execution
+deriveIntakeMode
+     ├─ direct    ──────────────→ normal execution (no ceremony)
+     ├─ enrich    ──────────────→ repo context + operational brief (needsRefinement=true)
+     └─ structure ──────────────→ Work-Ledger-shaped projection (preserveSource: true)
 ```
 
-Jev never generates the brief. Jev only answers typed questions. The primary
-model builds the brief when `needsRefinement=true`.
+Jev never generates briefs or work projections. Jev only answers typed questions.
+Intake evaluates the request and determines the canonical execution mode (`direct`,
+`enrich`, or `structure`) along with a `workProjection` handoff for the primary
+agent and a future Work Ledger capability.
 
 ## Capability
 
@@ -56,6 +53,67 @@ Primitives:
 - `andmar_intake({})` — structured decision for the current authoritative user request.
 - `andmar_intake_trace({ limit })` — recent structured decisions for tuning.
 
+## Modes and Work Projection
+
+Intake distinguishes between three canonical handling modes (`IntakeMode`):
+
+```text
+short + clear
+    → direct
+
+short/underspecified + ambiguous
+    → enrich
+
+long/detailed specification
+    → structure
+```
+
+And the core invariant:
+> «Una solicitud extensa puede ser estructurada, dividida e indexada, pero nunca debe ser sustituida por un resumen destructivo que pierda obligaciones explícitas.»
+
+### 1. `direct`
+The request contains sufficient actionable intent to begin immediately.
+- `mode`: `"direct"`
+- `needsRefinement`: `false`
+- `workProjection`: `{ mode: "none", preserveSource: false }`
+- `brief.required`: `false`
+- **Behavior:** No additional ceremony. The agent proceeds directly to execution.
+
+### 2. `enrich`
+The request expresses a valid intent, but is underspecified to execute responsibly without first consulting repository context.
+- `mode`: `"enrich"`
+- `needsRefinement`: `true`
+- `workProjection`: `{ mode: "lightweight", preserveSource: true }`
+- `brief.required`: `true`
+- **Behavior:** The agent inspects accessible repository context (code, config, tests, docs) and builds a richer operational intent (Internal Task Brief). It does **not** immediately ask the user unless a genuine, unresolvable product decision remains.
+
+### 3. `structure`
+The request already contains abundant information, requirements, or constraints. It does not need the model to invent intent; it needs organization.
+- `mode`: `"structure"`
+- `needsRefinement`: `true`
+- `workProjection`: `{ mode: "structured", preserveSource: true }`
+- `brief.required`: `true`
+- **Behavior:** The agent must **not** compress or summarize the request into a compact brief that drops requirements. It prepares a Work-Ledger-shaped projection (Source, Requirements, Constraints, Work Units, Acceptance/Verification, Unresolved decisions) while keeping the full raw request authoritative.
+
+### Work Ledger handoff
+Intake does not implement a Work Ledger capability, state machines, or Markdown persistence in this phase. It produces the `workProjection` contract (`mode: "none" | "lightweight" | "structured"`, `preserveSource: boolean`) to communicate the required representation to the agent and future capabilities.
+
+### No hidden context
+> «AndMar may use available context but must never depend on invisible context.»
+Every assertion added during `enrich` or `structure` must proceed strictly from:
+1. the raw user request;
+2. the repository (code, config, tests, docs);
+3. explicitly available upstream sources.
+
+No assumptions about external projects, external paths, uninstalled tools, or memories from previous sessions.
+
+### User decisions
+Ask the user only when a real product decision is missing:
+1. Does the request already contain the answer?
+2. Do repo/config/tests/docs determine it?
+3. Is it simply a local, reversible technical decision?
+If any is yes, do **not** ask. When asking, use OpenCode's native interaction/question tool.
+
 ## When Jev is called
 
 Order is strict:
@@ -75,12 +133,12 @@ generative reasoning only when necessary
    `jevCalled=false`, no Jev call. Proportionality for tiny work.
 3. **Missing `OPENROUTER_API_KEY`** → `fallback` (`missing_api_key`),
    deterministic guess, non-blocking.
-4. **Otherwise** → exactly one `POST /api/alpha/decisions` with six questions.
+4. **Otherwise** → exactly one `POST /api/alpha/decisions` with seven questions.
    Success → `source=jev`. Timeout, network failure, non-2xx, or invalid
    payload → `fallback` with `reason=timeout|request_failed|auth_failed|invalid_response`
    and `jevCalled=true`.
 
-## Questions (one Jev call)
+## Questions (one Jev call, seven questions)
 
 | id | type | meaning |
 |---|---|---|
@@ -90,6 +148,7 @@ generative reasoning only when necessary
 | `risk` | `score` | `0–3` → `low|medium|high|critical` for `andmar_route`. |
 | `external_contract` | `noul` | Upstream API, migration compat, auth provider, webhook, runtime boundary. |
 | `product_decision_missing` | `noul` | Real product choice missing that repo context cannot resolve. |
+| `request_shape` | `choice` | `compact`, `underspecified`, `structured`: structural shape and level of detail. |
 
 `task_kind` maps 1:1 to `ChangeKind`. `risk` score maps to `Risk`.
 `routeSignals` (`kind`, `risk`, `uncertainty` from sufficiency, `reasoning`
@@ -106,17 +165,23 @@ Full definitions live in `src/capabilities/intake/questions.ts`.
   "jevAvailable": false,
   "reason": "missing_api_key",
   "taskKind": "feature",
-  "needsRefinement": false
+  "mode": "direct",
+  "needsRefinement": false,
+  "workProjection": {
+    "mode": "none",
+    "preserveSource": false
+  }
 }
 ```
 
 Reasons: `missing_api_key`, `timeout`, `request_failed`, `auth_failed`,
 `invalid_response`, `invalid_request`, `request_too_large`. Fallback never
-blocks AndMar. Normally it keeps `needsRefinement=false`; however, when the
-raw request is larger than Jev's decision-state window, Intake forces
-`needsRefinement=true` so the primary model reviews the **full raw request**
-before execution. The deterministic `taskKind` guess is still labeled
-`fallback`, never `jev`.
+blocks AndMar. For trivial requests, it defaults to `mode="direct"`, `needsRefinement=false`. For non-trivial short requests, it defaults conservatively to `mode="enrich"`, `needsRefinement=true`, `workProjection.mode="lightweight"`, `preserveSource=true`.
+However, when the raw request is larger than Jev's decision-state window (`MAX_STATE_CHARS`),
+Intake deterministically forces `mode="structure"`, `needsRefinement=true`,
+`workProjection.mode="structured"`, and `preserveSource=true` so the primary model structures
+the **full raw request** before execution without information loss. The deterministic
+`taskKind` guess is still labeled `fallback`, never `jev`.
 
 ## Internal Task Brief (primary model, not Jev)
 
@@ -169,7 +234,7 @@ Stored by default: `timestamp`, `sessionID`, `requestHash` (sha256),
 `requestLength`, `jevModel`, `jevCalled`, `jevAvailable`, `source`,
 `reason`, `latencyMs`, raw `answers` (type+value+confidence/probabilities/
 legend as returned — never invented; `noul` has no confidence by design),
-`decision.refine`. Full `request` only with the content opt-in. `OPENROUTER_API_KEY`
+`mode`, `workProjectionMode`, `decision.refine`. Full `request` only with the content opt-in. `OPENROUTER_API_KEY`
 is never stored, logged, or returned.
 
 ## Configuration

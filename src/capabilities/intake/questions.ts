@@ -1,8 +1,9 @@
 // Intake Jev questions (pure definition, no OpenCode imports).
 //
-// Single Jev call with six structured questions. Jev never generates free
-// text; the primary AndMar model owns reasoning and Internal Task Brief
-// generation when refinement is required.
+// Single Jev call with seven structured questions. Jev never generates free
+// text; the primary AndMar model handles execution according to canonical mode:
+// direct (normal execution), enrich (operational brief from repo context), or
+// structure (structured projection preserving the full raw request).
 
 export type JevQuestionType = "choice" | "noul" | "score";
 
@@ -33,6 +34,7 @@ export const INTAKE_QUESTION_IDS = [
   "risk",
   "external_contract",
   "product_decision_missing",
+  "request_shape",
 ] as const;
 
 export type IntakeQuestionId = (typeof INTAKE_QUESTION_IDS)[number];
@@ -99,6 +101,15 @@ export const INTAKE_QUESTIONS: Record<IntakeQuestionId, JevQuestion> = {
     criteria: {
       true: "A genuine product choice (scope, behavior, UX, priority) is absent and cannot be inferred from repo, docs, or code.",
       false: "No product decision is missing, or any open point can be resolved from repo context without asking the user.",
+    },
+  },
+  request_shape: {
+    type: "choice",
+    instructions: "What is the structural shape and level of detail of this request?",
+    criteria: {
+      compact: "The request is compact, concrete, and bounded: a single focused task, small UI/text change, bugfix, or typo.",
+      underspecified: "A valid intention exists, but scope, requirements, context, or acceptance criteria are missing to execute responsibly without repository context.",
+      structured: "The request contains multiple explicit requirements, constraints, acceptance criteria, sections, work items, PRD-like content, or an explicit detailed specification that needs structured tracking.",
     },
   },
 };

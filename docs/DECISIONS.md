@@ -286,3 +286,20 @@ large the input limit is.
 forbid passing or paraphrasing the request. Long specifications reach Jev and
 the brief builder verbatim. The single fail-closed case is session recovery
 itself, which requests refinement instead of guessing.
+
+---
+
+## D-026 — Intake mode separates sufficiency from request shape
+
+**Decision:**
+- Requests larger than `MAX_STATE_CHARS` (8,000 chars) are deterministically `structure`, preserving raw source.
+- Full-context specifications under 8k may also be classified as `structure` via one typed semantic signal (`request_shape="structured"`).
+- Non-trivial fallback when Jev is unavailable is conservatively `enrich` rather than `direct`.
+- `direct` requires coherent sufficiency (`needsRefinement=false` and `specificationSufficiency >= 3`), not merely the absence of a refinement flag.
+- The raw user request remains authoritative across all modes.
+
+**Why:**
+`needsRefinement` alone does not distinguish between a compact complete request, an underspecified request, and a detailed structured specification. Furthermore, fallback unavailability of Jev must not be mistaken for specification sufficiency.
+
+**Consequence:**
+Intake can route requests correctly without lossy summarization, without new workflow infrastructure and without another LLM call.

@@ -48,6 +48,7 @@ for (const sample of samples) {
         risk: { type: "score", instructions: "Risk if executed incorrectly?", criteria: ["Low.", "Medium.", "High.", "Critical."] },
         external_contract: { type: "noul", instructions: "Depends on external contract/upstream/auth provider?", criteria: { true: "Depends on external contract.", false: "Self-contained." } },
         product_decision_missing: { type: "noul", instructions: "Is a real product decision missing that must be asked?", criteria: { true: "Missing product decision.", false: "No missing decision." } },
+        request_shape: { type: "choice", instructions: "What is the structural shape and level of detail of this request?", criteria: { compact: "Compact, concrete request.", underspecified: "Underspecified request.", structured: "Multiple requirements, constraints, acceptance criteria, or PRD-like content." } },
       },
     });
     const response = await fetch(endpoint, {
