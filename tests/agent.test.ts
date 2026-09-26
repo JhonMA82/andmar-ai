@@ -137,13 +137,15 @@ test("AndMar agent enforces 1:1 requirement identity and forbids requirement gro
   assert.doesNotMatch(agent, /group them into <=20|group them into up to 20/i);
 });
 
-test("AndMar agent specifies working-state revision excluding .andmar/work/**", () => {
-  assert.match(agent, /node scripts\/working-state-revision\.mjs/i);
+test("AndMar agent resolves working-state revision helper from the installed plugin", () => {
+  assert.match(agent, /plugins\/andmar-ai\/scripts\/working-state-revision\.mjs/i);
+  assert.doesNotMatch(agent, /node scripts\/working-state-revision\.mjs/i);
   assert.match(agent, /:!\.andmar\/work\/\*\*/);
 });
 
-test("AndMar agent requires deterministic Work Ledger validation at key events", () => {
-  assert.match(agent, /node scripts\/validate-work-ledger\.mjs/i);
+test("AndMar agent resolves deterministic Work Ledger validation from the installed plugin", () => {
+  assert.match(agent, /plugins\/andmar-ai\/scripts\/validate-work-ledger\.mjs/i);
+  assert.doesNotMatch(agent, /node scripts\/validate-work-ledger\.mjs/i);
   assert.match(agent, /Validate the structural integrity of the Work Ledger/i);
 });
 

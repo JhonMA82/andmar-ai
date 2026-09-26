@@ -360,7 +360,9 @@ Work Ledger files must **not** be modified on every tool call. Updates are made 
 - Key verification evidence is recorded;
 - Task completion is being prepared.
 
-Run deterministic structure validation with `node scripts/validate-work-ledger.mjs .andmar/work/<work-id>` after initialization, requirement-modifying steering, active work unit change, or completion preparation.
+Run deterministic structure validation with `node "${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai/scripts/validate-work-ledger.mjs" .andmar/work/<work-id>` after initialization, requirement-modifying steering, active work unit change, or completion preparation.
+
+**Runtime helper location:** AndMar helpers live under the installed plugin root `${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai`. Commands must resolve helpers there rather than assuming the consumer repository has an AndMar `scripts/` directory.
 
 ### 7.5 User steering
 

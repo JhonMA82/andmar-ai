@@ -205,4 +205,4 @@ de nada.
 - **Portabilidad sin invalidación recursiva:** el Work Ledger (`.andmar/work/**`) puede y suele estar versionado en Git, permitiendo continuidad entre ramas y máquinas.
 - **Exclusión del fingerprint de código/producto:** excluir `.andmar/work/**` del cálculo de la revisión no lo vuelve \"invisible\" ni lo ignora en el repositorio; simplemente garantiza que registrar notas, punteros de evidencia en `EVIDENCE.md` o actualizar el progreso de unidades en `WORK.md` no altere la identidad del código verificado (evitando evidencia auto-invalidante).
 - **Garantía de frescura:** cualquier cambio en archivos de código o producto (`src/**`, tests, scripts, configuración) altera inmediatamente la revisión e invalida cualquier evidencia previa.
-- **Cálculo determinista:** se realiza mediante `scripts/working-state-revision.mjs` o su comando shell equivalente con exclusión explícita `:!.andmar/work/**`.
+- **Cálculo determinista:** se realiza mediante `node "${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai/scripts/working-state-revision.mjs"` (helper instalado de AndMar) o su comando shell equivalente con exclusión explícita `:!.andmar/work/**`.

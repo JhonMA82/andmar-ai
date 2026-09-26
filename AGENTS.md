@@ -102,7 +102,8 @@ Do not add a semantic router until real ambiguous routing cases demonstrate the 
 - Do not create a capability merely to manage Markdown files.
 - Maintain strict 1:1 requirement mapping between Work Ledger and Task Contract; never group or merge independent requirements merely to fit runtime limits.
 - `.andmar/work/**` is operational metadata and is excluded from the working-state revision fingerprint.
-- Validate ledger structural integrity deterministically with `node scripts/validate-work-ledger.mjs .andmar/work/<work-id>` at key events.
+- Validate ledger structural integrity deterministically with `node "${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai/scripts/validate-work-ledger.mjs" .andmar/work/<work-id>` at key events.
+- Resolve AndMar runtime helpers from `${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai`; never assume the target repository contains AndMar's `scripts/` directory.
 - Use native OpenCode tools (`read`, `write`, `edit`) for all file mutations.
 
 ## Documentation map (read before changing)

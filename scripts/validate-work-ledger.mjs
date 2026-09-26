@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 
+import { realpathSync } from "node:fs";
 import { readFile, stat, readdir } from "node:fs/promises";
 import { resolve, basename, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const ALLOWED_STATUSES = new Set(["active", "completed", "blocked"]);
-const ALLOWED_MODES = new Set(["lightweight", "structured", "structure", "enrich"]);
+const ALLOWED_MODES = new Set(["lightweight", "structured"]);
 
 export async function validateWorkLedger(targetDir, options = {}) {
   const errors = [];
@@ -109,7 +111,7 @@ export async function validateWorkLedger(targetDir, options = {}) {
     errors.push(`Invalid mode "${mode}". Allowed: ${[...ALLOWED_MODES].join(", ")}`);
   }
 
-  const isStructured = mode === "structured" || mode === "structure";
+  const isStructured = mode === "structured";
   if (isStructured) {
     const requiredFiles = ["SOURCE.md", "REQUIREMENTS.md", "WORK.md", "EVIDENCE.md"];
     for (const reqFile of requiredFiles) {
@@ -341,7 +343,16 @@ export async function validateWorkLedger(targetDir, options = {}) {
   };
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname)) {
+function isDirectInvocation() {
+  if (!process.argv[1]) return false;
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
+  }
+}
+
+if (isDirectInvocation()) {
   const target = process.argv[2];
   if (!target) {
     console.error(JSON.stringify({ valid: false, error: "Usage: node scripts/validate-work-ledger.mjs <path-to-ledger-dir>" }, null, 2));

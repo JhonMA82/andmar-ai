@@ -2,6 +2,14 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
+## [0.8.5] - 2026-09-26
+
+### Fixed
+
+- Consumer helper invocation: agent/docs now resolve Work Ledger helpers from the installed AndMar plugin root (`${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai`) so commands work from arbitrary target repositories instead of assuming a local `scripts/` directory.
+- Symlink-safe helper CLIs: both runtime helpers now detect direct execution through the globally installed plugin symlink, matching the actual `install:dev` topology.
+- Work Ledger mode validation: validator now accepts only the canonical portable modes `lightweight | structured`; Intake modes `enrich | structure` are no longer accepted as Ledger modes.
+
 ## [0.8.4] - 2026-09-25
 
 ### Fixed

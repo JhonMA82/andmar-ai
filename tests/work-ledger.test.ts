@@ -383,3 +383,60 @@ Waiting for third-party API key
     await rm(base, { recursive: true, force: true });
   }
 });
+
+
+test("validator: rejects Intake mode enrich as a Work Ledger mode", async () => {
+  const base = await mkdtemp(join(tmpdir(), "andmar-ledger-test-"));
+  const dir = join(base, "wrong-enrich-mode");
+  try {
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      join(dir, "WORK.md"),
+      `# Work
+Work ID: wrong-enrich-mode
+Status: active
+Mode: enrich
+
+## Work Units
+- [~] WU-1 — Do work
+
+## Next
+WU-1
+`
+    );
+
+    const res = await validateWorkLedger(dir);
+    assert.equal(res.valid, false);
+    assert.ok(res.errors.some((e: string) => e.includes('Invalid mode "enrich"')));
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("validator: rejects Intake mode structure as a Work Ledger mode", async () => {
+  const base = await mkdtemp(join(tmpdir(), "andmar-ledger-test-"));
+  const dir = join(base, "wrong-structure-mode");
+  try {
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      join(dir, "WORK.md"),
+      `# Work
+Work ID: wrong-structure-mode
+Status: active
+Mode: structure
+
+## Work Units
+- [~] WU-1 — Do work
+
+## Next
+WU-1
+`
+    );
+
+    const res = await validateWorkLedger(dir);
+    assert.equal(res.valid, false);
+    assert.ok(res.errors.some((e: string) => e.includes('Invalid mode "structure"')));
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});

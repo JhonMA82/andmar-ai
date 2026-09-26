@@ -2,8 +2,10 @@
 
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export async function computeWorkingStateRevision(cwd = process.cwd()) {
   let root = "";
@@ -72,7 +74,16 @@ export async function computeWorkingStateRevision(cwd = process.cwd()) {
   };
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname)) {
+function isDirectInvocation() {
+  if (!process.argv[1]) return false;
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
+  }
+}
+
+if (isDirectInvocation()) {
   const jsonMode = process.argv.includes("--json");
   try {
     const result = await computeWorkingStateRevision();
