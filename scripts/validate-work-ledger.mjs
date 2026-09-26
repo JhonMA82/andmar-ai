@@ -245,6 +245,8 @@ export async function validateWorkLedger(targetDir, options = {}) {
   const referencedEvsInWUs = [];
   const unitStates = new Map();
   const unitEvidenceRefs = new Map();
+  const unitCheckpointRefs = new Map();
+  const checkpointOwners = new Map();
 
   for (const [secName, lines] of workSections) {
     if (secName.includes("WORK UNIT") || secName.includes("UNITS")) {
@@ -282,6 +284,25 @@ export async function validateWorkLedger(targetDir, options = {}) {
             if (currentWuId) unitEvidenceRefs.set(currentWuId, ids.map((id) => id.toUpperCase()));
           }
         }
+
+        const checkpointMatch = line.match(/Checkpoint:\s*(.+)$/i);
+        if (checkpointMatch && currentWuId) {
+          const value = checkpointMatch[1].trim();
+          if (value.toLowerCase() === "none") {
+            unitCheckpointRefs.set(currentWuId, null);
+          } else if (/^[a-f0-9]{7,64}$/i.test(value)) {
+            const normalized = value.toLowerCase();
+            unitCheckpointRefs.set(currentWuId, normalized);
+            const previousOwner = checkpointOwners.get(normalized);
+            if (previousOwner && previousOwner !== currentWuId) {
+              errors.push(`Checkpoint ${value} is referenced by multiple Work Units: ${previousOwner}, ${currentWuId}`);
+            } else {
+              checkpointOwners.set(normalized, currentWuId);
+            }
+          } else {
+            errors.push(`Invalid Checkpoint value for ${currentWuId}: "${value}"`);
+          }
+        }
       }
     }
   }
@@ -293,6 +314,10 @@ export async function validateWorkLedger(targetDir, options = {}) {
   for (const [id, state] of unitStates) {
     if (state === "x" && !(unitEvidenceRefs.get(id)?.length > 0)) {
       errors.push(`Done Work Unit ${id} requires an Evidence: EV-N reference`);
+    }
+    const checkpoint = unitCheckpointRefs.get(id);
+    if (checkpoint && state !== "x") {
+      errors.push(`Non-done Work Unit ${id} cannot retain Checkpoint ${checkpoint}`);
     }
   }
 

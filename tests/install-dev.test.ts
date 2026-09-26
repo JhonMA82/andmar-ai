@@ -57,6 +57,7 @@ test("installed AndMar helpers execute from an unrelated consumer repository", a
     const revisionHelper = join(pluginPath, "scripts", "working-state-revision.mjs")
     const validatorHelper = join(pluginPath, "scripts", "validate-work-ledger.mjs")
     const lifecycleHelper = join(pluginPath, "scripts", "work-ledger-lifecycle.mjs")
+    const checkpointHelper = join(pluginPath, "scripts", "work-unit-checkpoint.mjs")
 
     const git = (...args: string[]) => spawnSync("git", args, { cwd: projectDir, encoding: "utf8" })
     assert.equal(git("init").status, 0)
@@ -108,6 +109,36 @@ test("installed AndMar helpers execute from an unrelated consumer repository", a
     const afterLifecycle = spawnSync(node, [revisionHelper], { cwd: projectDir, env: helperEnv, encoding: "utf8" })
     assert.equal(afterLifecycle.status, 0, afterLifecycle.stderr || afterLifecycle.stdout)
     assert.equal(afterLifecycle.stdout.trim(), revision)
+
+    await writeFile(join(projectDir, "src", "index.ts"), "export const value = 2\n")
+    const checkpointRevisionRun = spawnSync(node, [revisionHelper], { cwd: projectDir, env: helperEnv, encoding: "utf8" })
+    assert.equal(checkpointRevisionRun.status, 0, checkpointRevisionRun.stderr || checkpointRevisionRun.stdout)
+    const checkpointRevision = checkpointRevisionRun.stdout.trim()
+
+    const preparedRun = spawnSync(node, [checkpointHelper, "prepare", ".andmar/work/consumer-task", "WU-1", "--revision", checkpointRevision], {
+      cwd: projectDir,
+      env: helperEnv,
+      encoding: "utf8",
+    })
+    assert.equal(preparedRun.status, 0, preparedRun.stderr || preparedRun.stdout)
+    const prepared = JSON.parse(preparedRun.stdout)
+    assert.equal(prepared.ok, true)
+    assert.equal(prepared.ready, true)
+    assert.deepEqual(prepared.changedPaths, ["src/index.ts"])
+
+    assert.equal(git("add", "src", ".andmar/work").status, 0)
+    assert.equal(git("commit", "-m", prepared.commitMessage).status, 0)
+    const checkpointSha = git("rev-parse", "HEAD").stdout.trim()
+
+    const recordedRun = spawnSync(node, [checkpointHelper, "record", ".andmar/work/consumer-task", "WU-1", "--commit", checkpointSha], {
+      cwd: projectDir,
+      env: helperEnv,
+      encoding: "utf8",
+    })
+    assert.equal(recordedRun.status, 0, recordedRun.stderr || recordedRun.stdout)
+    const recorded = JSON.parse(recordedRun.stdout)
+    assert.equal(recorded.ok, true)
+    assert.equal(recorded.checkpoint, checkpointSha)
   } finally {
     await rm(configDir, { recursive: true, force: true })
     await rm(projectDir, { recursive: true, force: true })

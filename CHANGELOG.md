@@ -2,7 +2,22 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
-## [0.9.0] - 2026-09-26
+## [0.10.0] - 2026-09-25
+
+### Added
+
+- Two-phase Work Unit checkpoint helper: `scripts/work-unit-checkpoint.mjs` validates a done/evidenced Work Unit against the exact verified working-state revision, then records the native Git commit SHA after OpenCode creates the commit.
+- Deterministic checkpoint commit trailers (`Work-ID`, `Work-Unit`, `Verified-Revision`) and current-HEAD/product-path validation.
+- Explicit local checkpoint policy `delivery.workUnitCommits = manual | auto`, defaulting to `manual` and exposed by `andmar_status`.
+- Real Git regression coverage for checkpoint readiness, recording, trailer guards, metadata-only skips, reopen invalidation, and global-install consumer execution.
+
+### Changed
+
+- Work Ledger validation now checks checkpoint shape, forbids checkpoint SHAs on non-done Work Units, and rejects one checkpoint SHA being assigned to multiple Work Units.
+- Reopening a completed Work Unit now clears both its current Evidence and Checkpoint pointers.
+- Agent policy now treats a verified Work Unit checkpoint as a recovery boundary without adding per-checkpoint review or changing final integrated verification.
+
+## [0.9.0] - 2026-09-25
 
 ### Added
 
@@ -16,14 +31,6 @@ All notable changes to AndMar AI are recorded here. The package version in `pack
 - AndMar agent policy now uses deterministic lifecycle commands for Work Unit markers and `Next` transitions instead of hand-editing state during normal execution. Native OpenCode edits remain authoritative for Ledger source, requirements, evidence content, steering, and material Work Unit list changes.
 - Work Ledger documentation and architecture now define lifecycle transitions as a small deterministic repository helper, not a workflow runtime or capability (D-029).
 
-## [0.8.5] - 2026-09-26
-
-### Fixed
-
-- Consumer helper invocation: agent/docs now resolve Work Ledger helpers from the installed AndMar plugin root (`${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai`) so commands work from arbitrary target repositories instead of assuming a local `scripts/` directory.
-- Symlink-safe helper CLIs: both runtime helpers now detect direct execution through the globally installed AndMar plugin symlink, matching the actual `install:dev` topology.
-- Work Ledger mode validation: validator now accepts only the canonical portable modes `lightweight | structured`; Intake modes `enrich | structure` are no longer accepted as Ledger modes.
-
 ## [0.8.4] - 2026-09-25
 
 ### Fixed
@@ -33,6 +40,9 @@ All notable changes to AndMar AI are recorded here. The package version in `pack
 - Real execution test suites: added `tests/working-state-revision.test.ts` (using real temporary Git repositories) and `tests/work-ledger.test.ts` (exercising all validator rules and edge cases).
 - Work Ledger requirement ID format: normalized requirement IDs from `REQ-01`/`REQ-02` to canonical `REQ-1`/`REQ-2` in agent policy and added doc regression tests.
 - Intake typing: fixed `exactOptionalPropertyTypes` compatibility in `src/capabilities/intake/decide.ts` when evaluating `requestShape`.
+- Consumer helper invocation: agent/docs now resolve Work Ledger helpers from the installed AndMar plugin root (`${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai`) so commands work from arbitrary target repositories instead of assuming a local `scripts/` directory.
+- Symlink-safe helper CLIs: both runtime helpers now detect direct execution through the globally installed plugin symlink, matching the actual `install:dev` topology.
+- Work Ledger mode validation: validator now accepts only the canonical portable modes `lightweight | structured`; Intake modes `enrich | structure` are no longer accepted as Ledger modes.
 
 ## [0.8.3] - 2026-09-25
 

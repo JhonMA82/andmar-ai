@@ -165,3 +165,13 @@ test("AndMar agent uses deterministic Work Unit lifecycle transitions from the i
   assert.match(agent, /do not hand-edit those markers/i)
   assert.match(agent, /rolls back a transition that would make the Ledger structurally invalid/i)
 })
+
+test("AndMar agent uses exact-revision Work Unit checkpoints without taking over Git delivery", () => {
+  assert.match(agent, /plugins\/andmar-ai\/scripts\/work-unit-checkpoint\.mjs/i)
+  assert.match(agent, /prepare .*--revision <verified-revision>/i)
+  assert.match(agent, /record .*--commit <HEAD>/i)
+  assert.match(agent, /delivery\.workUnitCommits/i)
+  assert.match(agent, /manual.*default/i)
+  assert.match(agent, /OpenCode performs staging\/commit through native Git tools/i)
+  assert.match(agent, /push.*PR.*merge.*tag.*publish.*release.*explicit authorization/i)
+})

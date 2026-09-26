@@ -139,23 +139,28 @@ Request: **"Add a new option to the CLI."**
       implement with native OpenCode tools; delegate only if a bounded
       child task genuinely benefits from separate context
 
-5. tests / typecheck
-      run the relevant checks through OpenCode's shell, then record a
-      receipt per check bound to the exact working-state revision
+5. optional Work Unit checkpoint
+      after a coherent WU is done and focused checks verify the exact
+      working-state revision, AndMar gates readiness; OpenCode creates
+      the native Git commit; AndMar records its SHA in WORK.md
 
-6. affected documentation
+6. tests / typecheck
+      run the integrated relevant checks through OpenCode's shell, then
+      record a receipt per check bound to the exact working-state revision
+
+7. affected documentation
       change_impact maps the changed paths to documentation obligations
       and reports which documents are likely stale
 
-7. version impact
+8. version impact
       change_impact classifies none | patch | minor | major; it detects
       the obligation and never bumps, tags or publishes anything
 
-8. review, if it applies
+9. review, if it applies
       one fresh read/search-only child session audits the diff, the
       requirements and the evidence; routing decides none | audit | deep
 
-9. completion
+10. completion
       the gate accepts only when verification, every requirement with
       evidence, the required review and the docs/version obligations
       are all current for the same revision

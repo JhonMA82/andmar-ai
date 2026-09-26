@@ -406,7 +406,61 @@ Rules:
 
 Use native OpenCode edits for initialization, requirements, evidence content, steering, and material Work Unit list changes. Use the lifecycle helper for state transitions.
 
-### 7.6 User steering
+### 7.6 Work Unit checkpoints
+
+Git checkpoints reduce recovery cost, but Git execution remains native OpenCode behavior. AndMar adds only deterministic readiness/recording around a Work Unit commit. It does not add a Git capability or Delivery subsystem.
+
+Installed helper:
+
+```text
+${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai/scripts/work-unit-checkpoint.mjs
+```
+
+Two-phase flow:
+
+```text
+WU done + Evidence
+→ focused verification on exact working-state revision
+→ checkpoint prepare (read-only)
+→ native OpenCode Git commit
+→ checkpoint record (stores SHA in WORK.md)
+```
+
+Prepare:
+
+```text
+node ".../work-unit-checkpoint.mjs" prepare .andmar/work/<work-id> WU-N --revision <verified-working-state-revision>
+```
+
+`prepare` requires the Work Unit to be `[x]`, to reference `EV-N` evidence, to have no existing checkpoint, to have no Git conflicts, and to match the exact current working-state revision. It returns the coherent product paths currently changed (excluding `.andmar/work/**`) plus an exact commit message containing:
+
+```text
+Work-ID: <work-id>
+Work-Unit: WU-N
+Verified-Revision: <sha256 working-state revision>
+```
+
+If no product files changed outside `.andmar/work/**`, it returns `ready:false` with `reason=no-product-changes`; a metadata-only Work Unit does not need a checkpoint commit.
+
+OpenCode then performs staging/commit using native Git according to project/user authorization. `delivery.workUnitCommits` is `manual` by default; `auto` authorizes only this local checkpoint commit after `prepare` returns `ready:true`. It never authorizes push, PR, merge, tag, publish, or release.
+
+Record:
+
+```text
+node ".../work-unit-checkpoint.mjs" record .andmar/work/<work-id> WU-N --commit <HEAD>
+```
+
+`record` requires the commit to be current `HEAD`, verifies the three trailers above, requires at least one product path outside `.andmar/work/**`, and writes:
+
+```text
+Checkpoint: <full commit sha>
+```
+
+The validator accepts `Checkpoint: none` or a Git commit hash only. A non-done Work Unit cannot retain a checkpoint, and the same checkpoint SHA cannot be assigned to multiple Work Units. Reopening a done Work Unit clears both its current `Evidence` and `Checkpoint` pointers because both are stale for the reopened outcome.
+
+Checkpoint commits are deliberately per coherent Work Unit: behavior, directly associated tests, and directly associated local documentation may travel together. Do not combine unrelated cleanup or another Work Unit. No independent review is required per checkpoint; final integrated verification and normal final review/completion policy still apply.
+
+### 7.7 User steering
 
 When the user provides new instructions during execution:
 1. Determine whether the instruction extends or replaces the goal.
@@ -416,7 +470,7 @@ When the user provides new instructions during execution:
    - Steer the runtime contract with `andmar_task_contract(op=steer)`.
 3. Never delete existing requirements unless explicitly superseded or cancelled by the user.
 
-### 7.7 Completion integration
+### 7.8 Completion integration
 
 Work Ledger does **not** create a new completion tool or gate. Final verification and closure proceed strictly through existing primitives:
 1. Reconcile `WORK.md` (all required units `[x]`, none `[~]`).

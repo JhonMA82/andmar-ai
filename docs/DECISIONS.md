@@ -363,3 +363,27 @@ Intake can route requests correctly without lossy summarization, without new wor
 - Agents retain freedom inside each Work Unit while AndMar makes progress transitions reproducible and auditable.
 - Work Unit completion and recovery cost become reliable repository facts rather than prompt-only conventions.
 - Future automatic checkpoint commits can consume these lifecycle events without changing the Work Ledger state model.
+
+## D-030 — Work Unit checkpoints are a two-phase Git gate, not a Git capability
+
+**Decision:**
+- Add `scripts/work-unit-checkpoint.mjs` with only `status`, `prepare`, and `record`.
+- `prepare` is read-only and requires a done/evidenced Work Unit, no Git conflicts, and an exact 64-character verified working-state revision matching current product state.
+- OpenCode remains responsible for native staging and commit execution.
+- The commit carries deterministic `Work-ID`, `Work-Unit`, and `Verified-Revision` trailers.
+- `record` accepts only the current `HEAD`, validates the trailers and product paths, and writes `Checkpoint: <sha>` to `WORK.md`.
+- `delivery.workUnitCommits` defaults to `manual`; `auto` is explicit authorization only for local Work Unit checkpoints. Remote/release operations remain separate.
+- Reopening a Work Unit clears its current evidence and checkpoint pointers.
+- No review is added per Work Unit checkpoint; integrated final verification and final review/completion remain authoritative.
+
+**Why:**
+- A verified coherent Work Unit is a useful recovery boundary, but building Git execution into AndMar would duplicate OpenCode, expand permissions, and create a Delivery subsystem prematurely.
+- Binding the commit to the verified dirty-working-state revision prevents a later or different diff from being presented as the verified checkpoint.
+- Deterministic trailers make the commit self-describing even though the SHA can only be written to `WORK.md` after Git creates the commit.
+- Explicit `manual | auto` policy avoids surprising local commits while allowing projects that want checkpoint automation to opt in.
+
+**Consequence:**
+- Recovery can use small Git commits aligned to Work Units without turning AndMar into a VCS orchestrator.
+- A checkpoint cannot silently combine multiple Work Unit identities in the Ledger; duplicate SHA references are structurally rejected.
+- Push/PR/merge/tag/publish/release behavior is unchanged and still requires separate authorization.
+

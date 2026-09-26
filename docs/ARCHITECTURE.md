@@ -129,7 +129,7 @@ using the generic guarantees that already exist?
         -> evaluate a capability.
 ```
 
-**Work Ledger = repository-native operational artifact** (`.andmar/work/<work-id>/`), not a capability. It uses OpenCode native file tools and Git portability rather than plugin storage (`ctx.storage`) or capability code. Work Unit state transitions are handled by a small deterministic script (`scripts/work-ledger-lifecycle.mjs`) rather than a workflow runtime. See [WORK-LEDGER.md](WORK-LEDGER.md) and [DECISIONS.md](DECISIONS.md) D-027/D-029.
+**Work Ledger = repository-native operational artifact** (`.andmar/work/<work-id>/`), not a capability. It uses OpenCode native file tools and Git portability rather than plugin storage (`ctx.storage`) or capability code. Work Unit state transitions are handled by a small deterministic script (`scripts/work-ledger-lifecycle.mjs`) rather than a workflow runtime. Recoverable Work Unit commits use a second small two-phase helper (`scripts/work-unit-checkpoint.mjs`): AndMar validates exact-revision readiness and records the resulting SHA while OpenCode remains the Git executor. See [WORK-LEDGER.md](WORK-LEDGER.md) and [DECISIONS.md](DECISIONS.md) D-027/D-030.
 
 
 The same test exists in executable form in

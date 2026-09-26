@@ -121,6 +121,26 @@ maintained.
 }
 ```
 
+### `delivery.workUnitCommits`
+
+- **Name:** `delivery.workUnitCommits` (`"manual" | "auto"`).
+- **Default:** `"manual"`.
+- **Purpose:** authorize local, recoverable Git checkpoint commits after a Work Unit is done and its exact working-state revision has focused verification.
+- **Execution boundary:** AndMar gates readiness; OpenCode executes native Git. No Git capability is introduced.
+- **`manual`:** checkpoint preparation is allowed, but AndMar does not create a commit unless the current user request or repository policy explicitly authorizes commits.
+- **`auto`:** a successful checkpoint `prepare` authorizes the local Work Unit commit and subsequent SHA recording.
+- **Never implied:** push, PR, merge, tag, publish, release, or remote side effects. Those remain separately authorized operations.
+
+```jsonc
+{
+  "delivery": {
+    "workUnitCommits": "auto"
+  }
+}
+```
+
+The active value is exposed by `andmar_status` so the agent does not need hidden configuration context.
+
 ## Semantic observability (environment, fail open)
 
 ### `ANDMAR_OBSERVABILITY_URL`

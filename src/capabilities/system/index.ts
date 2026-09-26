@@ -30,6 +30,9 @@ export const systemCapability: Capability = {
               modelProfiles: Object.fromEntries(
                 Object.entries(config.models).map(([key, value]) => [key, value ?? "inherit"]),
               ),
+              delivery: {
+                workUnitCommits: config.delivery.workUnitCommits,
+              },
             }, null, 2),
           }
         },

@@ -6,6 +6,7 @@ test("uses safe defaults", () => {
   const config = resolveConfig({})
   assert.equal(config.delegation.maxDepth, 3)
   assert.equal(config.shell.maxTimeoutMs, 120_000)
+  assert.equal(config.delivery.workUnitCommits, "manual")
 })
 
 test("rejects invalid depth rather than silently accepting it", () => {
@@ -19,5 +20,14 @@ test("rejects duplicate documentation rule ids", () => {
       { id: "api", code: ["lib/**"], docs: ["docs/**"] },
     ] } }),
     /unique/,
+  )
+})
+
+
+test("validates work-unit commit policy", () => {
+  assert.equal(resolveConfig({ delivery: { workUnitCommits: "auto" } }).delivery.workUnitCommits, "auto")
+  assert.throws(
+    () => resolveConfig({ delivery: { workUnitCommits: "always" } }),
+    /delivery\.workUnitCommits/,
   )
 })

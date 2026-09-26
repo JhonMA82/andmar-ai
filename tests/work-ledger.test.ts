@@ -467,3 +467,83 @@ WU-1 — prepare final verification
     await rm(base, { recursive: true, force: true });
   }
 });
+
+test("validator: rejects checkpoint on non-done Work Unit", async () => {
+  const base = await mkdtemp(join(tmpdir(), "andmar-ledger-test-"));
+  const dir = join(base, "checkpoint-active");
+  try {
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "WORK.md"), `# Work
+Work ID: checkpoint-active
+Status: active
+Mode: lightweight
+
+## Work Units
+- [~] WU-1 — Active work
+  - Checkpoint: abcdef1234567890
+
+## Next
+WU-1
+`);
+    const res = await validateWorkLedger(dir);
+    assert.equal(res.valid, false);
+    assert.ok(res.errors.some((e: string) => e.includes("Non-done Work Unit WU-1")));
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("validator: rejects malformed and duplicate checkpoint references", async () => {
+  const base = await mkdtemp(join(tmpdir(), "andmar-ledger-test-"));
+  const malformedDir = join(base, "checkpoint-malformed");
+  const duplicateDir = join(base, "checkpoint-duplicate");
+  try {
+    await mkdir(malformedDir, { recursive: true });
+    await writeFile(join(malformedDir, "WORK.md"), `# Work
+Work ID: checkpoint-malformed
+Status: active
+Mode: lightweight
+
+## Work Units
+- [x] WU-1 — Done
+  - Evidence: EV-1
+  - Checkpoint: not-a-sha
+
+## Evidence
+- EV-1: passed
+
+## Next
+WU-1 — all work units complete; prepare final verification
+`);
+    const malformed = await validateWorkLedger(malformedDir);
+    assert.equal(malformed.valid, false);
+    assert.ok(malformed.errors.some((e: string) => e.includes("Invalid Checkpoint value")));
+
+    await mkdir(duplicateDir, { recursive: true });
+    await writeFile(join(duplicateDir, "WORK.md"), `# Work
+Work ID: checkpoint-duplicate
+Status: active
+Mode: lightweight
+
+## Work Units
+- [x] WU-1 — First
+  - Evidence: EV-1
+  - Checkpoint: abcdef1234567890
+- [x] WU-2 — Second
+  - Evidence: EV-2
+  - Checkpoint: abcdef1234567890
+
+## Evidence
+- EV-1: passed
+- EV-2: passed
+
+## Next
+WU-2 — all work units complete; prepare final verification
+`);
+    const duplicate = await validateWorkLedger(duplicateDir);
+    assert.equal(duplicate.valid, false);
+    assert.ok(duplicate.errors.some((e: string) => e.includes("referenced by multiple Work Units")));
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});

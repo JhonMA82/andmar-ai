@@ -105,6 +105,8 @@ Do not add a semantic router until real ambiguous routing cases demonstrate the 
 - Validate ledger structural integrity deterministically with `node "${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai/scripts/validate-work-ledger.mjs" .andmar/work/<work-id>` at key events.
 - Resolve AndMar runtime helpers from `${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai`; never assume the target repository contains AndMar's `scripts/` directory.
 - Use native OpenCode tools (`read`, `write`, `edit`) for Work Ledger content, but use the installed deterministic `work-ledger-lifecycle.mjs` helper for normal Work Unit state transitions (`activate`, `complete`, `block`, `resume`, `reopen`).
+- For recoverable Work Unit commits, use `work-unit-checkpoint.mjs` as a two-phase gate: `prepare` validates a done/evidenced WU against the exact verified working-state revision; OpenCode performs the native Git commit; `record` stores the current HEAD SHA in `WORK.md`. The helper never stages, commits, pushes, merges, tags, or releases.
+- `delivery.workUnitCommits` is `manual` by default and may be `auto` only by explicit configuration. `auto` authorizes local checkpoint commits only; it never authorizes push/PR/merge/tag/publish/release.
 
 ## Documentation map (read before changing)
 

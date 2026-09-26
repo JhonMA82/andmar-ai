@@ -245,6 +245,7 @@ export async function runWorkUnitLifecycle(command, targetDir, unitArg, options 
     if (activeOther) throw new Error(`Cannot reopen ${unitId}; ${activeOther.id} is already active`);
     setUnitState(lines, unitId, "active");
     setUnitField(lines, unitId, "Evidence", null);
+    setUnitField(lines, unitId, "Checkpoint", null);
     setLedgerStatus(lines, "active");
     setNext(lines, `${unitId} — reopened outcome`);
     appendLifecycleEvent(lines, `${unitId}: done → active — ${options.reason.trim()}`);
