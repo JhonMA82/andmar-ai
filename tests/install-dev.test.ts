@@ -1,6 +1,6 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { mkdtemp, readFile, readlink, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, readlink, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { spawnSync } from "node:child_process"
@@ -42,5 +42,105 @@ test("dev installer is idempotent and refuses to overwrite a modified global age
     assert.equal(await readFile(agentPath, "utf8"), "user-customized-agent\n")
   } finally {
     await rm(configDir, { recursive: true, force: true })
+  }
+})
+
+
+test("installed AndMar helpers execute from an unrelated consumer repository", async () => {
+  const configDir = await mkdtemp(join(tmpdir(), "andmar-install-"))
+  const projectDir = await mkdtemp(join(tmpdir(), "andmar-consumer-"))
+  try {
+    const install = run("scripts/install-dev.mjs", configDir)
+    assert.equal(install.status, 0, install.stderr || install.stdout)
+
+    const pluginPath = join(configDir, "plugins", "andmar-ai")
+    const revisionHelper = join(pluginPath, "scripts", "working-state-revision.mjs")
+    const validatorHelper = join(pluginPath, "scripts", "validate-work-ledger.mjs")
+    const lifecycleHelper = join(pluginPath, "scripts", "work-ledger-lifecycle.mjs")
+    const checkpointHelper = join(pluginPath, "scripts", "work-unit-checkpoint.mjs")
+
+    const git = (...args: string[]) => spawnSync("git", args, { cwd: projectDir, encoding: "utf8" })
+    assert.equal(git("init").status, 0)
+    assert.equal(git("config", "user.email", "andmar@example.test").status, 0)
+    assert.equal(git("config", "user.name", "AndMar Test").status, 0)
+    await mkdir(join(projectDir, "src"), { recursive: true })
+    await writeFile(join(projectDir, "src", "index.ts"), "export const value = 1\n")
+    assert.equal(git("add", ".").status, 0)
+    assert.equal(git("commit", "-m", "baseline").status, 0)
+
+    const helperEnv = { ...process.env, OPENCODE_CONFIG_DIR: configDir }
+    const before = spawnSync(node, [revisionHelper], { cwd: projectDir, env: helperEnv, encoding: "utf8" })
+    assert.equal(before.status, 0, before.stderr || before.stdout)
+    const revision = before.stdout.trim()
+    assert.match(revision, /^[a-f0-9]{64}$/)
+
+    const ledgerDir = join(projectDir, ".andmar", "work", "consumer-task")
+    await mkdir(ledgerDir, { recursive: true })
+    await writeFile(
+      join(ledgerDir, "WORK.md"),
+      `# Work\nWork ID: consumer-task\nStatus: active\nMode: lightweight\n\n## Work Units\n- [~] WU-1 — Continue\n\n## Evidence\n- EV-1: consumer smoke passed\n\n## Next\nWU-1\n`,
+    )
+
+    const after = spawnSync(node, [revisionHelper], { cwd: projectDir, env: helperEnv, encoding: "utf8" })
+    assert.equal(after.status, 0, after.stderr || after.stdout)
+    assert.equal(after.stdout.trim(), revision)
+
+    const validation = spawnSync(node, [validatorHelper, ".andmar/work/consumer-task"], {
+      cwd: projectDir,
+      env: helperEnv,
+      encoding: "utf8",
+    })
+    assert.equal(validation.status, 0, validation.stderr || validation.stdout)
+    const result = JSON.parse(validation.stdout)
+    assert.equal(result.valid, true)
+    assert.equal(result.mode, "lightweight")
+
+    const transition = spawnSync(node, [lifecycleHelper, "complete", ".andmar/work/consumer-task", "WU-1", "--evidence", "EV-1"], {
+      cwd: projectDir,
+      env: helperEnv,
+      encoding: "utf8",
+    })
+    assert.equal(transition.status, 0, transition.stderr || transition.stdout)
+    const lifecycleResult = JSON.parse(transition.stdout)
+    assert.equal(lifecycleResult.ok, true)
+    assert.equal(lifecycleResult.active, null)
+    assert.deepEqual(lifecycleResult.done, ["WU-1"])
+
+    const afterLifecycle = spawnSync(node, [revisionHelper], { cwd: projectDir, env: helperEnv, encoding: "utf8" })
+    assert.equal(afterLifecycle.status, 0, afterLifecycle.stderr || afterLifecycle.stdout)
+    assert.equal(afterLifecycle.stdout.trim(), revision)
+
+    await writeFile(join(projectDir, "src", "index.ts"), "export const value = 2\n")
+    const checkpointRevisionRun = spawnSync(node, [revisionHelper], { cwd: projectDir, env: helperEnv, encoding: "utf8" })
+    assert.equal(checkpointRevisionRun.status, 0, checkpointRevisionRun.stderr || checkpointRevisionRun.stdout)
+    const checkpointRevision = checkpointRevisionRun.stdout.trim()
+
+    const preparedRun = spawnSync(node, [checkpointHelper, "prepare", ".andmar/work/consumer-task", "WU-1", "--revision", checkpointRevision], {
+      cwd: projectDir,
+      env: helperEnv,
+      encoding: "utf8",
+    })
+    assert.equal(preparedRun.status, 0, preparedRun.stderr || preparedRun.stdout)
+    const prepared = JSON.parse(preparedRun.stdout)
+    assert.equal(prepared.ok, true)
+    assert.equal(prepared.ready, true)
+    assert.deepEqual(prepared.changedPaths, ["src/index.ts"])
+
+    assert.equal(git("add", "src", ".andmar/work").status, 0)
+    assert.equal(git("commit", "-m", prepared.commitMessage).status, 0)
+    const checkpointSha = git("rev-parse", "HEAD").stdout.trim()
+
+    const recordedRun = spawnSync(node, [checkpointHelper, "record", ".andmar/work/consumer-task", "WU-1", "--commit", checkpointSha], {
+      cwd: projectDir,
+      env: helperEnv,
+      encoding: "utf8",
+    })
+    assert.equal(recordedRun.status, 0, recordedRun.stderr || recordedRun.stdout)
+    const recorded = JSON.parse(recordedRun.stdout)
+    assert.equal(recorded.ok, true)
+    assert.equal(recorded.checkpoint, checkpointSha)
+  } finally {
+    await rm(configDir, { recursive: true, force: true })
+    await rm(projectDir, { recursive: true, force: true })
   }
 })

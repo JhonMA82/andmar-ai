@@ -303,3 +303,87 @@ itself, which requests refinement instead of guessing.
 
 **Consequence:**
 Intake can route requests correctly without lossy summarization, without new workflow infrastructure and without another LLM call.
+
+---
+
+## D-027 — Work Ledger starts as repository-native portable state, not a capability
+
+**Decision:**
+- Work Ledger files live under `.andmar/work/<work-id>/` as repository-native durable Markdown artifacts.
+- Native OpenCode file tools (`read`, `write`, `edit`) manage Ledger files; no dedicated capability is created in 0.8.2.
+- The existing Task Contract remains the bounded runtime completion projection in `ctx.storage`.
+- The Work Ledger serves as the portable, unbounded continuity source across sessions, machines, and agents.
+- Promotion of any part of Work Ledger to a runtime capability is deferred until demonstrated synchronization or lifecycle friction justifies it.
+
+**Why:**
+- Work artifacts can be committed and shared across machines and branches via Git.
+- Avoids duplicating state in `ctx.storage` and avoids bypasses of OpenCode's native permission model.
+- Prevents premature infrastructure investments before observing actual agent behavior in real projects.
+- Eliminates reliance on hidden, invisible model context across compactions and restarts.
+
+**Consequence:**
+- Synchronization between Work Ledger and Task Contract is initially governed by AndMar agent policy and verification gates.
+- Measured drift and developer friction in 0.8.2 will inform future potential capabilities or work-unit checkpoint commit automation.
+
+---
+
+## D-028 — Work Ledger metadata does not participate in code revision identity
+
+**Decision:**
+- `.andmar/work/**` is designated as operational metadata and is strictly excluded from the working-state revision used to bind code/product verification receipts and evidence.
+- The runtime Task Contract expands requirement capacity to 100 (`MAX_REQUIREMENTS = 100`) and enforces a strict 1:1 mapping with Work Ledger obligations, eliminating requirement grouping.
+- A deterministic structural validator (`scripts/validate-work-ledger.mjs`) is introduced to verify Work Ledger schemas, IDs, active unit limits, and references without semantic interference.
+- Work Ledger continues to operate without a new runtime capability or plugin storage namespace.
+
+**Why:**
+- Modifying operational metadata (such as recording evidence pointers or updating work unit status in the Ledger) previously altered the dirty working tree fingerprint, creating self-invalidating verification cycles.
+- Requirement grouping weakened runtime gates by leaving atomic user obligations un-evidenced at the contract level.
+- Prompt-only compliance caused structural drift; deterministic validation provides fast, verifiable feedback.
+
+**Consequence:**
+- Code and product verification receipts remain stable across Ledger bookkeeping updates.
+- Tasks up to 100 requirements benefit from atomic, uncompressed contract verification.
+- Work Ledger structural integrity is validated deterministically before completion without runtime bloat.
+
+## D-029 — Work Unit lifecycle is a deterministic repository helper, not a runtime capability
+
+**Decision:**
+- Work Unit state transitions in `WORK.md` are performed by `scripts/work-ledger-lifecycle.mjs`.
+- The supported lifecycle is intentionally small: `pending -> active`, `active -> done`, `active -> blocked`, `blocked -> active`, and explicit `done -> active` reopening.
+- Completing a Work Unit requires already-declared portable evidence (`EV-N`); the helper refuses unknown evidence and rolls back any mutation that fails structural validation.
+- The helper may atomically activate the next pending Work Unit, but it does not execute implementation work, verification commands, Task Contract operations, Git commits, or completion gates.
+- Work Ledger remains repository-native portable state; no new AndMar capability, workflow runtime, or `ctx.storage` namespace is introduced.
+
+**Why:**
+- Manual marker edits are simple but fragile once resume/recovery depends on exact Work Unit state.
+- The demonstrated problem is deterministic state transition integrity, not semantic planning or orchestration.
+- A small script solves duplicate-active-unit, stale `Next`, unsupported transitions, missing completion evidence, and explicit reopen semantics without growing the core or introducing a workflow engine.
+
+**Consequence:**
+- Agents retain freedom inside each Work Unit while AndMar makes progress transitions reproducible and auditable.
+- Work Unit completion and recovery cost become reliable repository facts rather than prompt-only conventions.
+- Future automatic checkpoint commits can consume these lifecycle events without changing the Work Ledger state model.
+
+## D-030 — Work Unit checkpoints are a two-phase Git gate, not a Git capability
+
+**Decision:**
+- Add `scripts/work-unit-checkpoint.mjs` with only `status`, `prepare`, and `record`.
+- `prepare` is read-only and requires a done/evidenced Work Unit, no Git conflicts, and an exact 64-character verified working-state revision matching current product state.
+- OpenCode remains responsible for native staging and commit execution.
+- The commit carries deterministic `Work-ID`, `Work-Unit`, and `Verified-Revision` trailers.
+- `record` accepts only the current `HEAD`, validates the trailers and product paths, and writes `Checkpoint: <sha>` to `WORK.md`.
+- `delivery.workUnitCommits` defaults to `manual`; `auto` is explicit authorization only for local Work Unit checkpoints. Remote/release operations remain separate.
+- Reopening a Work Unit clears its current evidence and checkpoint pointers.
+- No review is added per Work Unit checkpoint; integrated final verification and final review/completion remain authoritative.
+
+**Why:**
+- A verified coherent Work Unit is a useful recovery boundary, but building Git execution into AndMar would duplicate OpenCode, expand permissions, and create a Delivery subsystem prematurely.
+- Binding the commit to the verified dirty-working-state revision prevents a later or different diff from being presented as the verified checkpoint.
+- Deterministic trailers make the commit self-describing even though the SHA can only be written to `WORK.md` after Git creates the commit.
+- Explicit `manual | auto` policy avoids surprising local commits while allowing projects that want checkpoint automation to opt in.
+
+**Consequence:**
+- Recovery can use small Git commits aligned to Work Units without turning AndMar into a VCS orchestrator.
+- A checkpoint cannot silently combine multiple Work Unit identities in the Ledger; duplicate SHA references are structurally rejected.
+- Push/PR/merge/tag/publish/release behavior is unchanged and still requires separate authorization.
+

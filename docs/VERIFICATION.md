@@ -197,3 +197,12 @@ de nada.
   explícito (normalmente un fingerprint del working state, no solo `HEAD`).
 - **No poda el almacenamiento.** Evidencias y receipts se acumulan sin límite
   actual; solo el trace de intake está acotado (20 entradas).
+
+## Working-state revision y metadata operacional
+
+> `.andmar/work/**` is operational metadata and is excluded from the working-state revision used to bind code/product verification evidence.
+
+- **Portabilidad sin invalidación recursiva:** el Work Ledger (`.andmar/work/**`) puede y suele estar versionado en Git, permitiendo continuidad entre ramas y máquinas.
+- **Exclusión del fingerprint de código/producto:** excluir `.andmar/work/**` del cálculo de la revisión no lo vuelve \"invisible\" ni lo ignora en el repositorio; simplemente garantiza que registrar notas, punteros de evidencia en `EVIDENCE.md` o actualizar el progreso de unidades en `WORK.md` no altere la identidad del código verificado (evitando evidencia auto-invalidante).
+- **Garantía de frescura:** cualquier cambio en archivos de código o producto (`src/**`, tests, scripts, configuración) altera inmediatamente la revisión e invalida cualquier evidencia previa.
+- **Cálculo determinista:** se realiza mediante `node "${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai/scripts/working-state-revision.mjs"` (helper instalado de AndMar) o su comando shell equivalente con exclusión explícita `:!.andmar/work/**`.

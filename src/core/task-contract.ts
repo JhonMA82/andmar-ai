@@ -32,7 +32,7 @@ export const EVIDENCE_TYPES: readonly EvidenceType[] = [
 /** Hard cap on independent review rounds per task (spec: normal 1, max 2). */
 export const MAX_REVIEW_ROUNDS = 2
 
-export const MAX_REQUIREMENTS = 20
+export const MAX_REQUIREMENTS = 100
 export const MAX_CONSTRAINTS = 20
 export const MAX_TEXT_CHARS = 500
 export const MAX_GOAL_CHARS = 2000

@@ -124,33 +124,43 @@ Request: **"Add a new option to the CLI."**
 
 ```text
 1. intake
-      classify into direct, enrich, or structure; build an operational brief if underspecified
+      classify into direct, enrich, or structure; emit work projection
+      (none, lightweight, structured)
 
-2. obligations
-      task contract records the explicit requirements, including the
-      ones that are easy to forget (docs, tests, no unrelated changes)
+2. work ledger (portable continuity)
+      for non-trivial work, maintain repository-native state under
+      .andmar/work/<work-id>/ (WORK.md or full suite; see docs/WORK-LEDGER.md)
 
-3. execution
+3. obligations (runtime task contract)
+      task contract records the bounded runtime projection of requirements,
+      including docs, tests, and verification surface
+
+4. execution
       implement with native OpenCode tools; delegate only if a bounded
       child task genuinely benefits from separate context
 
-4. tests / typecheck
-      run the relevant checks through OpenCode's shell, then record a
-      receipt per check bound to the exact working-state revision
+5. optional Work Unit checkpoint
+      after a coherent WU is done and focused checks verify the exact
+      working-state revision, AndMar gates readiness; OpenCode creates
+      the native Git commit; AndMar records its SHA in WORK.md
 
-5. affected documentation
+6. tests / typecheck
+      run the integrated relevant checks through OpenCode's shell, then
+      record a receipt per check bound to the exact working-state revision
+
+7. affected documentation
       change_impact maps the changed paths to documentation obligations
       and reports which documents are likely stale
 
-6. version impact
+8. version impact
       change_impact classifies none | patch | minor | major; it detects
       the obligation and never bumps, tags or publishes anything
 
-7. review, if it applies
+9. review, if it applies
       one fresh read/search-only child session audits the diff, the
       requirements and the evidence; routing decides none | audit | deep
 
-8. completion
+10. completion
       the gate accepts only when verification, every requirement with
       evidence, the required review and the docs/version obligations
       are all current for the same revision

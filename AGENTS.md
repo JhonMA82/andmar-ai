@@ -95,6 +95,19 @@ The current deterministic policy is intentionally conservative:
 
 Do not add a semantic router until real ambiguous routing cases demonstrate the need. The narrow implemented slice is the `intake` pilot (one typed Jev decision on whether a request needs refinement), not a frontier-model router.
 
+## Work Ledger (portable continuity)
+
+- Work Ledger is portable project state under `.andmar/work/<work-id>/`, not model memory or `ctx.storage`.
+- Never rely on invisible context; every durable assertion must trace to the request, repository, or Ledger itself.
+- Do not create a capability merely to manage Markdown files.
+- Maintain strict 1:1 requirement mapping between Work Ledger and Task Contract; never group or merge independent requirements merely to fit runtime limits.
+- `.andmar/work/**` is operational metadata and is excluded from the working-state revision fingerprint.
+- Validate ledger structural integrity deterministically with `node "${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai/scripts/validate-work-ledger.mjs" .andmar/work/<work-id>` at key events.
+- Resolve AndMar runtime helpers from `${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai`; never assume the target repository contains AndMar's `scripts/` directory.
+- Use native OpenCode tools (`read`, `write`, `edit`) for Work Ledger content, but use the installed deterministic `work-ledger-lifecycle.mjs` helper for normal Work Unit state transitions (`activate`, `complete`, `block`, `resume`, `reopen`).
+- For recoverable Work Unit commits, use `work-unit-checkpoint.mjs` as a two-phase gate: `prepare` validates a done/evidenced WU against the exact verified working-state revision; OpenCode performs the native Git commit; `record` stores the current HEAD SHA in `WORK.md`. The helper never stages, commits, pushes, merges, tags, or releases.
+- `delivery.workUnitCommits` is `manual` by default and may be `auto` only by explicit configuration. `auto` authorizes local checkpoint commits only; it never authorizes push/PR/merge/tag/publish/release.
+
 ## Documentation map (read before changing)
 
 `AGENTS.md` is the operational contract, not the architecture. Consult the
@@ -110,6 +123,7 @@ state keys / ownership / lifecycle     -> docs/STATE.md
 options / environment variables        -> docs/CONFIGURATION.md
 receipts / evidence / revision binding -> docs/VERIFICATION.md
 intake / Jev / trace / fallback        -> docs/INTAKE.md
+work ledger / portable continuity      -> docs/WORK-LEDGER.md
 request flow / completion policy       -> assets/agents/andmar.md
 why the architecture is this way       -> docs/DECISIONS.md
 what is in / out of the MVP            -> docs/MVP-SCOPE.md
