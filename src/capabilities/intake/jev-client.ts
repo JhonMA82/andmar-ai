@@ -1,4 +1,4 @@
-// Generic OpenRouter Decisions transport shared by AndMar decision surfaces.
+// OpenRouter Decisions transport owned by the Intake capability.
 // No capability imports and no plugin-API dependency.
 
 export const JEV_ENDPOINT = "https://openrouter.ai/api/alpha/decisions"

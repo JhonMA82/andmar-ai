@@ -1,6 +1,6 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { runReview } from "../src/core/review-session.ts"
+import { runReview } from "../src/capabilities/task-contract/review-session.ts"
 
 test("runReview maps wait timeout to structured unavailable", async () => {
   const sessions = {
