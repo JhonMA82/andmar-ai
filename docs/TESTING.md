@@ -128,8 +128,7 @@ smoke 2 (same model, after tolerant verdict parsing): gate still denied;
 smoke 4 (pinned stronger model, after runChildTask fix): full positive
   path — contract created (6 explicit requirements), evidence recorded
   sequentially, receipts + verify ok, ONE fresh reviewer session returned
-  {"verdict":"approve"} (stored), completion gate ok:true, contract
-  closed, final report 6/6 requirements with honest limitations.
+  {"verdict":"approve"} (stored), completion gate ok:true and closed the contract in the same call, final report 6/6 requirements with honest limitations.
 ```
 
 

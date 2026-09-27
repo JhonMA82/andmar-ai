@@ -104,9 +104,10 @@ Do not add a semantic router until real ambiguous routing cases demonstrate the 
 - `.andmar/work/**` is operational metadata and is excluded from the working-state revision fingerprint.
 - Validate ledger structural integrity deterministically with `node "${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai/scripts/validate-work-ledger.mjs" .andmar/work/<work-id>` at key events.
 - Resolve AndMar runtime helpers from `${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai`; never assume the target repository contains AndMar's `scripts/` directory.
-- Use native OpenCode tools (`read`, `write`, `edit`) for Work Ledger content, but use the installed deterministic `work-ledger-lifecycle.mjs` helper for normal Work Unit state transitions (`activate`, `complete`, `block`, `resume`, `reopen`).
+- Use native OpenCode tools (`read`, `write`, `edit`) for Work Ledger content, but use the installed deterministic `work-ledger-lifecycle.mjs` helper for normal Work Unit state transitions (`activate`, `complete`, `block`, `resume`, `reopen`) and final portable sealing (`finalize`).
 - For recoverable Work Unit commits, use `work-unit-checkpoint.mjs` as a two-phase gate: `prepare` validates a done/evidenced WU against the exact verified working-state revision; OpenCode performs the native Git commit; `record` stores the current HEAD SHA in `WORK.md`. The helper never stages, commits, pushes, merges, tags, or releases.
 - `delivery.workUnitCommits` is `manual` by default and may be `auto` only by explicit configuration. `auto` authorizes local checkpoint commits only; it never authorizes push/PR/merge/tag/publish/release.
+- Completion is one runtime boundary, not a ceremony chain: for Ledger-backed work require lifecycle `status` → `completionReady:true`, call `andmar_completion_gate` with exact revision/task kind/docs/version/required checks, let the gate derive stored verification/review truth and close the Task Contract on success, then run lifecycle `finalize --revision <accepted-revision>`. Do not repeat manual `testsPassed`/`reviewPassed` claims or call a second normal-flow Task Contract close.
 
 ## Documentation map (read before changing)
 

@@ -73,6 +73,10 @@ Jev must not become an agent or general reasoning substitute.
 
 Previous trigger was "completion gate inputs become repeatedly manual". The `verification` capability now provides structured receipts (`andmar_record_receipt` / `andmar_verify_revision`) captured from native OpenCode shell/tool execution, with exact-revision semantics. Revision capture itself still takes the revision as explicit input; automating it from native VCS events remains a candidate.
 
+## Implemented: completion simplification
+
+The completion boundary now consumes those stored receipts plus Task Contract requirement evidence and stored review state. Normal callers provide the exact revision, task kind, docs/version status and proportional required checks; they no longer repeat `testsPassed` / `reviewPassed` booleans. A successful `andmar_completion_gate` closes the Task Contract in the same serialized operation. Ledger-backed work uses `completionReady:true` before the gate and `work-ledger-lifecycle.mjs finalize --revision ...` afterward to preserve portable final revision/timestamp without adding another runtime completion subsystem.
+
 ## Implemented (pilot): intake request refinement
 
 Previous trigger was "a measurable set of decisions that structured rules cannot classify reliably enough" for one narrow question: whether a request needs refinement before execution. The `intake` capability answers it with deterministic checks first and a single typed Jev call second (`andmar_intake` / `andmar_intake_trace`), with an explicit non-blocking fallback. Broader Jev uses below remain candidates.

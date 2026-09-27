@@ -30,6 +30,7 @@
 //   itself when the agent supplies it.
 
 import { createHash } from "node:crypto"
+import { VERIFICATION_EVIDENCE_PREFIX, verificationEvidenceKey } from "../../core/verification-state.ts"
 
 export interface ExecutionEvidence {
   executionId: string
@@ -47,12 +48,12 @@ export interface ExecutionEvidence {
   outputDigest?: string
 }
 
-export const EXECUTION_EVIDENCE_PREFIX = "verification-evidence/"
+export const EXECUTION_EVIDENCE_PREFIX = VERIFICATION_EVIDENCE_PREFIX
 
 export const MAX_EXECUTION_ID_CHARS = 200
 
 export function executionEvidenceKey(executionId: string): string {
-  return `${EXECUTION_EVIDENCE_PREFIX}${encodeURIComponent(executionId)}`
+  return verificationEvidenceKey(executionId)
 }
 
 export function isValidExecutionId(value: unknown): value is string {

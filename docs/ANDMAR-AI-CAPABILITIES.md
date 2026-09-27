@@ -135,54 +135,31 @@ known limitations.
 
 ### `lifecycle`
 
-- **Purpose:** Deterministic documentation impact, SemVer impact detection, and
-  the exact-revision completion gate.
+- **Purpose:** Deterministic documentation impact and SemVer impact detection.
 - **Non-goals:** Does not write documentation, bump versions, publish
-  releases, or run checks.
+  releases, run checks, or own Task Contract completion state.
 - **Public primitives:** `andmar_change_impact` (input: `changedPaths` +
   explicit `kind`, optional `breaking`; output: docs impact, version impact,
-  public-surface flag); `andmar_completion_gate` (input: `currentRevision` +
-  `CompletionEvidence`, optional `requiredChecks` defaulting to
-  `tests, typecheck`, plus optional `requireContract`, `requireReview` and
-  `taskKind`; output: `{ ok, reasons }`).
-- **Produces:** staleness obligations and gate verdicts. **Consumes:**
-  configured documentation rules and public paths; verification receipts via a
-  read-only scan of `verification/` + `verification-evidence`; the active
-  Task Contract and its reviews via core key helpers (read-only).
+  public-surface flag).
+- **Produces:** documentation/version staleness obligations. **Consumes:**
+  configured documentation rules and public paths only.
 - **Owns:** no state keys of its own. **Must not own:** receipts, evidence,
-  contracts, or reviews (reads them; `verification` and `task-contract`
-  write them).
-- **State:** stateless itself; evaluates `verification/<revision>/<check>`
-  receipts owned by `verification`.
+  contracts, reviews, or completion state.
+- **State:** stateless.
 - **Configuration:** `documentation.rules` (unique ids, `code`/`docs` glob
   patterns with `*`/`**`/`?`), `versioning.enabled` and
   `versioning.publicPaths`.
 - **External contracts:** none; pure mapping and SemVer policy.
-- **Interaction:** `andmar_verify_revision` (`verification`) is the natural
-  predecessor of the gate; the gate additionally enforces the
-  required-verification invariant.
-- **Failure / fallback:** with non-empty `requiredChecks`, a manual
-  `testsPassed: true` can never formally verify a revision with
-  missing/failed/unverified receipts. `requiredChecks: []` is the explicit,
-  observable opt-out for tasks that genuinely require no checks. When a
-  Task Contract exists for the session, the gate additionally denies
-  completion with pending/blocked requirements, satisfied requirements
-  without evidence, stale revision-bound evidence, or a missing/rejected/
-  stale required review; `requireContract: true` demands a contract even
-  when none exists. Without a contract the gate keeps its legacy behavior
-  for trivial tasks.
+- **Interaction:** its docs/version result is passed into the Task Contract
+  completion boundary after exact-revision verification.
+- **Failure / fallback:** detection only; stale documentation or required
+  version/changelog work remains an obligation for the caller to resolve.
 - **Security / trust:** detection only — it flags obligations; the agent or
   human resolves them. Version impact is conservative and never mutates
   `package.json`, tags, or releases.
-- **Testing contract:** deterministic unit tests for path mapping, SemVer
-  classification, and exact-revision completion (`tests/lifecycle.test.ts`,
-  `tests/glob.test.ts`).
-- **Observability:** emits `andmar.completion` with the final gate verdict,
-  lifecycle statuses and verification counts, including whether required
-  verification prevented an otherwise claimed completion — plus contract
-  metrics (`requirementsTotal/Satisfied/Pending/Blocked`,
-  `requirementGatePreventedCompletion`) and review metrics
-  (`reviewRequired`, `reviewRounds`, `reviewRejectCount`, `finalCompletion`).
+- **Testing contract:** deterministic unit tests for path mapping and SemVer
+  classification (`tests/lifecycle.test.ts`, `tests/glob.test.ts`).
+- **Observability:** none of its own beyond returned deterministic impact data.
 - **Known limitations:** mapping quality depends on configured rules; semantic
   breaking-change detection beyond explicit `breaking` is out of scope.
 
@@ -216,8 +193,11 @@ known limitations.
   (`ctx.shell` offers only `create.before` with no result, so there is no
   better observation point). AndMar-owned tool calls are never eligible as
   check evidence (no self-attestation).
-- **Interaction:** predecessor of `lifecycle`'s completion gate
-  (`implementation -> verification -> completion gate -> done`).
+- **Interaction:** predecessor of `task-contract`'s completion gate
+  (`implementation -> verification -> completion gate -> done`). Completion
+  reads exact-revision verification truth through the shared read-only
+  `core/verification-state` helper; `task-contract` never writes verification
+  keys or imports the verification capability.
 - **Failure / fallback:** fail-closed matching — nonexistent execution,
   different command, failed-as-passing, other-session execution, and
   revision-bound evidence are all refused without creating a receipt. Command
@@ -323,15 +303,21 @@ known limitations.
   requirement transitions; `record_evidence` binding one evidence pointer of
   type `verification`/`runtime`/`diff`/`review`/`user-decision`/`external` to
   a requirement; `steer` appending new obligations without removing;
-  `close` marking `completed`/`blocked`); `andmar_request_review` (input:
+  `close` marking `completed`/`blocked`, with completed-close retained as a
+  compatibility path); `andmar_completion_gate` (input: `currentRevision`,
+  `taskKind`, `docsStatus`, `versionStatus`, optional `requiredChecks`; legacy
+  `CompletionEvidence` accepted for compatibility; output includes `ok`,
+  `reasons`, `contractClosed`, and review status); `andmar_request_review` (input:
   `revision` plus bounded `changedPaths`/`verificationSummary`/
   `knownLimitations`; deterministic routing sets a `none | audit | deep`
   review floor, `mode=none` returns `skipped` and stores nothing, otherwise a
   sanitized compact packet (no receipt/execution identifiers) runs in a fresh
   frontier-profile child session restricted to `read`/`glob`/`grep` when the
   host exposes `ctx.permission.rules`).
-- **Produces:** the session's active contract and up to two review records.
-  **Consumes:** routing-adjacent triviality/review-need helpers from core.
+- **Produces:** the session's contract, up to two review records, and final
+  completion verdict/closure. **Consumes:** routing-adjacent
+  triviality/review-need helpers from core plus verification receipts/evidence
+  read-only at completion.
 - **Owns:** `task-contract/<sessionID>`,
   `task-contract-review/<sessionID>/<round>`,
   `task-contract-review-availability/<sessionID>`. **Must not own:**
@@ -355,8 +341,9 @@ known limitations.
   trivial/non-code `none`, security/migration/architecture `deep`, ordinary
   code-changing work `audit`); one Jev call in the `audit` gray zone may only
   escalate to `deep` and never blocks (fallback is the deterministic
-  minimum). `lifecycle`'s completion gate reads the contract, reviews and
-  current availability marker through core key helpers. A current `audit`
+  minimum). The same capability owns the completion gate, so a successful
+  exact-revision evaluation can close the Task Contract without a cross-
+  capability write or second close call. A current `audit`
   timeout may degrade to deterministic evidence only when verification and
   contract gates are green; `deep` unavailability stays fail-closed. `delegation`
   ownership is untouched (review sessions are not worker records, so
@@ -369,7 +356,9 @@ known limitations.
   reviewer output is reported and consumes no round. Review timeout is a
   structured `unavailable` outcome, stores no review round, and is never
   retried automatically (90 s `audit`, 180 s `deep`). Trivial tasks skip the
-  contract entirely (proportional escape hatch).
+  contract entirely (proportional escape hatch). With non-empty
+  `requiredChecks`, completion derives pass/fail from stored verification;
+  caller `testsPassed`/`reviewPassed` booleans are not authoritative.
 - **Security / trust:** review sessions inherit parent permissions like any
   native child and are additionally constrained to read/search-only review:
   deny-all plus `read`/`glob`/`grep` session rules via
@@ -385,7 +374,8 @@ known limitations.
 - **Observability:** emits `andmar.contract` (action plus requirement
   counts, never texts) and `andmar.review` (round, verdict, finding
   counts, plus routing `mode`/`source`/`permissionsApplied` metadata, never
-  packet or output).
+  packet or output), plus `andmar.completion` with bounded verification,
+  requirement, review, lifecycle-status and `contractClosed` metadata.
 - **Known limitations:** reviewer read-only is API-enforced only when the
   host exposes `ctx.permission.rules`; older hosts fall back to prompt
   enforcement; compaction continuity is pull-based (`status`) because

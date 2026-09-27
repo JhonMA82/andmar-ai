@@ -16,12 +16,12 @@ AndMar AI uses OpenCode V2 plugin storage for operational facts. This state is d
 | `workers/<parent>/<child>` | `delegation` | parent session (own children only) | `running` → `idle`/`failed`; no auto-prune yet |
 | `worker-by-session/<child>` | `delegation` | `delegation` (depth calculation) | written alongside `workers/`; no auto-prune yet |
 | `journal/<sessionID>/<callID>` | `system` | diagnostics | one entry per observed tool call; unbounded, no pruning yet |
-| `verification-evidence/<executionId>` | `verification` | `verification`, `lifecycle` (read-only gate scan) | bound to one revision on first receipt use; unbounded, no pruning yet |
-| `verification/<revision>/<check>` | `verification` | `verification`, `lifecycle` (read-only gate scan) | a new revision starts with no receipts; old receipts are never reused; unbounded, no pruning yet |
+| `verification-evidence/<executionId>` | `verification` | `verification`, `task-contract` (read-only via `core/verification-state`) | bound to one revision on first receipt use; unbounded, no pruning yet |
+| `verification/<revision>/<check>` | `verification` | `verification`, `task-contract` (read-only via `core/verification-state`) | a new revision starts with no receipts; old receipts are never reused; unbounded, no pruning yet |
 | `intake-trace/<timestamp>-<rand>` | `intake` | `andmar_intake_trace` queries | max 20 entries, oldest pruned first |
-| `task-contract/<sessionID>` | `task-contract` | `task-contract` (writes); `lifecycle` (read-only gate scan) | one active contract per session; `active` → `completed`/`blocked`; unbounded, no pruning yet |
-| `task-contract-review/<sessionID>/<round>` | `task-contract` | `task-contract` (writes); `lifecycle` (read-only gate scan) | max 2 rounds per task; a new round always uses a new child session; unbounded, no pruning yet |
-| `task-contract-review-availability/<sessionID>` | `task-contract` | `task-contract` (writes); `lifecycle` (read-only gate read) | one current-revision review-unavailability marker; cleared on every new review request; unbounded, no pruning yet |
+| `task-contract/<sessionID>` | `task-contract` | `task-contract` | one active contract per session; `active` → `completed`/`blocked`; unbounded, no pruning yet |
+| `task-contract-review/<sessionID>/<round>` | `task-contract` | `task-contract` | max 2 rounds per task; a new round always uses a new child session; unbounded, no pruning yet |
+| `task-contract-review-availability/<sessionID>` | `task-contract` | `task-contract` | one current-revision review-unavailability marker; cleared on every new review request; unbounded, no pruning yet |
 
 ### `runtime/last-start`
 
@@ -47,6 +47,11 @@ One minimal execution-evidence record per observed non-AndMar tool call (`execut
 ### `verification/<revision>/<check>`
 
 One receipt per verification check (`tests`, `lint`, `typecheck`, `build`, `custom`) for an exact revision. The revision segment is `encodeURIComponent`-encoded so revisions containing `/` cannot collide. A new revision starts with no receipts; old receipts are never reused. Approved receipts carry the internally resolved `executionId`, the recorded `command` and the `sessionID` that produced them.
+
+`task-contract` consumes verification truth only through the shared read-only
+`src/core/verification-state.ts` contract. That helper owns no state and writes
+nothing; it centralizes the verification key shape and exact-revision summary so
+completion does not couple itself to verification's internal storage layout.
 
 ### `intake-trace/<timestamp>-<rand>`
 

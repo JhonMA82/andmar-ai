@@ -386,6 +386,20 @@ makes earlier evidence stale — including requirement evidence. A
 `unverified`, never as proof; a `satisfied` requirement without evidence
 is invalid, never as completion.
 
+For Ledger-backed work, portable readiness is checked first through
+`work-ledger-lifecycle.mjs status` (`completionReady:true`). The runtime
+completion gate then derives verification and review truth from stored evidence;
+callers supply only the final revision, task kind, lifecycle docs/version status,
+and the relevant required checks. A successful gate closes the Task Contract in
+the same operation. The portable Ledger is then finalized with the same accepted
+revision. This removes the old gate-seal-then-close ceremony without creating a
+second completion subsystem.
+
+Cross-capability verification reads use the minimal shared
+`core/verification-state` read contract. `verification` remains the sole writer
+of receipts/evidence; `task-contract` consumes the derived exact-revision status
+without importing a sibling capability or duplicating storage ownership.
+
 ## 8. Documentation integrity
 
 Mappings live in configuration:

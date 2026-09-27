@@ -2,6 +2,21 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
+## [0.11.0] - 2026-09-25
+
+### Added
+
+- Completion-ready Work Ledger status and deterministic `work-ledger-lifecycle.mjs finalize --revision <revision>` sealing of portable completion metadata.
+- Completion-gate regression coverage proving stored verification/review evidence drives the verdict and a successful gate closes the Task Contract in the same operation.
+
+### Changed
+
+- `andmar_completion_gate` keeps its public tool name but moves from `lifecycle` to the `task-contract` capability so completion can close state without violating capability ownership.
+- Normal completion no longer repeats caller `testsPassed` / `reviewPassed` claims and no longer requires a second `andmar_task_contract(op=close)` call; verification/review truth is derived from stored evidence.
+- `lifecycle` is narrowed to documentation/version impact only; Task Contract now owns the completion boundary and emits `contractClosed` in completion results/observability.
+- Verification state consumed by completion is read through a shared read-only core helper; `verification` remains the sole writer of receipt/evidence keys and `task-contract` no longer depends on their storage layout directly.
+- Agent and Work Ledger policy now use `completionReady -> completion_gate -> finalize`, while legacy evidence input and explicit completed-close remain compatibility paths.
+
 ## [0.10.0] - 2026-09-25
 
 ### Added

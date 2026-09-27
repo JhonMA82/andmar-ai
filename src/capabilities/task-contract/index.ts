@@ -1,4 +1,6 @@
-import type { Capability, ChangeKind, StateStore } from "../../core/contracts.ts"
+import type { Capability, ChangeKind, CompletionEvidence, StateStore } from "../../core/contracts.ts"
+import { evaluateCompletionV2 } from "../../core/lifecycle.ts"
+import { readVerificationState } from "../../core/verification-state.ts"
 import type { SemanticObservability } from "../../core/observability.ts"
 import { runReview } from "../../core/review-session.ts"
 import {
@@ -13,8 +15,10 @@ import {
   evaluateReviewGate,
   formatContractBrief,
   isBlockingFinding,
+  isTrivialTask,
   minimumReviewMode,
   recordRequirementEvidence,
+  requiresIndependentReview,
   reviewAvailabilityKey,
   reviewKey,
   reviewPrefix,
@@ -33,6 +37,8 @@ import { routeReviewWithJev } from "./review-jev.ts"
 
 const MAX_PACKET_FIELD_CHARS = 2000
 const MAX_CHANGED_PATHS = 100
+const CHECKS = ["tests", "lint", "typecheck", "build", "custom"] as const
+const DEFAULT_GATE_CHECKS: readonly string[] = ["tests", "typecheck"]
 
 function sessionIDFrom(toolContext: any): string | undefined {
   const id = toolContext?.sessionID ?? toolContext?.session?.id ?? toolContext?.metadata?.sessionID
@@ -205,6 +211,9 @@ async function mutateTaskContract(
     if (input.outcome !== "completed" && input.outcome !== "blocked") {
       return 'refused: close requires outcome "completed" or "blocked"'
     }
+    if (contract.status === "completed" && input.outcome === "completed") {
+      return JSON.stringify({ stored: true, alreadyCompleted: true, contract }, null, 2)
+    }
     if (input.outcome === "blocked" && (typeof input.reason !== "string" || input.reason.trim() === "")) {
       return "refused: closing as blocked requires a reason"
     }
@@ -259,10 +268,200 @@ function contractEventPayload(
   }
 }
 
+interface CompletionGateInput {
+  currentRevision: string
+  docsStatus?: CompletionEvidence["docsStatus"]
+  versionStatus?: CompletionEvidence["versionStatus"]
+  /** Compatibility only. Verification/review booleans are not authoritative. */
+  evidence?: CompletionEvidence
+  requiredChecks?: string[]
+  taskKind: ChangeKind
+}
+
+async function evaluateAndCloseCompletion(
+  sessionID: string,
+  input: CompletionGateInput,
+  state: StateStore,
+  observability?: SemanticObservability,
+): Promise<Record<string, unknown>> {
+  const required = input.requiredChecks ?? [...DEFAULT_GATE_CHECKS]
+  const verification =
+    required.length === 0
+      ? { ok: true, missing: [], failed: [], unverified: [], reasons: [] }
+      : await readVerificationState(state, input.currentRevision, required)
+  const docsStatus = input.docsStatus ?? input.evidence?.docsStatus
+  const versionStatus = input.versionStatus ?? input.evidence?.versionStatus
+  if (docsStatus === undefined || versionStatus === undefined) {
+    return {
+      ok: false,
+      reasons: [
+        "completion requires docsStatus and versionStatus (top-level preferred; legacy evidence object is still accepted)",
+      ],
+      contractClosed: false,
+    }
+  }
+
+  // Compatibility seals from the old gate->close handshake are invalid once
+  // a new completion attempt begins. New successful gates close directly.
+  await state.remove(completionSealKey(sessionID))
+
+  const derivedEvidence: CompletionEvidence = {
+    revision: input.currentRevision,
+    testsPassed: required.length === 0 || verification.ok,
+    docsStatus,
+    versionStatus,
+  }
+  const contract = await readContract(state, sessionID)
+  const reviews = await readReviews(state, sessionID)
+  const reviewAvailability = await state.get<ReviewAvailabilityRecord>(reviewAvailabilityKey(sessionID))
+  const currentReviewAvailability =
+    reviewAvailability !== undefined &&
+    contract !== undefined &&
+    reviewAvailability.revision === input.currentRevision &&
+    reviewAvailability.contractStateToken === contractStateToken(contract)
+      ? reviewAvailability
+      : undefined
+
+  const contractRequired = !isTrivialTask(input.taskKind)
+  let contractGate: ReturnType<typeof evaluateRequirementGate> | undefined
+  const contractReasons: string[] = []
+  if (contract) {
+    if (contract.taskKind !== input.taskKind) {
+      contractReasons.push(`taskKind mismatch: contract=${contract.taskKind}, completion=${input.taskKind}`)
+    }
+    contractGate = evaluateRequirementGate(contract, input.currentRevision)
+  } else if (contractRequired) {
+    contractReasons.push(`Task Contract required for non-trivial taskKind "${input.taskKind}" but none exists for this session`)
+  }
+
+  const reviewRequired = requiresIndependentReview(contract?.taskKind ?? input.taskKind)
+  const reviewGate =
+    contract !== undefined || reviewRequired
+      ? evaluateReviewGate(contract, reviews, input.currentRevision, reviewRequired)
+      : undefined
+
+  const combinedContractGate =
+    contractGate !== undefined
+      ? {
+          ...contractGate,
+          ok: contractGate.ok && contractReasons.length === 0,
+          reasons: [...contractGate.reasons, ...contractReasons],
+        }
+      : contractReasons.length > 0
+        ? {
+            ok: false,
+            pending: [],
+            blocked: [],
+            missingEvidence: [],
+            stale: [],
+            reasons: contractReasons,
+            total: 0,
+            satisfied: 0,
+          }
+        : undefined
+
+  let effectiveReviewGate = reviewGate
+  let reviewDegraded = false
+  if (reviewGate !== undefined && !reviewGate.ok && currentReviewAvailability !== undefined) {
+    const currentReject =
+      reviewGate.latestRevision === input.currentRevision && reviewGate.latestVerdict === "reject"
+    const evidenceGateGreen = verification.ok && (combinedContractGate?.ok ?? true)
+    if (currentReviewAvailability.mode === "audit" && evidenceGateGreen && !currentReject) {
+      effectiveReviewGate = { ...reviewGate, ok: true, reasons: [] }
+      reviewDegraded = true
+    } else if (currentReviewAvailability.mode === "deep") {
+      effectiveReviewGate = {
+        ...reviewGate,
+        reasons: [
+          ...reviewGate.reasons,
+          `deep review unavailable: ${currentReviewAvailability.reason} during ${currentReviewAvailability.stage}`,
+        ],
+      }
+    }
+  }
+
+  const result = evaluateCompletionV2(
+    input.currentRevision,
+    derivedEvidence,
+    verification,
+    required,
+    combinedContractGate,
+    effectiveReviewGate,
+  )
+
+  let contractClosed = false
+  let closedContract: TaskContract | undefined
+  if (result.ok && contract !== undefined) {
+    closedContract = { ...contract, status: "completed", updatedAt: Date.now() }
+    await state.set(contractKey(sessionID), closedContract)
+    contractClosed = true
+    observability?.emit({
+      type: "andmar.contract",
+      sessionID,
+      payload: contractEventPayload("completed_by_gate", closedContract, reviews),
+    })
+  }
+
+  const metrics = contract ? contractMetrics(contract, reviews) : undefined
+  const reviewRejectCount = reviews.filter((review) => review.verdict === "reject").length
+  observability?.emit({
+    type: "andmar.completion",
+    sessionID,
+    payload: {
+      ok: result.ok,
+      verificationDerived: true,
+      testsPassed: derivedEvidence.testsPassed,
+      reviewPassed: effectiveReviewGate?.ok ?? null,
+      docsStatus: derivedEvidence.docsStatus,
+      versionStatus: derivedEvidence.versionStatus,
+      requiredChecks: [...required],
+      verificationOk: verification.ok,
+      missingCount: verification.missing.length,
+      failedCount: verification.failed.length,
+      unverifiedCount: verification.unverified.length,
+      verificationPreventedCompletion: required.length > 0 && !verification.ok,
+      hasContract: contract !== undefined,
+      requirementsTotal: metrics?.requirementsTotal ?? 0,
+      requirementsSatisfied: metrics?.requirementsSatisfied ?? 0,
+      requirementsPending: metrics?.requirementsPending ?? 0,
+      requirementsBlocked: metrics?.requirementsBlocked ?? 0,
+      requirementGatePreventedCompletion: combinedContractGate !== undefined && !combinedContractGate.ok,
+      reviewRequired,
+      reviewRounds: reviews.length,
+      reviewRejectCount,
+      reviewApproved: reviewGate?.ok === true && reviewRequired,
+      reviewDegraded,
+      reviewUnavailable: currentReviewAvailability !== undefined,
+      reviewUnavailableMode: currentReviewAvailability?.mode ?? null,
+      contractClosed,
+      finalCompletion: result.ok,
+    },
+  })
+
+  return {
+    ...result,
+    contractClosed,
+    review: {
+      required: reviewRequired,
+      approved: reviewGate?.ok === true && reviewRequired,
+      degraded: reviewDegraded,
+      unavailable:
+        currentReviewAvailability === undefined
+          ? null
+          : {
+              mode: currentReviewAvailability.mode,
+              reason: currentReviewAvailability.reason,
+              stage: currentReviewAvailability.stage,
+              elapsedMs: currentReviewAvailability.elapsedMs,
+            },
+    },
+  }
+}
+
 export const taskContractCapability: Capability = {
   id: "task-contract",
-  version: 1,
-  description: "Persist and update the active Task Contract: goal, requirements, constraints and requirement evidence.",
+  version: 2,
+  description: "Persist Task Contract obligations, independent review, and the evidence-derived completion boundary.",
   async setup({ ctx, config, state, observability }) {
     const registration = await ctx.tool.transform((editor: any) => {
       editor.namespace({ name: "andmar", description: "AndMar AI harness primitives" })
@@ -324,6 +523,51 @@ export const taskContractCapability: Capability = {
 
           return {
             content: await withContractLock(sessionID, () => mutateTaskContract(sessionID, op, input, { state, observability })),
+          }
+        },
+      })
+
+      editor.add({
+        name: "completion_gate",
+        description:
+          "Accept completion only when stored evidence for the exact current revision is green, Task Contract requirements are fulfilled, required independent review is satisfied, and docs/version obligations are clean. Verification/review success is derived from AndMar state instead of caller booleans. On success, the Task Contract is closed in this same operation. Legacy evidence input remains accepted for compatibility. Pass requiredChecks: [] only for tasks that genuinely require no checks.",
+        input: {
+          type: "object",
+          properties: {
+            currentRevision: { type: "string", minLength: 1 },
+            docsStatus: { type: "string", enum: ["clean", "updated", "stale", "not-applicable"] },
+            versionStatus: { type: "string", enum: ["clean", "updated", "required", "not-applicable"] },
+            evidence: {
+              type: "object",
+              properties: {
+                revision: { type: "string", minLength: 1 },
+                testsPassed: { type: "boolean" },
+                reviewPassed: { type: "boolean" },
+                docsStatus: { type: "string", enum: ["clean", "updated", "stale", "not-applicable"] },
+                versionStatus: { type: "string", enum: ["clean", "updated", "required", "not-applicable"] },
+              },
+              required: ["revision", "testsPassed", "docsStatus", "versionStatus"],
+              additionalProperties: false,
+            },
+            requiredChecks: { type: "array", items: { type: "string", enum: [...CHECKS] } },
+            taskKind: {
+              type: "string",
+              enum: ["trivial-ui", "docs-format", "known-test", "feature", "bugfix", "refactor", "debug", "architecture", "security", "migration", "review", "internal"],
+            },
+          },
+          required: ["currentRevision", "taskKind"],
+          additionalProperties: false,
+        },
+        options: { namespace: "andmar", codemode: true },
+        execute: async (input: CompletionGateInput, toolContext: any) => {
+          const sessionID = sessionIDFrom(toolContext)
+          if (!sessionID) return { content: "refused: cannot determine the current session ID" }
+          return {
+            content: JSON.stringify(
+              await withContractLock(sessionID, () => evaluateAndCloseCompletion(sessionID, input, state, observability)),
+              null,
+              2,
+            ),
           }
         },
       })

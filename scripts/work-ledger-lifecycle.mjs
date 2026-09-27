@@ -15,11 +15,13 @@ function normalizeUnitId(value) {
 }
 
 function parseArgs(argv) {
-  const [command, targetDir, unitArg, ...rest] = argv;
+  const [command, targetDir, third, ...tail] = argv;
+  const unitArg = third && !third.startsWith("--") ? third : undefined;
+  const rest = unitArg ? tail : (third ? [third, ...tail] : tail);
   const options = {};
   for (let i = 0; i < rest.length; i += 1) {
     const token = rest[i];
-    if (token === "--reason" || token === "--evidence" || token === "--next") {
+    if (token === "--reason" || token === "--evidence" || token === "--next" || token === "--revision") {
       const value = rest[i + 1];
       if (!value || value.startsWith("--")) throw new Error(`${token} requires a value`);
       options[token.slice(2)] = value;
@@ -92,6 +94,42 @@ function setLedgerStatus(lines, status) {
     return;
   }
   throw new Error("WORK.md has no Status/status field");
+}
+
+function setLedgerCompletionMetadata(lines, revision, completedAt) {
+  const frontmatterStart = lines[0] === "---" ? 0 : -1;
+  const frontmatterEnd = frontmatterStart === 0 ? lines.indexOf("---", 1) : -1;
+  if (frontmatterEnd > 0) {
+    const setFrontmatter = (key, value) => {
+      const re = new RegExp(`^${key}:\\s*`, "i");
+      const index = lines.slice(1, frontmatterEnd).findIndex((line) => re.test(line));
+      if (index >= 0) lines[index + 1] = `${key}: ${value}`;
+      else {
+        lines.splice(frontmatterEnd, 0, `${key}: ${value}`);
+      }
+    };
+    setFrontmatter("final_revision", revision);
+    const nextEnd = lines.indexOf("---", 1);
+    const re = /^completed_at:\s*/i;
+    const index = lines.slice(1, nextEnd).findIndex((line) => re.test(line));
+    if (index >= 0) lines[index + 1] = `completed_at: ${completedAt}`;
+    else lines.splice(nextEnd, 0, `completed_at: ${completedAt}`);
+    return;
+  }
+
+  const setPlain = (label, value) => {
+    const re = new RegExp(`^${label}:\\s*`, "i");
+    const index = lines.findIndex((line) => re.test(line));
+    if (index >= 0) {
+      lines[index] = `${label}: ${value}`;
+      return;
+    }
+    const statusIndex = lines.findIndex((line) => /^Status:\s*/i.test(line));
+    const insertAt = statusIndex >= 0 ? statusIndex + 1 : 0;
+    lines.splice(insertAt, 0, `${label}: ${value}`);
+  };
+  setPlain("Final Revision", revision);
+  setPlain("Completed At", completedAt);
 }
 
 function setNext(lines, text) {
@@ -185,11 +223,51 @@ export async function runWorkUnitLifecycle(command, targetDir, unitArg, options 
     const blocked = units.filter((unit) => unit.state === "blocked").map((unit) => unit.id);
     const pending = units.filter((unit) => unit.state === "pending").map((unit) => unit.id);
     const done = units.filter((unit) => unit.state === "done").map((unit) => unit.id);
-    return { workId: validation.workId, status: validation.status, mode: validation.mode, active, pending, blocked, done, units };
+    const completionReady = validation.status === "active" && units.length > 0 && done.length === units.length;
+    return { workId: validation.workId, status: validation.status, mode: validation.mode, completionReady, active, pending, blocked, done, units };
   };
 
   if (command === "status") return { changed: false, ...summary() };
   if (validation.status === "completed") throw new Error("Completed Work Ledger cannot be mutated by work-unit lifecycle");
+
+  if (command === "finalize") {
+    const units = parseWorkUnits(lines).map((unit) => ({ id: unit.id, state: stateName(unit.state) }));
+    const incomplete = units.filter((unit) => unit.state !== "done");
+    if (units.length === 0) throw new Error("finalize requires at least one Work Unit");
+    if (incomplete.length > 0) {
+      throw new Error(`finalize requires all Work Units done; incomplete: ${incomplete.map((unit) => `${unit.id}=${unit.state}`).join(", ")}`);
+    }
+    if (!options.revision?.trim()) throw new Error("finalize requires --revision");
+    const revision = options.revision.trim();
+    const completedAt = new Date().toISOString();
+    setLedgerStatus(lines, "completed");
+    setLedgerCompletionMetadata(lines, revision, completedAt);
+    setNext(lines, `Completed — final revision ${revision}`);
+    appendLifecycleEvent(lines, `completion gate accepted revision ${revision}; ledger finalized`);
+
+    const updated = `${lines.join("\n").replace(/\n+$/g, "\n")}`;
+    await atomicWrite(workPath, updated);
+    const after = await validateWorkLedger(resolvedTarget);
+    if (after.invocationError || !after.valid) {
+      await atomicWrite(workPath, original);
+      const detail = after.invocationError ? after.error : after.errors.join("; ");
+      throw new Error(`Lifecycle mutation rolled back because ledger became invalid: ${detail}`);
+    }
+    return {
+      changed: true,
+      workId: after.workId,
+      status: after.status,
+      mode: after.mode,
+      command,
+      completionReady: false,
+      finalRevision: revision,
+      completedAt,
+      active: null,
+      pending: [],
+      blocked: [],
+      done: units.map((unit) => unit.id),
+    };
+  }
 
   const unitId = normalizeUnitId(unitArg);
   if (!unitId) throw new Error(`A valid Work Unit id is required for ${command}`);
@@ -300,7 +378,7 @@ if (isDirectInvocation()) {
   if (!args.command || !args.targetDir) {
     console.error(JSON.stringify({
       ok: false,
-      error: "Usage: node work-ledger-lifecycle.mjs <status|activate|complete|block|resume|reopen> <ledger-dir> [WU-N] [--evidence EV-N,...] [--reason text] [--next WU-N]",
+      error: "Usage: node work-ledger-lifecycle.mjs <status|activate|complete|block|resume|reopen|finalize> <ledger-dir> [WU-N] [--evidence EV-N,...] [--reason text] [--next WU-N] [--revision REV]",
     }, null, 2));
     process.exit(2);
   }

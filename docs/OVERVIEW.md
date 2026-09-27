@@ -161,9 +161,11 @@ Request: **"Add a new option to the CLI."**
       requirements and the evidence; routing decides none | audit | deep
 
 10. completion
-      the gate accepts only when verification, every requirement with
-      evidence, the required review and the docs/version obligations
-      are all current for the same revision
+      Work Ledger status must first report completionReady for ledger-backed
+      work; the gate then derives verification/review state from stored
+      evidence, accepts only when requirements and docs/version obligations
+      are current for the same revision, and closes the Task Contract itself.
+      The agent then finalizes the portable Ledger with that accepted revision.
 ```
 
 No step above assumes the agent's own claim. "Implementation finished" is a

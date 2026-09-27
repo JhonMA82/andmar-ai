@@ -156,9 +156,9 @@ Namespace `andmar`:
 | `andmar_change_impact` | documentation and version impact |
 | `andmar_suggest_checks` | suggest verification commands from project signals |
 | `andmar_record_receipt` / `andmar_verify_revision` | revision-bound verification evidence |
-| `andmar_completion_gate` | exact-revision completion check |
+| `andmar_completion_gate` | evidence-derived exact-revision completion check; closes the Task Contract on success |
 | `andmar_intake` / `andmar_intake_trace` | request classification and its bounded dev trace |
-| `andmar_task_contract` | create, project, update, evidence, steer or close the Task Contract |
+| `andmar_task_contract` | create, project, update, evidence, steer or compatibility-close the Task Contract |
 | `andmar_request_review` | one routed (`none \| audit \| deep`) independent review round |
 
 Names are primitives, not methodologies: a future ODD skill can use them

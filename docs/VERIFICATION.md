@@ -144,17 +144,19 @@ automáticamente invalidada.
 ## Cómo encaja con el resto
 
 `andmar_verify_revision` es el paso previo natural de `andmar_completion_gate`
-(de la capability `lifecycle`). La verificación dice "los checks pasaron"; el
-completion gate además exige el Task Contract, la revisión independiente
-requerida y las obligaciones de documentación/versionado. Ese encadenamiento
+(de la capability `task-contract`). La verificación dice "los checks pasaron"; el
+completion gate lee esos receipts/evidence para la revisión exacta y además exige
+el Task Contract, la revisión independiente requerida y las obligaciones de
+documentación/versionado. Ese encadenamiento
 completo es canónico en [ARCHITECTURE.md](ARCHITECTURE.md) §7 y no se repite
 aquí.
 
 Lo que sí es específico de esta capability:
 
-- el gate **no** puede declararse formalmente verificado con verificación
-  requerida incompleta: un `testsPassed: true` manual nunca basta cuando
-  `verify_revision` reporta faltantes para la misma revisión;
+- el gate **no** acepta un booleano manual como fuente de verdad para
+  verification/review: en el flujo normal el caller no envía `testsPassed` ni
+  `reviewPassed`; el gate deriva ambos desde el estado AndMar de la misma
+  revisión. El viejo objeto `evidence` se conserva solo por compatibilidad;
 - para tareas que genuinamente no requieren checks, el gate acepta
   `requiredChecks: []` explícito;
 - pasar los tests demuestra solo lo que esos tests cubren; no demuestra que la
@@ -162,7 +164,7 @@ Lo que sí es específico de esta capability:
   Contract y del completion gate, no de los receipts. La prueba negativa
   canónica (tests en verde con un requirement pendiente → completion
   denegado) está documentada en
-  [ANDMAR-AI-CAPABILITIES.md](ANDMAR-AI-CAPABILITIES.md) § `lifecycle`;
+  [ANDMAR-AI-CAPABILITIES.md](ANDMAR-AI-CAPABILITIES.md) § `task-contract`;
 - cuando un comportamiento observable importa al usuario, el contrato puede
   declarar su `verificationSurface` (CLI, HTTP, plugin runtime, database…) y la
   verificación debe ejercitar esa superficie real de forma proporcional al

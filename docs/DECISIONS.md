@@ -387,3 +387,23 @@ Intake can route requests correctly without lossy summarization, without new wor
 - A checkpoint cannot silently combine multiple Work Unit identities in the Ledger; duplicate SHA references are structurally rejected.
 - Push/PR/merge/tag/publish/release behavior is unchanged and still requires separate authorization.
 
+
+## D-031 — Completion is evidence-derived and Task Contract closes inside the gate
+
+**Decision:**
+- `andmar_completion_gate` keeps the same public tool name but is owned by the `task-contract` capability, which owns the Task Contract state it may close.
+- Normal callers provide the final `currentRevision`, `taskKind`, `docsStatus`, `versionStatus`, and relevant `requiredChecks`; verification and review success are derived from stored AndMar evidence instead of repeated caller booleans.
+- A successful non-trivial completion gate closes the Task Contract in the same serialized operation and returns `contractClosed:true`; a second `andmar_task_contract(op=close)` call is no longer part of the normal flow.
+- The legacy `CompletionEvidence` object and exact-seal completed-close path remain accepted as compatibility paths, but new agent policy does not depend on them.
+- Ledger-backed work first uses deterministic lifecycle `status` (`completionReady:true`) and, after the gate succeeds, lifecycle `finalize --revision <accepted revision>` seals the portable Ledger with final revision/timestamp. No new completion capability or Work Ledger runtime is introduced.
+
+**Why:**
+- The old sequence repeated facts already present in receipts/reviews (`testsPassed`, `reviewPassed`), then created a completion seal solely so a second tool call could close the same Task Contract.
+- Letting `lifecycle` close the contract would violate capability state ownership. Moving only the completion boundary to `task-contract` preserves isolation while leaving documentation/version impact in `lifecycle`.
+- Work Ledger already contains durable unit/evidence state; `completionReady` plus a deterministic finalization command is enough to make portable completion explicit without adding another gate.
+
+**Consequence:**
+- Normal completion becomes `ledger ready -> reconcile/evidence -> integrated verification -> review if required -> completion_gate (also closes contract) -> ledger finalize`.
+- Missing/failed/unverified receipts still fail closed; required review policy and audit/deep unavailability behavior are unchanged.
+- Completed Task Contracts continue to drive the existing operational-continuation fast path.
+- D-020's completion-seal close handshake is superseded for the normal flow; its legacy compatibility guard remains available for older callers.

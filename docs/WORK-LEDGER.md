@@ -472,14 +472,23 @@ When the user provides new instructions during execution:
 
 ### 7.8 Completion integration
 
-Work Ledger does **not** create a new completion tool or gate. Final verification and closure proceed strictly through existing primitives:
-1. Reconcile `WORK.md` (all required units `[x]`, none `[~]`).
-2. Verify that Task Contract requirements reflect Ledger obligations 1:1.
-3. Record exact-revision requirement evidence with `andmar_task_contract(op=record_evidence)`.
-4. Run verification and `andmar_verify_revision`.
-5. Run review with `andmar_request_review`.
-6. Seal completion with `andmar_completion_gate`.
-7. After the gate succeeds and the Task Contract is closed as completed, update the Ledger metadata to `Status: completed`; this metadata-only write does not change the code/product revision fingerprint.
+Work Ledger does **not** create a second completion gate. Completion now uses one runtime composition point plus one deterministic portable-state finalization:
+
+1. Run lifecycle `status`; for a Ledger-backed task it must report `completionReady:true`. This is the portable-work readiness check: every Work Unit is `[x]`, evidence pointers are structurally valid, and no pending/active/blocked unit remains.
+2. Reconcile Task Contract requirements with Ledger obligations 1:1 and record exact-revision requirement evidence with the existing Task Contract primitive.
+3. Run integrated verification and `andmar_verify_revision` for the final working-state revision.
+4. Resolve docs/version obligations and run final review when runtime policy requires it.
+5. Call `andmar_completion_gate` with `currentRevision`, `taskKind`, `docsStatus`, `versionStatus`, and the relevant `requiredChecks`. The gate derives verification and review truth from stored AndMar evidence; normal callers do not repeat `testsPassed`/`reviewPassed` booleans.
+6. If the gate returns `ok:true`, it closes the non-trivial Task Contract in the same operation. There is no second `task_contract(op=close)` call in the normal flow.
+7. Finalize the portable Ledger:
+
+```text
+node ".../work-ledger-lifecycle.mjs" finalize .andmar/work/<work-id> --revision <currentRevision>
+```
+
+`finalize` requires all Work Units done, writes `Status: completed`, the final revision and completion timestamp, updates `Next`, and leaves the completed Ledger immutable. This metadata-only write remains excluded from the code/product revision fingerprint.
+
+The legacy completion-evidence object and explicit Task Contract close path remain accepted for compatibility, but new agent policy does not use them.
 
 ## 8. No hidden context
 

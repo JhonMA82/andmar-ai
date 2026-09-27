@@ -175,3 +175,11 @@ test("AndMar agent uses exact-revision Work Unit checkpoints without taking over
   assert.match(agent, /OpenCode performs staging\/commit through native Git tools/i)
   assert.match(agent, /push.*PR.*merge.*tag.*publish.*release.*explicit authorization/i)
 })
+
+test("AndMar agent uses the simplified completion flow without a second close ceremony", () => {
+  assert.match(agent, /completionReady:true/i)
+  assert.match(agent, /Do \*\*not\*\* pass manual `testsPassed` or `reviewPassed` claims/i)
+  assert.match(agent, /contractClosed:true/i)
+  assert.match(agent, /do not call `andmar_task_contract\(op=close\)` afterward/i)
+  assert.match(agent, /work-ledger-lifecycle\.mjs finalize .*--revision <currentRevision>/i)
+})

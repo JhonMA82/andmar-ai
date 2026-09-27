@@ -322,3 +322,107 @@ WU-1 — completed
     await rm(base, { recursive: true, force: true })
   }
 })
+
+test("work-unit lifecycle: status exposes completion readiness and finalize seals the portable ledger", async () => {
+  const { base, dir } = await makeLightweight("finalize-ready", `# Work
+Work ID: finalize-ready
+Status: active
+Mode: lightweight
+
+## Requirements
+- REQ-1: Outcome
+
+## Work Units
+- [x] WU-1 — Outcome
+  - Requirements: REQ-1
+  - Evidence: EV-1
+
+## Evidence
+- EV-1: integrated verification passed
+
+## Next
+WU-1 — all work units complete; prepare final verification
+`)
+  try {
+    const before = await runWorkUnitLifecycle("status", dir, undefined)
+    assert.equal(before.completionReady, true)
+
+    const result = await runWorkUnitLifecycle("finalize", dir, undefined, { revision: "rev-final" })
+    assert.equal(result.status, "completed")
+    assert.equal(result.finalRevision, "rev-final")
+    assert.equal(result.completionReady, false)
+
+    const work = await readWork(dir)
+    assert.match(work, /Status: completed/)
+    assert.match(work, /Final Revision: rev-final/)
+    assert.match(work, /Completed At: \d{4}-\d{2}-\d{2}T/)
+    assert.match(work, /Completed — final revision rev-final/)
+    assert.equal((await validateWorkLedger(dir)).valid, true)
+
+    await assert.rejects(
+      () => runWorkUnitLifecycle("reopen", dir, "WU-1", { reason: "should not reopen sealed work" }),
+      /Completed Work Ledger cannot be mutated/,
+    )
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
+test("work-unit lifecycle: finalize refuses incomplete work without mutation", async () => {
+  const { base, dir } = await makeLightweight("finalize-incomplete")
+  try {
+    const before = await readWork(dir)
+    const status = await runWorkUnitLifecycle("status", dir, undefined)
+    assert.equal(status.completionReady, false)
+    await assert.rejects(
+      () => runWorkUnitLifecycle("finalize", dir, undefined, { revision: "rev-final" }),
+      /requires all Work Units done/,
+    )
+    assert.equal(await readWork(dir), before)
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
+test("work-unit lifecycle: finalize writes completion metadata into frontmatter ledgers", async () => {
+  const { base, dir } = await makeLightweight("finalize-frontmatter", `---
+work_id: finalize-frontmatter
+status: active
+mode: lightweight
+task_kind: feature
+created_at: 2026-09-25T00:00:00.000Z
+updated_at: 2026-09-25T00:00:00.000Z
+---
+
+# Goal
+
+Finish the outcome.
+
+## Requirements
+- REQ-1: Outcome
+
+## Work Units
+- [x] WU-1 — Outcome
+  - Requirements: REQ-1
+  - Evidence: EV-1
+
+## Evidence
+- EV-1: integrated verification passed
+
+## Next
+WU-1 — all work units complete; prepare final verification
+`)
+  try {
+    const result = await runWorkUnitLifecycle("finalize", dir, undefined, { revision: "rev-frontmatter" })
+    assert.equal(result.status, "completed")
+
+    const work = await readWork(dir)
+    const frontmatter = work.slice(0, work.indexOf("---", 4) + 3)
+    assert.match(frontmatter, /^---\n[\s\S]*\nstatus: completed\n/m)
+    assert.match(frontmatter, /\nfinal_revision: rev-frontmatter\n/)
+    assert.match(frontmatter, /\ncompleted_at: \d{4}-\d{2}-\d{2}T/)
+    assert.equal((await validateWorkLedger(dir)).valid, true)
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
+})

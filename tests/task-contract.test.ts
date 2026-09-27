@@ -24,7 +24,6 @@ import {
 import { evaluateCompletionV2 } from "../src/core/lifecycle.ts"
 import { ChildSessionTimeoutError } from "../src/core/session.ts"
 import { taskContractCapability } from "../src/capabilities/task-contract/index.ts"
-import { lifecycleCapability } from "../src/capabilities/lifecycle/index.ts"
 
 function makeContract(): TaskContract {
   const created = createTaskContract("ses-1", {
@@ -633,7 +632,7 @@ test("negative smoke: green tests cannot complete a task with a pending README r
   })
 
   const lHarness = createToolHarness()
-  await lifecycleCapability.setup({
+  await taskContractCapability.setup({
     ctx: lHarness.ctx,
     config: { documentation: { rules: [] }, versioning: { enabled: false, publicPaths: [] } } as any,
     state,
@@ -715,7 +714,7 @@ test("positive smoke: full contract plus approved review completes", async () =>
   })
 
   const lHarness = createToolHarness()
-  await lifecycleCapability.setup({
+  await taskContractCapability.setup({
     ctx: lHarness.ctx,
     config: { documentation: { rules: [] }, versioning: { enabled: false, publicPaths: [] } } as any,
     state,
@@ -730,7 +729,7 @@ test("positive smoke: full contract plus approved review completes", async () =>
 test("completion gate derives contract policy from taskKind", async () => {
   const state: any = createMemoryState()
   const lHarness = createToolHarness()
-  await lifecycleCapability.setup({
+  await taskContractCapability.setup({
     ctx: lHarness.ctx,
     config: { documentation: { rules: [] }, versioning: { enabled: false, publicPaths: [] } } as any,
     state,
@@ -938,7 +937,7 @@ test("completion gate denies a taskKind mismatch even when the requirement gate 
   )
 
   const lifecycle = createToolHarness()
-  await lifecycleCapability.setup({
+  await taskContractCapability.setup({
     ctx: lifecycle.ctx,
     config: {
       documentation: { rules: [] },
@@ -1049,7 +1048,7 @@ test("completion gate degrades a current audit timeout only when deterministic e
   })
 
   const harness = createToolHarness()
-  await lifecycleCapability.setup({
+  await taskContractCapability.setup({
     ctx: harness.ctx,
     config: { documentation: { rules: [] }, versioning: { enabled: false, publicPaths: [] } } as any,
     state,
@@ -1109,7 +1108,7 @@ test("completion gate keeps deep review unavailable fail-closed", async () => {
   })
 
   const harness = createToolHarness()
-  await lifecycleCapability.setup({
+  await taskContractCapability.setup({
     ctx: harness.ctx,
     config: { documentation: { rules: [] }, versioning: { enabled: false, publicPaths: [] } } as any,
     state,
@@ -1205,4 +1204,106 @@ test("contract creation rejects 101 requirements with explicit limit error", () 
     assert.match(result.error, /100/)
     assert.match(result.error, /limited to 100/i)
   }
+})
+
+test("completion simplification: gate derives verification/review state and closes the Task Contract", async () => {
+  const state: any = createMemoryState()
+  const contractHarness = createToolHarness()
+  await taskContractCapability.setup({ ctx: contractHarness.ctx, config: { models: {} } as any, state })
+  const contractTool = contractHarness.tools.get("task_contract")
+  await contractTool.execute(
+    { taskKind: "feature", op: "create", goal: "Ship bounded feature", requirements: ["feature works"] },
+    { sessionID: "ses-simple-complete" },
+  )
+  await contractTool.execute(
+    { op: "record_evidence", requirementId: "REQ-1", type: "verification", reference: "tests", revision: "rev-a" },
+    { sessionID: "ses-simple-complete" },
+  )
+  await contractTool.execute(
+    { op: "update", requirementId: "REQ-1", status: "satisfied" },
+    { sessionID: "ses-simple-complete" },
+  )
+
+  await state.set("verification/rev-a/tests", {
+    revision: "rev-a", check: "tests", passed: true, at: 1, executionId: "exec-tests",
+  })
+  await state.set("verification/rev-a/typecheck", {
+    revision: "rev-a", check: "typecheck", passed: true, at: 2, executionId: "exec-type",
+  })
+  await state.set("verification-evidence/exec-tests", {
+    executionId: "exec-tests", status: "completed", revision: "rev-a",
+  })
+  await state.set("verification-evidence/exec-type", {
+    executionId: "exec-type", status: "completed", revision: "rev-a",
+  })
+  await state.set("task-contract-review/ses-simple-complete/1", {
+    verdict: "approve", findings: [], round: 1, reviewSessionID: "review-1", revision: "rev-a", at: 3,
+  })
+
+  const lifecycleHarness = createToolHarness()
+  await taskContractCapability.setup({
+    ctx: lifecycleHarness.ctx,
+    config: { documentation: { rules: [] }, versioning: { enabled: false, publicPaths: [] } } as any,
+    state,
+  })
+  const gate = lifecycleHarness.tools.get("completion_gate")
+  assert.equal(gate.input.required.includes("evidence"), false)
+
+  const result: any = await gate.execute(
+    {
+      taskKind: "feature",
+      currentRevision: "rev-a",
+      docsStatus: "clean",
+      versionStatus: "not-applicable",
+      requiredChecks: ["tests", "typecheck"],
+    },
+    { sessionID: "ses-simple-complete" },
+  )
+  const parsed = JSON.parse(result.content)
+  assert.equal(parsed.ok, true)
+  assert.equal(parsed.contractClosed, true)
+
+  const status: any = await contractTool.execute({ op: "status" }, { sessionID: "ses-simple-complete" })
+  assert.equal(JSON.parse(status.content).contract.status, "completed")
+  assert.equal(await state.get("task-contract-completion/ses-simple-complete"), undefined)
+
+  const legacyClose: any = await contractTool.execute(
+    { op: "close", outcome: "completed", revision: "rev-a" },
+    { sessionID: "ses-simple-complete" },
+  )
+  assert.equal(JSON.parse(legacyClose.content).alreadyCompleted, true)
+})
+
+test("completion simplification: a denied gate leaves the Task Contract active", async () => {
+  const state: any = createMemoryState()
+  const contractHarness = createToolHarness()
+  await taskContractCapability.setup({ ctx: contractHarness.ctx, config: { models: {} } as any, state })
+  const contractTool = contractHarness.tools.get("task_contract")
+  await contractTool.execute(
+    { taskKind: "feature", op: "create", goal: "Ship bounded feature", requirements: ["still pending"] },
+    { sessionID: "ses-simple-denied" },
+  )
+
+  const lifecycleHarness = createToolHarness()
+  await taskContractCapability.setup({
+    ctx: lifecycleHarness.ctx,
+    config: { documentation: { rules: [] }, versioning: { enabled: false, publicPaths: [] } } as any,
+    state,
+  })
+  const result: any = await lifecycleHarness.tools.get("completion_gate").execute(
+    {
+      taskKind: "feature",
+      currentRevision: "rev-a",
+      docsStatus: "clean",
+      versionStatus: "not-applicable",
+      requiredChecks: [],
+    },
+    { sessionID: "ses-simple-denied" },
+  )
+  const parsed = JSON.parse(result.content)
+  assert.equal(parsed.ok, false)
+  assert.equal(parsed.contractClosed, false)
+
+  const status: any = await contractTool.execute({ op: "status" }, { sessionID: "ses-simple-denied" })
+  assert.equal(JSON.parse(status.content).contract.status, "active")
 })
