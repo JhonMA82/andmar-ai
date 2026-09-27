@@ -93,7 +93,8 @@ Current inventory (generated, never hand-edited):
 [CAPABILITY-CONTRACT.md](CAPABILITY-CONTRACT.md).
 
 Future examples such as `workflow`, `context-projection` or
-`worktree-provider` are not part of the current MVP. The narrow `jev-decisions`
+`worktree-provider` are not part of the current system; they are
+measured-friction candidates. The narrow `jev-decisions`
 extension point is implemented as the `intake` pilot (typed Jev answers only,
 no free text).
 
@@ -120,14 +121,17 @@ no durable state and no permission boundary.
 ### Rule: capability vs skill
 
 ```text
-Can it be solved correctly with skill + script, using the generic
-guarantees that already exist?
+Can it be solved correctly with repository artifacts or skill + script,
+using the generic guarantees that already exist?
 
     Yes -> do not create a capability.
 
     No: it needs runtime integration, state, hooks, ownership or a gate
         -> evaluate a capability.
 ```
+
+**Work Ledger = repository-native operational artifact** (`.andmar/work/<work-id>/`), not a capability. It uses OpenCode native file tools and Git portability rather than plugin storage (`ctx.storage`) or capability code. Work Unit state transitions are handled by a small deterministic script (`scripts/work-ledger-lifecycle.mjs`) rather than a workflow runtime. Recoverable Work Unit commits use a second small two-phase helper (`scripts/work-unit-checkpoint.mjs`): AndMar validates exact-revision readiness and records the resulting SHA while OpenCode remains the Git executor. See [WORK-LEDGER.md](WORK-LEDGER.md) and [DECISIONS.md](DECISIONS.md) D-027/D-030.
+
 
 The same test exists in executable form in
 [ANDMAR-AI-CAPABILITIES.md](ANDMAR-AI-CAPABILITIES.md) ("Boundary test for a
@@ -168,13 +172,15 @@ For a non-trivial request handled by the `AndMar` agent today:
 ```text
 Request
    ↓
-Intake (`andmar_intake`: deterministic first, one typed Jev
-   ↓    decision when useful, explicit non-blocking fallback;
-        modes: direct, enrich [operational brief], structure [Work-Ledger projection])
-Task Contract (`andmar_task_contract create`: goal, requirements,
-   ↓     constraints, verification surface; trivial edits skip it;
-         later user instructions `steer` it; `status` recovers it
-         after compaction — compaction never ends the task)
+Intake (`andmar_intake`: deterministic first, one typed Jev decision when useful,
+   ↓    explicit non-blocking fallback; modes: direct, enrich, structure)
+Work Projection (intake signals `workProjection.mode`: none | lightweight | structured)
+   ↓
+Optional repository Work Ledger (`.andmar/work/<work-id>/`: portable continuity source,
+   ↓    lossless requirements and deterministic Work Unit lifecycle; see docs/WORK-LEDGER.md)
+Task Contract runtime projection (`andmar_task_contract create`: goal, bounded requirements,
+   ↓     constraints, verification surface; trivial edits skip it; later user instructions `steer` it;
+         `status` recovers it after compaction — compaction never ends the task)
 Routing (`andmar_route`: deterministic minimum profile from
    ↓     TaskSignals; intake `routeSignals` reused, same taxonomy)
 Execution / Delegation (native OpenCode tools; `andmar_delegate`
@@ -186,17 +192,20 @@ Verification (`andmar_suggest_checks` → run via native shell
 Lifecycle (`andmar_change_impact` for docs/version obligations)
    ↓
 Independent review (`andmar_request_review`: deterministic `none | audit | deep`
-   ↓     routing, fresh frontier child session per round restricted to
-         read/glob/grep when available, sanitized compact evidence-audit
-         packet, max two rounds)
+   ↓     ordinary code: optional advisory audit; security/migration/architecture:
+         required deep review; fresh read/glob/grep-only frontier child,
+         sanitized compact evidence-audit packet, no unchanged-state retry,
+         at most one corrected-revision follow-up for required deep review)
 Completion (`andmar_completion_gate`: exact-revision evidence +
-   requirement gate + approved current review + clean lifecycle
+   requirement gate + required deep review when applicable + clean lifecycle
    gates + satisfied required verification)
 ```
 
 There is intentionally no generic Workflow engine between these steps: each
 transition is an explicit primitive call by the agent, and the completion gate
 is the only composition point. See D-015 for why Workflow stays deferred.
+
+`development-metrics` sits outside this request flow. It subscribes to the existing metadata-only semantic-event primitive and exposes `andmar_report` only for explicit harness diagnostics/tuning; it is not another execution step or gate. Work Ledger recovery counts are read only from `.andmar/work/*/WORK.md`. See [DEVELOPMENT-METRICS.md](DEVELOPMENT-METRICS.md) and D-033.
 
 ### 2.3 Documentation ownership
 
@@ -237,7 +246,7 @@ provider/model catalog  (AndMar stores ModelRef values already valid in
                          OpenCode, and never guesses an ID)
 VCS                     (revision capture uses explicit fingerprints;
                          there is no parallel VCS layer)
-worktrees               (the MVP does not override worktrees; a future
+worktrees               (AndMar does not override worktrees; a future
                          adapter would use ctx.worktree.transform())
 ```
 
@@ -349,7 +358,9 @@ intake-trace/...                 task-contract*/...
 
 This is not long-term semantic memory. It is durable execution state.
 
-A future memory capability must not overload these keys or change their semantics.
+Persistent memory never overloads these keys or changes their semantics:
+Engram (`src/integrations/engram/`) is historical advisory context outside
+`ctx.storage`, and Work Ledger state lives in the repository instead.
 
 ## 7. Completion model
 
@@ -366,7 +377,7 @@ verification evidence (observed execution + revision match)
      +-- tests passed?
      +-- every Task Contract requirement satisfied/blocked/skipped with evidence?
      +-- revision-bound requirement evidence current (not stale)?
-     +-- independent review approved for the current revision (when required)?
+     +-- required deep review approved for the current revision (security/migration/architecture only)?
      +-- docs clean/updated?
      `-- version/changelog clean/updated?
      |
@@ -380,6 +391,39 @@ makes earlier evidence stale — including requirement evidence. A
 `passed: true` claim without observed execution evidence is reported as
 `unverified`, never as proof; a `satisfied` requirement without evidence
 is invalid, never as completion.
+
+For Ledger-backed work, portable readiness is checked first through
+`work-ledger-lifecycle.mjs status` (`completionReady:true`). The runtime
+completion gate then derives verification and review truth from stored evidence;
+callers supply only the final revision, task kind, lifecycle docs/version status,
+and the relevant required checks. A successful gate closes the Task Contract in
+the same operation. The portable Ledger is then finalized with the same accepted
+revision. This removes the old gate-seal-then-close ceremony without creating a
+second completion subsystem.
+
+Cross-capability verification reads use the minimal shared
+`core/verification-state` read contract. `verification` remains the sole writer
+of receipts/evidence; `task-contract` consumes the derived exact-revision status
+without importing a sibling capability or duplicating storage ownership.
+
+## 7.1 Delivery boundary
+
+Delivery is the final core coordination layer, not a Git/release subsystem. `andmar_delivery` reads the current raw user instruction and the current Task Contract status, then returns whether one named operation is authorized and ready. It never executes the operation.
+
+```text
+completed work / explicit operational continuation
+        |
+        v
+andmar_delivery(operation)
+  +-- named by current user?
+  +-- explicitly negated?
+  `-- Task Contract completed (when present)?
+        |
+        v
+OpenCode native Git / PR / tag / publish / release tools
+```
+
+Authorization never expands transitively: commit does not imply push, push does not imply PR, PR does not imply merge, and version does not imply tag/publish/release. Work Unit checkpoint commits remain a separate local recovery policy. This closes the planned core evolution; future additions require demonstrated friction and should remain lateral extensions.
 
 ## 8. Documentation integrity
 
@@ -397,13 +441,13 @@ The option shape, defaults and matcher syntax live in
 
 ## 9. Versioning integrity
 
-The MVP only computes likely impact:
+AndMar only computes likely impact:
 
 ```text
 none | patch | minor | major
 ```
 
-It intentionally does not mutate `package.json`, create tags or publish releases. That belongs in a future release capability only if repeated use demonstrates the need.
+It does not mutate `package.json`, create tags or publish releases itself. The `delivery` capability gates authorization/readiness for those named operations; OpenCode still performs any requested mutation natively.
 
 The policy and release procedure live in [VERSIONING.md](VERSIONING.md).
 
@@ -457,3 +501,23 @@ delegation, verification and completion may emit bounded metadata to a local
 OpenCode runtime events remain owned by OpenCode/its observability plugin.
 
 The optional pieces must remain removable without breaking the core.
+
+
+## Integrations
+
+> **Integration ≠ Capability.** A capability is a runtime guarantee AndMar
+> owns; an integration only connects an external system.
+
+Integrations are optional external adapters and are not capabilities. They may discover/configure an external system, expose bounded status, add agent guidance, or emit observability metadata, but they cannot become completion/readiness guarantees unless a future architectural decision explicitly promotes that responsibility.
+
+An integration:
+
+- connects a system that lives outside AndMar;
+- is optional and removable without touching the core or a capability;
+- may fail open: its unavailability or failure never blocks execution,
+  Completion or Delivery;
+- does not participate in Completion or Verification automatically;
+- does not acquire core authority: no new state ownership, no new completion
+  rule, no new tool namespace.
+
+The first concrete integration is `src/integrations/engram/`. Engram owns persistent memory and native MCP tools; AndMar owns only the boundary described in [ENGRAM.md](ENGRAM.md). The presence of `integrations/` does not create a generic Integration framework; extract one only after another real integration demonstrates shared semantics.

@@ -20,6 +20,7 @@
           ]
         },
         "versioning": { "enabled": true, "publicPaths": ["src/**", "packages/**", "apps/**"] },
+        "developmentMetrics": { "enabled": true },
         "intake": { "model": "typesafe/jev-1.13", "timeoutMs": 8000 }
       }
     }

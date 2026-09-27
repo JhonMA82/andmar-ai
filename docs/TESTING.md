@@ -5,9 +5,17 @@ that should drive the next capability, and the current limitations. The
 system-level explanation is [OVERVIEW.md](OVERVIEW.md); the architecture is
 [ARCHITECTURE.md](ARCHITECTURE.md).
 
-Base snapshot: `JhonMA82/andmar-ai` main at commit `2f50effef624570b6e686d71caa6d430f77a467f`, plus the intake pilot, the `AndMar` primary agent, and the verification-evidence changes documented in the changelog.
+**Historical base snapshot (0.7.x era):** `JhonMA82/andmar-ai` main at commit `2f50effef624570b6e686d71caa6d430f77a467f`, plus the intake pilot, the `AndMar` primary agent, and the verification-evidence changes documented in the changelog. Current behavior is described by [SCOPE.md](SCOPE.md) and the generated [CAPABILITIES.md](CAPABILITIES.md).
 
-This package is intentionally at the point where real use should drive the next capability.
+The core evolution (Intake → Work Ledger → lifecycle → checkpoints →
+Completion → Review → development metrics → Delivery) is complete at
+`v0.15.0`; real use should now drive measured-friction improvements, bug
+fixes and simplifications rather than a new capability.
+
+At the `v0.15.0` consolidation revision, `bun run check` runs **258**
+deterministic tests (architecture check + typecheck + suite). Treat that
+number as revision-bound: the current value is whatever `bun run check`
+prints in your checkout.
 
 ## Install the development build
 
@@ -32,7 +40,7 @@ Start OpenCode in the project you want to test and use **Tab** to select the `An
 
 ## What the first tests should answer
 
-Do not add Workflow, context projection, memory, or more agents before these tests produce evidence that they are needed. (The narrow `intake` Jev pilot is already implemented; broader semantic uses still wait for evidence.)
+Do not add Workflow, context projection, or more agents before these tests produce evidence that they are needed. Do not add an AndMar memory subsystem or memory capability: Engram is the existing optional external memory integration (see [ENGRAM.md](ENGRAM.md)), and it never becomes work state or completion evidence. (The narrow `intake` Jev pilot is already implemented; broader semantic uses still wait for evidence.)
 
 | Scenario | Example | What to observe |
 |---|---|---|
@@ -53,12 +61,17 @@ For every scenario record:
 
 ## Current limitation being measured
 
-AndMar AI has durable verification, contract and child-worker state, but it does **not** yet have a project-level active-task/workflow record.
+AndMar AI has durable verification and contract state in `ctx.storage`, plus
+the repository-native Work Ledger (`.andmar/work/<work-id>/`) for portable
+cross-session continuity. It deliberately still has no runtime workflow or
+orchestration record.
 
 The session-scoped Task Contract (`andmar_task_contract`) now covers the
 active-task part for the current session: goal, requirements, constraints,
 blockers and review rounds survive restarts via plugin storage, and
-`status` re-projects them compactly after compaction. What is still deliberately missing is cross-session takeover:
+`status` re-projects them compactly after compaction. Work Ledger recovery
+covers the portable side: `WORK.md` is read before restarting from scratch,
+and the deterministic lifecycle helper restores unit state. What is still deliberately missing is cross-session takeover:
 `andmar_resume` intentionally enforces parent-session ownership for delegated
 child sessions, and review sessions are never resumed at all. A brand-new
 parent session therefore must not silently take ownership of an old child.
@@ -128,8 +141,7 @@ smoke 2 (same model, after tolerant verdict parsing): gate still denied;
 smoke 4 (pinned stronger model, after runChildTask fix): full positive
   path — contract created (6 explicit requirements), evidence recorded
   sequentially, receipts + verify ok, ONE fresh reviewer session returned
-  {"verdict":"approve"} (stored), completion gate ok:true, contract
-  closed, final report 6/6 requirements with honest limitations.
+  {"verdict":"approve"} (stored), completion gate ok:true and closed the contract in the same call, final report 6/6 requirements with honest limitations.
 ```
 
 
@@ -141,3 +153,17 @@ profile; without a mapping the reviewer inherits the parent model.
 `bun run check` is the authoritative repository check. After `bun install`, it typechecks against the pinned real `@opencode/plugin` package.
 
 For environments without registry/network access, `bun run check:offline` exists only as a structural fallback and uses the local type shim. A passing offline check is **not** evidence of OpenCode API compatibility and must never replace `bun run check` in CI or release validation.
+
+
+## Work Unit lifecycle regression coverage
+
+`tests/work-unit-lifecycle.test.ts` exercises the repository-native Work Unit lifecycle helper against real `WORK.md` files. Coverage includes pending→active, active→done with declared evidence, automatic/explicit next-unit selection, blocking/resume, explicit reopen, rollback on invalid evidence, completed-ledger immutability, and preservation of structural validity. `tests/install-dev.test.ts` also executes the lifecycle helper through the installed global AndMar plugin path from an unrelated consumer repository.
+
+## Work Unit checkpoint regression coverage
+
+`tests/work-unit-checkpoint.test.ts` uses real temporary Git repositories. It covers exact verified-revision gating, metadata-only skip behavior, deterministic commit trailers, current-HEAD recording, rejection of mismatched Work Unit trailers, idempotent SHA recording, and stale checkpoint clearing on reopen. Work Ledger validator tests cover malformed/non-done/duplicate checkpoint references. `tests/install-dev.test.ts` executes the checkpoint helper through the installed global plugin path as a consumer-repository smoke.
+
+
+## Engram lateral integration regression coverage
+
+`tests/engram-integration.test.ts` verifies JSONC/OpenCode config discovery, effective precedence for partial overrides, agent-profile detection, fail-open startup semantics, runtime-observed availability, and metadata-only memory observability. `tests/engram-setup.test.ts` verifies that AndMar delegates configuration to the upstream-owned `engram setup opencode` command instead of rewriting MCP configuration itself. The suite intentionally does not mock Engram as completion evidence because memory is advisory.

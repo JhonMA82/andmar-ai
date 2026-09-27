@@ -62,6 +62,7 @@ Ownership:
 | OpenCode V2 | the runtime: sessions, tool execution, permissions, storage, model catalog, VCS, worktrees, skill discovery/loading |
 | AndMar core | minimal infrastructure and contracts: config, state adapter, capability loader, model policy, small shared helpers |
 | Capabilities | generic runtime guarantees integrated with OpenCode hooks/tools/state |
+| Integrations | optional external adapters (`src/integrations/engram/`): discovery, bounded status and policy for a system AndMar does not own; removable and fail-open |
 | Skills | knowledge and procedures, loaded by the model through OpenCode's native skill mechanism |
 | Scripts | deterministic specialized automation, invoked by a skill or by repository tooling |
 
@@ -96,9 +97,12 @@ verification      (andmar_suggest_checks -> run -> andmar_record_receipt
    ↓                -> andmar_verify_revision, all bound to the exact revision)
 lifecycle         (andmar_change_impact: documentation and version obligations)
    ↓
-independent review (andmar_request_review: none | audit | deep, max two rounds)
-   ↓                skipped when routing resolves to `none`
+independent review (andmar_request_review: deterministic none | audit | deep)
+   ↓                ordinary code: optional advisory audit; security/migration/architecture: required deep
 completion        (andmar_completion_gate)
+   ↓
+delivery          (andmar_delivery: only when the user explicitly requests one
+                    named operation; OpenCode executes it natively)
 ```
 
 ### Which steps are conditional
@@ -110,7 +114,7 @@ completion        (andmar_completion_gate)
 | routing | when no routing or delegation decision is actually needed |
 | delegation | normal work stays in the primary session with native tools |
 | verification | `requiredChecks: []` only for tasks that genuinely require no checks; otherwise receipts must exist for the exact current revision |
-| independent review | deterministic routing resolves trivial/non-code work to `none`; review also needs an open non-completed contract |
+| independent review | skipped by default for ordinary feature/bugfix/refactor/debug work; optional advisory `audit` only when explicitly useful; required `deep` for security/migration/architecture |
 | completion gate | never skipped for non-trivial work; it is the only composition point |
 
 There is intentionally no workflow engine, scheduler or orchestration board
@@ -124,37 +128,60 @@ Request: **"Add a new option to the CLI."**
 
 ```text
 1. intake
-      classify into direct, enrich, or structure; build an operational brief if underspecified
+      classify into direct, enrich, or structure; emit work projection
+      (none, lightweight, structured)
 
-2. obligations
-      task contract records the explicit requirements, including the
-      ones that are easy to forget (docs, tests, no unrelated changes)
+2. work ledger (portable continuity)
+      for non-trivial work, maintain repository-native state under
+      .andmar/work/<work-id>/ (WORK.md or full suite; see docs/WORK-LEDGER.md)
 
-3. execution
+3. obligations (runtime task contract)
+      task contract records the bounded runtime projection of requirements,
+      including docs, tests, and verification surface
+
+4. execution
       implement with native OpenCode tools; delegate only if a bounded
       child task genuinely benefits from separate context
 
-4. tests / typecheck
-      run the relevant checks through OpenCode's shell, then record a
-      receipt per check bound to the exact working-state revision
+5. optional Work Unit checkpoint
+      after a coherent WU is done and focused checks verify the exact
+      working-state revision, AndMar gates readiness; OpenCode creates
+      the native Git commit; AndMar records its SHA in WORK.md
 
-5. affected documentation
+6. tests / typecheck
+      run the integrated relevant checks through OpenCode's shell, then
+      record a receipt per check bound to the exact working-state revision
+
+7. affected documentation
       change_impact maps the changed paths to documentation obligations
       and reports which documents are likely stale
 
-6. version impact
+8. version impact
       change_impact classifies none | patch | minor | major; it detects
       the obligation and never bumps, tags or publishes anything
 
-7. review, if it applies
-      one fresh read/search-only child session audits the diff, the
-      requirements and the evidence; routing decides none | audit | deep
+9. review, if it applies
+      deterministic routing only: ordinary code does not require review;
+      an optional advisory audit may inspect a concrete semantic uncertainty;
+      security/migration/architecture require one fresh deep review, with at
+      most one corrected-revision follow-up after a blocking result
 
-8. completion
-      the gate accepts only when verification, every requirement with
-      evidence, the required review and the docs/version obligations
-      are all current for the same revision
+10. completion
+      Work Ledger status must first report completionReady for ledger-backed
+      work; the gate then derives verification/review state from stored
+      evidence, accepts only when requirements and docs/version obligations
+      are current for the same revision, and closes the Task Contract itself.
+      The agent then finalizes the portable Ledger with that accepted revision.
 ```
+
+Outside the normal task path, `andmar_report` can inspect bounded local
+development metrics when the user or harness maintainer is evaluating AndMar
+itself. Metrics never become a flow step or a completion requirement.
+
+Post-completion delivery (`commit`, `push`, `pull-request`, `merge`, `tag`,
+`version`, `publish`, `release`) is outside the flow above: it happens only
+when the user explicitly names an operation, `andmar_delivery` authorizes and
+readies that operation, and OpenCode executes it with native tools.
 
 No step above assumes the agent's own claim. "Implementation finished" is a
 candidate completion; only the gate decides.
@@ -204,9 +231,15 @@ the generated [CAPABILITIES.md](CAPABILITIES.md).
 | state keys and ownership | [STATE.md](STATE.md) |
 | receipts, evidence, revision binding | [VERIFICATION.md](VERIFICATION.md) |
 | intake, Jev, trace, fallback | [INTAKE.md](INTAKE.md) |
+| development metrics / harness value and friction | [DEVELOPMENT-METRICS.md](DEVELOPMENT-METRICS.md) |
 | testing and current limitations | [TESTING.md](TESTING.md) |
 | version and changelog policy | [VERSIONING.md](VERSIONING.md) |
 | why the architecture is shaped this way | [DECISIONS.md](DECISIONS.md) |
-| what is in and out of the MVP | [MVP-SCOPE.md](MVP-SCOPE.md), [ROADMAP.md](ROADMAP.md) |
+| what is in and out of scope | [SCOPE.md](SCOPE.md), [ROADMAP.md](ROADMAP.md) |
 | OpenCode V2 API assumptions | [OPENCODE-V2.md](OPENCODE-V2.md) |
 | agent rules for coding agents | [../AGENTS.md](../AGENTS.md) |
+
+
+## Optional historical memory
+
+Engram can be attached as a lateral OpenCode MCP integration. It is advisory historical context only; Work Ledger/Task Contract and exact-revision Verification remain authoritative for current work. See [ENGRAM.md](ENGRAM.md).

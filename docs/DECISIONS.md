@@ -63,6 +63,12 @@ semantic uses still wait for measured friction.
 
 ## D-006 — Operational state is not memory
 
+> **Superseded in part by D-035.** The separation itself still holds —
+> `ctx.storage` remains durable execution state and is never semantic memory —
+> but memory is no longer simply excluded from the project: Engram is an
+> optional lateral integration that keeps historical memory outside both
+> `ctx.storage` and the capability inventory.
+
 **Decision:** Worker handles, journal data and runtime facts use OpenCode plugin storage.
 
 **Why:** Execution continuity should not depend on semantic memory/retrieval.
@@ -179,6 +185,8 @@ semantic uses still wait for measured friction.
 
 ## D-018 — Fresh independent review, max two rounds
 
+> **Superseded in part by D-032.** Fresh-session semantics and the two-record hard cap remain, but ordinary code no longer requires review for completion. The second stored round now represents the single allowed corrected-revision follow-up for required deep review, not a general retry loop.
+
 **Decision:** Non-trivial code-changing work requires one independent review in a new child session per round (`frontier` profile, prompt-constrained read-only, compact packet, structured `{verdict, findings}` response). Never resume a review session; after a correction the next round is a new session. Findings block only when linked to a requirement/constraint/desired outcome/missing evidence. Invalid reviewer output is reported and consumes no round. Two rejects block the task — no judge-of-judge.
 
 **Why:** The implementer's claims are not evidence, and reusing a review session anchors the second judgment. Two rounds bound cost and loops.
@@ -211,12 +219,18 @@ must produce a denied completion rather than silently falling back to legacy
 behavior.
 
 **Consequence:** Trivial task kinds retain the proportional escape hatch.
-Non-trivial work fails closed when the Task Contract/review boundary is
-missing.
+Non-trivial work fails closed when the Task Contract boundary is missing.
+Only security/migration/architecture fail closed when the required deep-review
+boundary is missing; ordinary code relies on exact-revision Verification.
 
 ---
 
 ## D-021 — Completed-task operational continuations use a proportional fast-path
+
+> **Updated by D-034.** Post-completion delivery operations now pass through
+> `andmar_delivery` authorization/readiness before OpenCode executes the named
+> operation natively. There is still no release capability and no release
+> engine.
 
 **Decision:** A new request after a `completed` Task Contract that only operates on the already-approved result (version/changelog metadata, commit, tag, push, publish) runs as `continuation.fastPath=true` with `taskKind=internal`: no new/reopened contract, no `andmar_request_review`, no `andmar_completion_gate` replay. Obvious wording fast-paths deterministically with no Jev; ambiguous wording uses the same single Jev call plus three conditional questions. Fallback never fast-paths. `andmar_request_review` refuses completed contracts.
 
@@ -230,18 +244,27 @@ missing.
 
 **Why:** Real use on small repositories showed reviewers spending roughly the entire child-session budget repeating verification that AndMar had already completed, causing `session.wait` timeouts without finding implementation defects. The same behavior would scale poorly on large repositories and duplicates responsibilities already owned by Verification.
 
-**Consequence:** `andmar_request_review` remains independent and fresh-session-based, but its packet explicitly treats exact-revision verification as existing execution evidence and asks the reviewer to judge its sufficiency. The 10-minute child-session safety ceiling is not increased. A timeout stores nothing, consumes no review round, emits `andmar.review action=timeout`, and may be retried at most once by policy without rerunning verification.
+**Consequence:** `andmar_request_review` remains independent and fresh-session-based, but its packet explicitly treats exact-revision verification as existing execution evidence and asks the reviewer to judge its sufficiency. A timeout stores nothing, consumes no review round, emits `andmar.review action=timeout`, and is terminal for the exact revision + Task Contract state. It is not retried unchanged.
 
 
 ## D-023 — Review depth is routed deterministically; Jev may only escalate
 
-**Decision:** Final review uses three categorical modes: `none`, `audit`, and `deep`. Deterministic policy sets the minimum: trivial/non-code work may use `none`; security, migration and architecture use `deep`; ordinary code-changing work uses `audit`. Jev is called only for the ordinary `audit` gray zone, receives semantic facts rather than internal receipt identifiers, and may only escalate to `deep`. Jev unavailability falls back to the deterministic minimum.
+> **Superseded by D-032.** Review keeps the categorical `none | audit | deep`
+> modes, but routing is now fully deterministic and Jev is no longer called by
+> Review. Jev remains an Intake-only decision primitive.
 
-**Why:** Repeated production-like trials showed the prior reviewer spending its child-session window rediscovering evidence, including treating opaque receipt keys as filesystem names and launching whole-disk searches. Task kind alone was also too coarse: a localized bugfix and a cross-cutting bugfix should not receive identical review depth.
+**Historical decision:** Review originally used three categorical modes with a deterministic floor and a Jev escalation from `audit` to `deep` for ordinary code. That extra semantic router is removed by D-032.
 
-**Consequence:** Review routing is cheap and deterministic first, semantic classification is delegated to Jev only where useful, and the frontier reviewer receives a bounded role. When supported by OpenCode V2, the review child is physically restricted to read/glob/grep operations, so prompt drift cannot turn Review back into Verification.
+**Why it changed:** Real use showed that Review routing itself did not justify another model call. The useful distinction is categorical and stable: ordinary code can rely on exact-revision Verification, while security/migration/architecture justify mandatory deep semantic review.
+
+**Current consequence:** See D-032. `minimumReviewMode()` is now the complete deterministic routing policy and Review has no Jev dependency.
 
 ## D-024 — Review timeout is availability, not a delegation failure
+
+> **Updated by D-032.** The bounded runner and structured availability outcome
+> remain. Ordinary `audit` is now advisory rather than a completion dependency,
+> so the old audit-degrade completion branch is no longer needed. Deep review
+> remains fail-closed.
 
 **Decision:** Independent Review has its own bounded session runner instead of
 sharing `runChildTask` with delegation. `audit` gets a 90-second wall-clock
@@ -249,12 +272,11 @@ budget and `deep` gets 180 seconds. Deadline expiry returns structured
 `reviewStatus=unavailable` with stage/elapsed metadata, stores no review round,
 and is never retried automatically.
 
-For current-revision `audit`, the completion gate may degrade to deterministic
-evidence only when exact-revision verification and the Task Contract requirement
-gate are both green and there is no current-revision blocking reject. `deep`
-unavailability remains fail-closed. The availability marker is bound to the
-contract state token, so steering/evidence mutations cannot reuse a stale
-timeout fallback.
+Ordinary `audit` is advisory and therefore never participates in the completion
+gate. `deep` unavailability remains fail-closed. The terminal attempt marker is
+bound to the exact revision and Task Contract state token, so unchanged timeout
+or invalid-output attempts cannot trigger retry loops and steering/evidence
+mutations cannot reuse a stale attempt state.
 
 **Why:** Review is a bounded semantic/evidence audit, not a worker. Reusing the
 generic child-task lifecycle made a stalled `session.wait` look like task
@@ -303,3 +325,186 @@ itself, which requests refinement instead of guessing.
 
 **Consequence:**
 Intake can route requests correctly without lossy summarization, without new workflow infrastructure and without another LLM call.
+
+---
+
+## D-027 — Work Ledger starts as repository-native portable state, not a capability
+
+**Decision:**
+- Work Ledger files live under `.andmar/work/<work-id>/` as repository-native durable Markdown artifacts.
+- Native OpenCode file tools (`read`, `write`, `edit`) manage Ledger files; no dedicated capability is created in 0.8.2.
+- The existing Task Contract remains the bounded runtime completion projection in `ctx.storage`.
+- The Work Ledger serves as the portable, unbounded continuity source across sessions, machines, and agents.
+- Promotion of any part of Work Ledger to a runtime capability is deferred until demonstrated synchronization or lifecycle friction justifies it.
+
+**Why:**
+- Work artifacts can be committed and shared across machines and branches via Git.
+- Avoids duplicating state in `ctx.storage` and avoids bypasses of OpenCode's native permission model.
+- Prevents premature infrastructure investments before observing actual agent behavior in real projects.
+- Eliminates reliance on hidden, invisible model context across compactions and restarts.
+
+**Consequence:**
+- Synchronization between Work Ledger and Task Contract is initially governed by AndMar agent policy and verification gates.
+- Measured drift and developer friction in 0.8.2 will inform future potential capabilities or work-unit checkpoint commit automation.
+
+---
+
+## D-028 — Work Ledger metadata does not participate in code revision identity
+
+**Decision:**
+- `.andmar/work/**` is designated as operational metadata and is strictly excluded from the working-state revision used to bind code/product verification receipts and evidence.
+- The runtime Task Contract expands requirement capacity to 100 (`MAX_REQUIREMENTS = 100`) and enforces a strict 1:1 mapping with Work Ledger obligations, eliminating requirement grouping.
+- A deterministic structural validator (`scripts/validate-work-ledger.mjs`) is introduced to verify Work Ledger schemas, IDs, active unit limits, and references without semantic interference.
+- Work Ledger continues to operate without a new runtime capability or plugin storage namespace.
+
+**Why:**
+- Modifying operational metadata (such as recording evidence pointers or updating work unit status in the Ledger) previously altered the dirty working tree fingerprint, creating self-invalidating verification cycles.
+- Requirement grouping weakened runtime gates by leaving atomic user obligations un-evidenced at the contract level.
+- Prompt-only compliance caused structural drift; deterministic validation provides fast, verifiable feedback.
+
+**Consequence:**
+- Code and product verification receipts remain stable across Ledger bookkeeping updates.
+- Tasks up to 100 requirements benefit from atomic, uncompressed contract verification.
+- Work Ledger structural integrity is validated deterministically before completion without runtime bloat.
+
+## D-029 — Work Unit lifecycle is a deterministic repository helper, not a runtime capability
+
+**Decision:**
+- Work Unit state transitions in `WORK.md` are performed by `scripts/work-ledger-lifecycle.mjs`.
+- The supported lifecycle is intentionally small: `pending -> active`, `active -> done`, `active -> blocked`, `blocked -> active`, and explicit `done -> active` reopening.
+- Completing a Work Unit requires already-declared portable evidence (`EV-N`); the helper refuses unknown evidence and rolls back any mutation that fails structural validation.
+- The helper may atomically activate the next pending Work Unit, but it does not execute implementation work, verification commands, Task Contract operations, Git commits, or completion gates.
+- Work Ledger remains repository-native portable state; no new AndMar capability, workflow runtime, or `ctx.storage` namespace is introduced.
+
+**Why:**
+- Manual marker edits are simple but fragile once resume/recovery depends on exact Work Unit state.
+- The demonstrated problem is deterministic state transition integrity, not semantic planning or orchestration.
+- A small script solves duplicate-active-unit, stale `Next`, unsupported transitions, missing completion evidence, and explicit reopen semantics without growing the core or introducing a workflow engine.
+
+**Consequence:**
+- Agents retain freedom inside each Work Unit while AndMar makes progress transitions reproducible and auditable.
+- Work Unit completion and recovery cost become reliable repository facts rather than prompt-only conventions.
+- Future automatic checkpoint commits can consume these lifecycle events without changing the Work Ledger state model.
+
+## D-030 — Work Unit checkpoints are a two-phase Git gate, not a Git capability
+
+**Decision:**
+- Add `scripts/work-unit-checkpoint.mjs` with only `status`, `prepare`, and `record`.
+- `prepare` is read-only and requires a done/evidenced Work Unit, no Git conflicts, and an exact 64-character verified working-state revision matching current product state.
+- OpenCode remains responsible for native staging and commit execution.
+- The commit carries deterministic `Work-ID`, `Work-Unit`, and `Verified-Revision` trailers.
+- `record` accepts only the current `HEAD`, validates the trailers and product paths, and writes `Checkpoint: <sha>` to `WORK.md`.
+- `delivery.workUnitCommits` defaults to `manual`; `auto` is explicit authorization only for local Work Unit checkpoints. Remote/release operations remain separate.
+- Reopening a Work Unit clears its current evidence and checkpoint pointers.
+- No review is added per Work Unit checkpoint; integrated final verification and final review/completion remain authoritative.
+
+**Why:**
+- A verified coherent Work Unit is a useful recovery boundary, but building Git execution into AndMar would duplicate OpenCode, expand permissions, and create a Delivery subsystem prematurely.
+- Binding the commit to the verified dirty-working-state revision prevents a later or different diff from being presented as the verified checkpoint.
+- Deterministic trailers make the commit self-describing even though the SHA can only be written to `WORK.md` after Git creates the commit.
+- Explicit `manual | auto` policy avoids surprising local commits while allowing projects that want checkpoint automation to opt in.
+
+**Consequence:**
+- Recovery can use small Git commits aligned to Work Units without turning AndMar into a VCS orchestrator.
+- A checkpoint cannot silently combine multiple Work Unit identities in the Ledger; duplicate SHA references are structurally rejected.
+- Push/PR/merge/tag/publish/release behavior is unchanged and still requires separate authorization.
+
+
+## D-031 — Completion is evidence-derived and Task Contract closes inside the gate
+
+**Decision:**
+- `andmar_completion_gate` keeps the same public tool name but is owned by the `task-contract` capability, which owns the Task Contract state it may close.
+- Normal callers provide the final `currentRevision`, `taskKind`, `docsStatus`, `versionStatus`, and relevant `requiredChecks`; verification and review success are derived from stored AndMar evidence instead of repeated caller booleans.
+- A successful non-trivial completion gate closes the Task Contract in the same serialized operation and returns `contractClosed:true`; a second `andmar_task_contract(op=close)` call is no longer part of the normal flow.
+- The legacy `CompletionEvidence` object and exact-seal completed-close path remain accepted as compatibility paths, but new agent policy does not depend on them.
+- Ledger-backed work first uses deterministic lifecycle `status` (`completionReady:true`) and, after the gate succeeds, lifecycle `finalize --revision <accepted revision>` seals the portable Ledger with final revision/timestamp. No new completion capability or Work Ledger runtime is introduced.
+
+**Why:**
+- The old sequence repeated facts already present in receipts/reviews (`testsPassed`, `reviewPassed`), then created a completion seal solely so a second tool call could close the same Task Contract.
+- Letting `lifecycle` close the contract would violate capability state ownership. Moving only the completion boundary to `task-contract` preserves isolation while leaving documentation/version impact in `lifecycle`.
+- Work Ledger already contains durable unit/evidence state; `completionReady` plus a deterministic finalization command is enough to make portable completion explicit without adding another gate.
+
+**Consequence:**
+- Normal completion becomes `ledger ready -> reconcile/evidence -> integrated verification -> review if required -> completion_gate (also closes contract) -> ledger finalize`.
+- Missing/failed/unverified receipts still fail closed; required review policy and audit/deep unavailability behavior are unchanged.
+- Completed Task Contracts continue to drive the existing operational-continuation fast path.
+- D-020's completion-seal close handshake is superseded for the normal flow; its legacy compatibility guard remains available for older callers.
+
+## D-032 — Review is deterministic, advisory for ordinary work, and required only for high-risk kinds
+
+**Decision:** Review is reduced to one deterministic policy table:
+
+```text
+trivial/docs/internal/review
+→ none
+
+feature/bugfix/refactor/debug
+→ exact-revision Verification is the primary guarantee
+→ review is not required for completion
+→ `andmar_request_review`, when explicitly useful, runs one bounded advisory audit
+
+security/migration/architecture
+→ deep independent review required for completion
+→ one initial review
+→ at most one directed correction + new revision + fresh final review
+→ no third review loop
+```
+
+Review no longer calls Jev. `minimumReviewMode()` is the complete routing policy.
+Jev remains in Intake only.
+
+A review attempt that times out or produces invalid output stores a bounded
+`task-contract-review-availability/<sessionID>` marker tied to both the exact
+revision and `contractStateToken`. A second request against that unchanged
+state is refused deterministically. The same no-repeat rule applies when an
+actual review record already exists for that exact revision/state. Changing the
+implementation revision or Task Contract state creates a new review state; a
+required deep review may then use the one remaining corrected-revision round.
+
+New review records include `contractStateToken`, so steering the Task Contract
+cannot silently reuse a review of older obligations. Legacy records without the
+token remain readable for compatibility.
+
+**Why:** Production-like use showed that ordinary review created the largest
+remaining harness friction: duplicated semantic ceremony, child-session
+timeouts, invalid-output retry temptation, and a second decision model (Jev)
+for a policy that can be expressed categorically. Exact-revision Verification
+already provides the deterministic guarantee for normal code changes. The
+independent reviewer adds the most value at security, migration, and
+architecture boundaries where semantic contract risk is materially higher.
+
+**Consequence:** Normal feature/bugfix/refactor/debug tasks can complete without
+opening a reviewer session when their Work Ledger, Task Contract, exact-revision
+Verification, and lifecycle obligations are green. Optional audit findings are
+advisory and never block completion. Required deep review stays read/search-only,
+fail-closed when unavailable, and bounded to one directed correction cycle.
+Review has no LLM routing dependency and no unchanged-state retry loop.
+
+## D-033 — Development metrics reuse semantic events and remain diagnostic
+
+**Decision:** Development metrics are implemented as one isolated `development-metrics` capability exposing `andmar_report`. It subscribes to the existing metadata-only `SemanticObservability` bus and persists one bounded aggregate at `development-metrics/v1/aggregate`. It does not create a dashboard, SQLite database, project-local metrics file, workflow phase, or completion gate.
+
+Recovery/rework metrics are derived read-only from the known portable Work Ledger path `.andmar/work/*/WORK.md`. The scan is bounded to 100 ledgers and never expands into a repository-wide filesystem scan. Work Unit reopen history preserves the previous checkpoint SHA when one existed before the active pointer is cleared, allowing recovery protection to be measured without another source of truth.
+
+**Why:** The harness needs evidence that its capabilities help more than they obstruct, but a telemetry subsystem would violate the thin-harness goal. Existing semantic events already cover runtime decisions, and Work Ledger already owns durable work-unit history.
+
+**Consequence:** `andmar_report` can show intervention, friction, useful-intervention, rework, and checkpoint-coverage rates without storing user content. Unknown facts such as false-block ground truth, rejected duplicate-work attempts, or independent work lost are reported as unmeasured rather than inferred. Metrics never decide task completion.
+
+## D-034 — Delivery gates authority/readiness; OpenCode owns execution
+
+**Decision:** Add one stateless `delivery` capability exposing `andmar_delivery(operation)`. It reads the latest raw user request from the current session and checks the current Task Contract status. The caller cannot submit an authorization boolean. Authorization is operation-specific for `commit`, `push`, `pull-request`, `merge`, `tag`, `version`, `publish`, and `release`; explicit negation denies. Active/blocked Task Contracts deny delivery, completed contracts are ready, and contract-less explicit operational/trivial continuations may proceed only with a native repository-state check.
+
+**Why:** Delivery needs a hard authority boundary, but implementing Git/provider execution would duplicate OpenCode and turn the harness into a workflow/release system. Raw-user intent already exists in session context and is the strongest available source for named-operation authorization.
+
+**Consequence:** `andmar_delivery` never executes VCS/provider actions and owns no durable state. Authorization does not expand from one operation to another. Work Unit checkpoint commits remain governed by `delivery.workUnitCommits`. This completes the planned core evolution; new core behavior now requires separate evidence and an architectural decision.
+
+
+## D-035 — Engram is an optional lateral integration, not a capability
+
+**Decision:** Integrate Engram under `src/integrations/engram/` without adding a capability, `andmar_mem_*` wrappers, a second memory store, or a completion dependency. Engram owns its MCP tools, storage, lifecycle, diagnostics, setup and sync. AndMar performs cheap discovery, exposes status, injects only AndMar-specific authority/bounded-use policy, and observes metadata-only call volume.
+
+The authoritative order is current explicit user instruction, current repository facts plus portable Work Ledger/Task Contract obligations, exact current Verification, Engram historical context, then model memory. Engram failure is always non-blocking. Current-project retrieval is preferred; cross-project retrieval requires explicit or concrete justification.
+
+**Why:** OpenCode V2 already consumes Engram MCP instructions and native `mem_*` tools successfully. Re-wrapping them would duplicate an existing subsystem and blur the completed core boundary. Work Ledger already owns current portable work state, so memory should retain durable historical knowledge rather than runtime task state.
+
+**Consequence:** The core inventory remains unchanged. Engram can be installed/removed independently. `andmar_status` reports its integration state, and development metrics can detect excessive or failing retrieval without storing query/result content. Deep health and maintenance stay delegated to `engram doctor`, `engram test`, sync, conflict and project-maintenance CLI commands.

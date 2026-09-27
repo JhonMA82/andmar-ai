@@ -2,6 +2,152 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
+## [0.15.0] - 2026-09-25
+
+### Added
+
+- Add optional `src/integrations/engram/` adapter without creating a capability or new AndMar memory tools.
+- Detect Engram version plus OpenCode MCP configuration and expose bounded status through `andmar_status`.
+- Upgrade integration availability evidence after a real native `engram.mem_*` tool call.
+- Add `npm run engram:setup`, delegating configuration to the official `engram setup opencode` path.
+- Add a short AndMar-specific memory policy: current-project first, bounded retrieval, cross-project only when justified, durable saves only, memory never used as work state/evidence.
+- Extend development metrics with metadata-only Engram call counts/failures/cross-project usage; queries and memory content are never captured.
+- Document Engram ownership, failure semantics, project identity, sync, diagnostics, and non-goals.
+- Core remains complete: capability/tool inventory stays at 9 capabilities / 15 tools.
+
+### Changed
+
+- Documentation consolidated on the `v0.15.0` baseline: retired `docs/MVP-SCOPE.md` in favor of the current `docs/SCOPE.md`, marked the roadmap core evolution as complete, aligned README/ARCHITECTURE/TESTING/VERSIONING/OVERVIEW with the implemented Delivery, Review and Engram boundaries, and marked superseded decisions (`D-006` superseded in part by `D-035`, `D-021` updated by `D-034`).
+
+## [0.14.0] - 2026-09-25
+
+### Added
+
+- New `delivery` capability and `andmar_delivery` tool: one deterministic boundary for post-completion `commit`, `push`, `pull-request`, `merge`, `tag`, `version`, `publish`, and `release` intent.
+- Delivery authorization is read directly from the current raw user message; callers cannot pass an `authorized=true` claim. Authorization is operation-specific and explicit negation fails closed.
+- Delivery readiness blocks while a Task Contract is still active/blocked and recognizes completed contracts or explicit operational/trivial continuations with no contract.
+
+### Changed
+
+- Post-completion operational continuations now call `andmar_delivery` before each named delivery action, then use native OpenCode Git/VCS/provider tools only when the gate allows it.
+- Intake continuation vocabulary recognizes PR/merge/release operations in addition to version/commit/tag/push/publish.
+- Core session utilities now expose one generic latest-user-message extractor reused by Intake and Delivery.
+
+### Core freeze
+
+- The planned Intake -> Work Ledger -> Work-unit lifecycle -> checkpoints -> Completion -> Review -> Development metrics -> Delivery evolution is complete. New functionality should default to skills, scripts, adapters, or isolated capabilities and require demonstrated friction before changing core behavior.
+
+## [0.13.0] - 2026-09-25
+
+### Added
+
+- New `development-metrics` capability and `andmar_report` tool for bounded local measurement of Harness Intervention Rate, Harness Friction Rate, Useful Intervention Rate, Work Unit rework, and checkpoint coverage.
+- Metadata-only Intake and runtime-error semantic events, plus consecutive exact-revision verification duplication detection.
+- Read-only Work Ledger recovery metrics from `.andmar/work/*/WORK.md`, bounded to 100 ledgers and never expanded into a repository-wide scan.
+- Reopen lifecycle history now preserves the previous checkpoint SHA before clearing the active pointer, allowing checkpoint-protected recovery to be measured without a second source of truth.
+
+### Changed
+
+- `SemanticObservability` now supports local subscribers independently of the optional external HTTP sink. External observability can be disabled while local development metrics continue to work.
+- `andmar_status` exposes `developmentMetrics.enabled`; the default is `true` and `false` makes local metric aggregation a no-op.
+- Development metrics are explicitly diagnostic: they do not add a workflow step, completion threshold, dashboard, SQLite database, or project-local telemetry file. Unknown facts are reported as unmeasured rather than guessed.
+
+## [0.12.0] - 2026-09-25
+
+### Changed
+
+- Review routing is now fully deterministic and no longer calls Jev. Jev remains an Intake-only decision primitive.
+- Ordinary `feature`/`bugfix`/`refactor`/`debug` work no longer requires independent review for completion; exact-revision Verification is the primary guarantee. `andmar_request_review` remains available as one bounded advisory `audit` when explicitly useful.
+- `security`/`migration`/`architecture` keep fail-closed required `deep` review. A blocking result permits one directed correction on a new revision and one fresh final review; there is no third review loop.
+- Review timeout and invalid reviewer output are now terminal for the exact revision + Task Contract state. Repeating `andmar_request_review` against unchanged state is refused deterministically instead of encouraging retry loops.
+- New review records carry `contractStateToken`, preventing a review of older obligations from silently satisfying a steered Task Contract while preserving compatibility with legacy records.
+- Optional audit state no longer participates in the completion gate, removing the previous audit-timeout degradation branch.
+
+### Removed
+
+- Removed the Review-specific Jev router (`src/capabilities/task-contract/review-jev.ts`) and its `ANDMAR_REVIEW_MODEL` / `ANDMAR_REVIEW_TIMEOUT_MS` configuration path.
+
+## [0.11.0] - 2026-09-25
+
+### Added
+
+- Completion-ready Work Ledger status and deterministic `work-ledger-lifecycle.mjs finalize --revision <revision>` sealing of portable completion metadata.
+- Completion-gate regression coverage proving stored verification/review evidence drives the verdict and a successful gate closes the Task Contract in the same operation.
+
+### Changed
+
+- `andmar_completion_gate` keeps its public tool name but moves from `lifecycle` to the `task-contract` capability so completion can close state without violating capability ownership.
+- Normal completion no longer repeats caller `testsPassed` / `reviewPassed` claims and no longer requires a second `andmar_task_contract(op=close)` call; verification/review truth is derived from stored evidence.
+- `lifecycle` is narrowed to documentation/version impact only; Task Contract now owns the completion boundary and emits `contractClosed` in completion results/observability.
+- Verification state consumed by completion is read through a shared read-only core helper; `verification` remains the sole writer of receipt/evidence keys and `task-contract` no longer depends on their storage layout directly.
+- Agent and Work Ledger policy now use `completionReady -> completion_gate -> finalize`, while legacy evidence input and explicit completed-close remain compatibility paths.
+
+## [0.10.0] - 2026-09-25
+
+### Added
+
+- Two-phase Work Unit checkpoint helper: `scripts/work-unit-checkpoint.mjs` validates a done/evidenced Work Unit against the exact verified working-state revision, then records the native Git commit SHA after OpenCode creates the commit.
+- Deterministic checkpoint commit trailers (`Work-ID`, `Work-Unit`, `Verified-Revision`) and current-HEAD/product-path validation.
+- Explicit local checkpoint policy `delivery.workUnitCommits = manual | auto`, defaulting to `manual` and exposed by `andmar_status`.
+- Real Git regression coverage for checkpoint readiness, recording, trailer guards, metadata-only skips, reopen invalidation, and global-install consumer execution.
+
+### Changed
+
+- Work Ledger validation now checks checkpoint shape, forbids checkpoint SHAs on non-done Work Units, and rejects one checkpoint SHA being assigned to multiple Work Units.
+- Reopening a completed Work Unit now clears both its current Evidence and Checkpoint pointers.
+- Agent policy now treats a verified Work Unit checkpoint as a recovery boundary without adding per-checkpoint review or changing final integrated verification.
+
+## [0.9.0] - 2026-09-25
+
+### Added
+
+- Deterministic Work Unit lifecycle helper: `scripts/work-ledger-lifecycle.mjs` implements bounded `status`, `activate`, `complete`, `block`, `resume`, and `reopen` transitions over repository Work Ledgers without introducing a workflow capability or new runtime state.
+- Evidence-gated Work Unit completion: `complete` requires declared `EV-N` evidence, refuses unknown evidence, atomically promotes the next pending unit (or explicit `--next`), and rolls back mutations that fail structural validation.
+- Explicit recovery semantics: blocked units require a reason, resume requires a resolution reason, reopening done work requires a reason and clears the unit's current evidence pointer so stale proof cannot masquerade as current.
+- Real lifecycle regression coverage, including consumer-repository execution through the globally installed AndMar plugin path.
+
+### Changed
+
+- AndMar agent policy now uses deterministic lifecycle commands for Work Unit markers and `Next` transitions instead of hand-editing state during normal execution. Native OpenCode edits remain authoritative for Ledger source, requirements, evidence content, steering, and material Work Unit list changes.
+- Work Ledger documentation and architecture now define lifecycle transitions as a small deterministic repository helper, not a workflow runtime or capability (D-029).
+
+## [0.8.4] - 2026-09-25
+
+### Fixed
+
+- Materialized revision helper: implemented and verified `scripts/working-state-revision.mjs` (previously referenced in documentation), computing stable SHA-256 fingerprints of product state while strictly excluding `.andmar/work/**`.
+- Materialized deterministic Work Ledger validator: implemented and verified `scripts/validate-work-ledger.mjs`, ensuring fast structural validation of ledger schemas, unique identifiers, active unit constraints, and referential integrity.
+- Real execution test suites: added `tests/working-state-revision.test.ts` (using real temporary Git repositories) and `tests/work-ledger.test.ts` (exercising all validator rules and edge cases).
+- Work Ledger requirement ID format: normalized requirement IDs from `REQ-01`/`REQ-02` to canonical `REQ-1`/`REQ-2` in agent policy and added doc regression tests.
+- Intake typing: fixed `exactOptionalPropertyTypes` compatibility in `src/capabilities/intake/decide.ts` when evaluating `requestShape`.
+- Consumer helper invocation: agent/docs now resolve Work Ledger helpers from the installed AndMar plugin root (`${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai`) so commands work from arbitrary target repositories instead of assuming a local `scripts/` directory.
+- Symlink-safe helper CLIs: both runtime helpers now detect direct execution through the globally installed plugin symlink, matching the actual `install:dev` topology.
+- Work Ledger mode validation: validator now accepts only the canonical portable modes `lightweight | structured`; Intake modes `enrich | structure` are no longer accepted as Ledger modes.
+
+## [0.8.3] - 2026-09-25
+
+### Fixed
+
+- Canonical Work Ledger documentation: added `docs/WORK-LEDGER.md` providing the authoritative specification for repository-native operational state, layouts, work unit lifecycle, and boundaries.
+- Atomic 1:1 requirement projection: expanded `MAX_REQUIREMENTS` from 20 to 100 in `src/core/task-contract.ts` and eliminated requirement grouping from agent policy, ensuring every user obligation is verified atomically up to 100 requirements.
+- Stable working-state revision: designated `.andmar/work/**` as operational metadata and created deterministic fingerprinting script `scripts/working-state-revision.mjs` (excluding `.andmar/work/**`) to prevent self-invalidating verification cycles during ledger updates.
+- Deterministic structural validation: added `scripts/validate-work-ledger.mjs` to validate ledger schemas, IDs (`REQ-N`, `CON-N`, `WU-N`, `EV-N`), active unit constraints, Next action pointers, and cross-references without semantic interference.
+- Package files: included `scripts/` in `package.json.files` for consumer availability.
+
+## [0.8.2] - 2026-09-25
+
+### Added
+
+- Work Ledger foundation: introduced repository-native durable operational state under `.andmar/work/<work-id>/` as specified in `docs/WORK-LEDGER.md` and architectural decision `D-027`.
+- Portable continuity: Work Ledger serves as the durable, Git-portable continuity source across sessions, compactions, machines, and agents, while Task Contract remains the bounded runtime completion projection in `ctx.storage`.
+- Work Projection consumption: agent policy consumes `workProjection.mode` from Intake:
+  - `none`: no ledger created by default for trivial/direct tasks.
+  - `lightweight`: single `.andmar/work/<work-id>/WORK.md` tracking Goal, Constraints, Requirements, Work Units, Evidence pointers, and `Next`.
+  - `structured`: full ledger suite containing `SOURCE.md` (lossless obligations, literal secrets redacted), `REQUIREMENTS.md` (stable IDs, subrequirements), `WORK.md` (work units, single active unit `[~]`, `Next`), and `EVIDENCE.md` (verification and smoke pointers).
+- Handling > 20 requirements: retains all atomic obligations in `REQUIREMENTS.md` and groups them into up to 20 parent requirements projected to the runtime Task Contract without losing detail.
+- Resume and steering policies: progressive context retrieval on resume; Task Contract reconstruction when missing; user steering updates Ledger first before contract steering; churn prevention restricting Ledger updates to significant operational events.
+- Architecture and agent invariants: updated `ARCHITECTURE.md`, `OVERVIEW.md`, `STATE.md`, `AGENTS.md`, `assets/agents/andmar.md`, `.opencode/agents/andmar.md`, and added agent test suite invariants.
+
 ## [0.8.1] - 2026-09-25
 
 ### Fixed

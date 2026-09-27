@@ -23,6 +23,25 @@ export interface SessionDomainLike {
   context?(input: { sessionID: string }): Promise<unknown>
 }
 
+
+export function latestUserText(
+  messages: readonly unknown[],
+  currentAssistantMessageID?: string,
+): string | undefined {
+  let end = messages.length
+  if (currentAssistantMessageID) {
+    const assistantIndex = messages.findIndex((message: any) => message?.id === currentAssistantMessageID)
+    if (assistantIndex >= 0) end = assistantIndex
+  }
+  for (let index = end - 1; index >= 0; index -= 1) {
+    const message = messages[index] as { type?: unknown; text?: unknown } | undefined
+    if (!message || message.type !== "user" || typeof message.text !== "string") continue
+    const text = message.text.trim()
+    if (text !== "") return text
+  }
+  return undefined
+}
+
 const MAX_WAIT_MS = 10 * 60_000
 const RETRY_DELAY_MS = 1_000
 

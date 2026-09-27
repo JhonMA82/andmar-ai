@@ -30,7 +30,7 @@ deriveIntakeMode
 Jev never generates briefs or work projections. Jev only answers typed questions.
 Intake evaluates the request and determines the canonical execution mode (`direct`,
 `enrich`, or `structure`) along with a `workProjection` handoff for the primary
-agent and a future Work Ledger capability.
+agent and the repository-native Work Ledger (see [WORK-LEDGER.md](WORK-LEDGER.md)).
 
 ## Capability
 

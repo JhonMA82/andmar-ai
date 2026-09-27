@@ -125,3 +125,17 @@ test("completion gate stays proportional when no checks are genuinely required",
   }
   assert.equal(evaluateCompletionWithVerification("rev-a", evidence, missing, []).ok, true)
 })
+
+test("Work Ledger path touches neither public surface nor documentation rules", () => {
+  const ledgerPath = ".andmar/work/sample-task/WORK.md"
+  const defaultPublicPaths = ["src/**", "packages/**", "apps/**"]
+  const touchesPublicSurface = defaultPublicPaths.some((p) => {
+    // simple prefix / glob check matching defaultConfig
+    return ledgerPath.startsWith("src/") || ledgerPath.startsWith("packages/") || ledgerPath.startsWith("apps/")
+  })
+  assert.equal(touchesPublicSurface, false)
+  assert.equal(inferVersionImpact({ kind: "feature", touchesPublicSurface }), "none")
+  const result = analyzeDocumentationImpact([ledgerPath], rules)
+  assert.equal(result.status, "not-applicable")
+  assert.deepEqual(result.affectedRuleIDs, [])
+})

@@ -1,6 +1,6 @@
 {
   "name": "andmar-ai",
-  "version": "0.8.1",
+  "version": "0.15.0",
   "description": "A thin, deterministic-first harness for OpenCode V2.",
   "type": "module",
   "exports": {
@@ -15,7 +15,8 @@
     "README.md",
     "AGENTS.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "scripts"
   ],
   "scripts": {
     "generate": "node scripts/generate-capability-manifest.mjs",
@@ -26,7 +27,8 @@
     "prepublishOnly": "bun run check",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "doctor": "node scripts/doctor.mjs"
+    "doctor": "node scripts/doctor.mjs",
+    "engram:setup": "node scripts/setup-engram.mjs"
   },
   "dependencies": {
     "@opencode/plugin": "2.0.4"

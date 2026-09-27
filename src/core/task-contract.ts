@@ -29,10 +29,18 @@ export const EVIDENCE_TYPES: readonly EvidenceType[] = [
   "external",
 ]
 
-/** Hard cap on independent review rounds per task (spec: normal 1, max 2). */
+/**
+ * Hard cap on stored review rounds per task.
+ *
+ * Review simplification keeps exactly one correction opportunity for work
+ * that really requires deep independent review: initial review + one review
+ * after a corrected revision. Unavailable/invalid attempts are not rounds and
+ * are terminal for the exact revision + contract state instead of being
+ * retried in a loop.
+ */
 export const MAX_REVIEW_ROUNDS = 2
 
-export const MAX_REQUIREMENTS = 20
+export const MAX_REQUIREMENTS = 100
 export const MAX_CONSTRAINTS = 20
 export const MAX_TEXT_CHARS = 500
 export const MAX_GOAL_CHARS = 2000
@@ -68,7 +76,7 @@ export interface TaskContract {
   verificationSurface?: string | undefined
   requirements: Requirement[]
   constraints: Constraint[]
-  /** False only for trivial tasks that skip review ceremony. */
+  /** True only for high-risk kinds that require deep independent review. */
   reviewRequired: boolean
   status: ContractStatus
   createdAt: number
@@ -95,6 +103,8 @@ export interface ReviewRecord extends ReviewResult {
   round: number
   reviewSessionID: string
   revision: string
+  /** Binds new review records to the exact obligations they audited. */
+  contractStateToken?: string | undefined
   at: number
 }
 
@@ -118,8 +128,8 @@ export function reviewPrefix(sessionID: string): string {
 export interface ReviewAvailabilityRecord {
   status: "unavailable"
   mode: ReviewMode
-  reason: "deadline_exceeded"
-  stage: "session.prompt" | "session.wait" | "session.context"
+  reason: "deadline_exceeded" | "invalid_output"
+  stage: "session.prompt" | "session.wait" | "session.context" | "review.output"
   revision: string
   reviewSessionID: string
   elapsedMs: number
@@ -174,31 +184,36 @@ export function isTrivialTask(kind: string | undefined, scopeFiles?: number | un
   return true
 }
 
-const CODE_CHANGING_KINDS = new Set([
+const ORDINARY_CODE_KINDS = new Set([
   "feature",
   "bugfix",
   "refactor",
   "debug",
+])
+
+const REQUIRED_REVIEW_KINDS = new Set([
   "architecture",
   "security",
   "migration",
 ])
 
-/** Non-trivial code-changing work requires an independent final review. */
+/** Only high-risk task kinds require independent review for completion. */
 export function requiresIndependentReview(kind: string | undefined): boolean {
   if (kind === undefined) return true
-  return CODE_CHANGING_KINDS.has(kind)
+  return REQUIRED_REVIEW_KINDS.has(kind)
 }
 
 /**
- * Deterministic review floor. Jev may only escalate audit -> deep; it may
- * never lower this result. This is deliberately categorical, not a score.
+ * Deterministic review mode. Review routing intentionally has no LLM/Jev
+ * dependency: ordinary code may request one bounded advisory audit, while
+ * security/migration/architecture require deep review. This is deliberately
+ * categorical, not a score.
  */
 export function minimumReviewMode(kind: string | undefined, scopeFiles?: number): ReviewMode {
   if (kind === undefined) return "deep"
   if (isTrivialTask(kind, scopeFiles) || kind === "review" || kind === "internal") return "none"
-  if (kind === "security" || kind === "migration" || kind === "architecture") return "deep"
-  if (CODE_CHANGING_KINDS.has(kind)) return "audit"
+  if (REQUIRED_REVIEW_KINDS.has(kind)) return "deep"
+  if (ORDINARY_CODE_KINDS.has(kind)) return "audit"
   return "none"
 }
 
@@ -685,6 +700,13 @@ export function evaluateReviewGate(
       reasons.push(
         `latest review (round ${latest.round}) targets revision "${latest.revision}", not the current revision "${currentRevision}"`,
       )
+    }
+    if (
+      contract !== undefined &&
+      latest.contractStateToken !== undefined &&
+      latest.contractStateToken !== contractStateToken(contract)
+    ) {
+      reasons.push(`latest review (round ${latest.round}) targets an older Task Contract state`)
     }
     if (latestVerdict === "reject") {
       reasons.push(

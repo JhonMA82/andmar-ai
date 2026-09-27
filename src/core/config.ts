@@ -16,6 +16,12 @@ export const defaultConfig: HarnessConfig = {
     enabled: true,
     publicPaths: ["src/**", "packages/**", "apps/**"],
   },
+  delivery: {
+    workUnitCommits: "manual",
+  },
+  developmentMetrics: {
+    enabled: true,
+  },
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -79,6 +85,12 @@ export function validateConfig(config: HarnessConfig): HarnessConfig {
   validateDocumentationRules(config.documentation.rules)
   if (typeof config.versioning.enabled !== "boolean") throw new Error("versioning.enabled must be boolean")
   validateStringArray(config.versioning.publicPaths, "versioning.publicPaths")
+  if (config.delivery.workUnitCommits !== "manual" && config.delivery.workUnitCommits !== "auto") {
+    throw new Error('delivery.workUnitCommits must be "manual" or "auto"')
+  }
+  if (typeof config.developmentMetrics.enabled !== "boolean") {
+    throw new Error("developmentMetrics.enabled must be boolean")
+  }
   return config
 }
 

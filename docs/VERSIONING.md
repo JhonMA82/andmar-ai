@@ -1,6 +1,6 @@
 # Versioning and Changelog Policy
 
-Versioning was made an explicit MVP concern because inconsistent version/changelog state is a known source of friction in agent-driven repositories.
+Versioning was made an explicit concern from the start because inconsistent version/changelog state is a known source of friction in agent-driven repositories.
 
 ## Single source of truth
 
@@ -33,11 +33,25 @@ major
 
 The classification is conservative and requires structured change intent plus whether a configured public surface is affected.
 
-It does not automatically bump the package. A future release capability may automate that only after the detection policy proves useful in real work.
+It does not automatically bump the package.
+
+The current boundary is:
+
+```text
+lifecycle / change-impact -> detects version obligations (none|patch|minor|major)
+delivery                  -> gates explicit authorization + readiness for one
+                             named operation (version, tag, publish, release)
+OpenCode                  -> performs the version/tag/publish/release
+                             mutation natively with its own tools
+```
+
+AndMar implements no release engine: it detects and gates, never executes a
+release mutation. Automation of the bump itself would have to be proposed as
+a separate change after the detection policy proves useful in real work.
 
 ## Release change procedure
 
-For the MVP:
+Current procedure:
 
 1. make and verify the code change;
 2. run documentation impact;
@@ -45,6 +59,7 @@ For the MVP:
 4. if releasing, change `package.json` once;
 5. add the matching `CHANGELOG.md` entry;
 6. run `bun run check`;
-7. create release/tag outside the harness.
+7. create release/tag outside the harness (native OpenCode Git/VCS tools,
+   after `andmar_delivery` returns `allowed:true` for that named operation).
 
 This avoids maintaining version strings across many source files.

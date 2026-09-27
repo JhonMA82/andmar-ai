@@ -1,4 +1,5 @@
 import type { Capability, StateStore } from "../../core/contracts.ts";
+import { latestUserText } from "../../core/session.ts";
 import { contractKey, type TaskContract } from "../../core/task-contract.ts";
 import { callJev, MAX_STATE_CHARS, readApiKey, resolveJevModel, resolveJevTimeout, type RawAnswers } from "./jev.ts";
 import {
@@ -35,30 +36,7 @@ export function toolMessageIDFrom(toolContext: unknown): string | undefined {
     : undefined;
 }
 
-export function extractRawUserRequest(
-  messages: readonly any[],
-  currentAssistantMessageID?: string,
-): string | undefined {
-  let end = messages.length;
-
-  if (currentAssistantMessageID) {
-    const assistantIndex = messages.findIndex(
-      (message: any) => message?.id === currentAssistantMessageID,
-    );
-    if (assistantIndex >= 0) end = assistantIndex;
-  }
-
-  for (let index = end - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message?.type !== "user") continue;
-    if (typeof message?.text !== "string") continue;
-
-    const text = message.text.trim();
-    if (text !== "") return text;
-  }
-
-  return undefined;
-}
+export const extractRawUserRequest = latestUserText;
 
 function sessionIDFrom(toolContext: unknown): string {
   const ctx = toolContext as { sessionID?: unknown; session?: { id?: unknown }; metadata?: { sessionID?: unknown } } | undefined;
@@ -255,7 +233,7 @@ export const intakeCapability: Capability = {
   id: "intake",
   version: 2,
   description: "Request refinement intake: deterministic-first classification into direct, enrich, or structure with a single structured Jev decision and explicit fallback.",
-  async setup({ ctx, config, state }) {
+  async setup({ ctx, config, state, observability }) {
     const registration = await ctx.tool.transform((editor: any) => {
       editor.namespace({ name: "andmar", description: "AndMar AI harness primitives" });
       editor.add({
@@ -270,12 +248,30 @@ export const intakeCapability: Capability = {
         execute: async (_input: Record<string, never>, toolContext: unknown) => {
           const sessionID = sessionIDFrom(toolContext);
           const currentAssistantMessageID = toolMessageIDFrom(toolContext);
+          const respond = (decision: IntakeDecision) => {
+            observability?.emit({
+              type: "andmar.intake",
+              sessionID,
+              payload: {
+                action: "decision",
+                mode: decision.mode,
+                workProjectionMode: decision.workProjection.mode,
+                taskKind: decision.taskKind,
+                needsRefinement: decision.needsRefinement,
+                productDecisionMissing: decision.productDecisionMissing,
+                source: decision.source,
+                jevCalled: decision.jevCalled,
+                jevAvailable: decision.jevAvailable,
+                continuationFastPath: decision.continuation?.fastPath ?? false,
+              },
+            });
+            return { content: JSON.stringify(decision, null, 2) };
+          };
 
           if (sessionID === "unknown") {
-            const decision = decisionRawRequestUnavailable(
+            return respond(decisionRawRequestUnavailable(
               resolveJevModel(intakeOptions(config).model),
-            );
-            return { content: JSON.stringify(decision, null, 2) };
+            ));
           }
 
           try {
@@ -283,19 +279,16 @@ export const intakeCapability: Capability = {
             const request = extractRawUserRequest(messages, currentAssistantMessageID);
 
             if (!request) {
-              const decision = decisionRawRequestUnavailable(
+              return respond(decisionRawRequestUnavailable(
                 resolveJevModel(intakeOptions(config).model),
-              );
-              return { content: JSON.stringify(decision, null, 2) };
+              ));
             }
 
-            const decision = await runIntake(request, toolContext, config, state);
-            return { content: JSON.stringify(decision, null, 2) };
+            return respond(await runIntake(request, toolContext, config, state));
           } catch {
-            const decision = decisionRawRequestUnavailable(
+            return respond(decisionRawRequestUnavailable(
               resolveJevModel(intakeOptions(config).model),
-            );
-            return { content: JSON.stringify(decision, null, 2) };
+            ));
           }
         },
       });

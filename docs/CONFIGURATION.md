@@ -121,6 +121,44 @@ maintained.
 }
 ```
 
+### `delivery.workUnitCommits`
+
+- **Name:** `delivery.workUnitCommits` (`"manual" | "auto"`).
+- **Default:** `"manual"`.
+- **Purpose:** authorize local, recoverable Git checkpoint commits after a Work Unit is done and its exact working-state revision has focused verification.
+- **Execution boundary:** AndMar gates readiness; OpenCode executes native Git. No Git capability is introduced.
+- **`manual`:** checkpoint preparation is allowed, but AndMar does not create a commit unless the current user request or repository policy explicitly authorizes commits.
+- **`auto`:** a successful checkpoint `prepare` authorizes the local Work Unit commit and subsequent SHA recording.
+- **Never implied:** push, PR, merge, tag, publish, release, or remote side effects. Those remain separately authorized operations.
+
+```jsonc
+{
+  "delivery": {
+    "workUnitCommits": "auto"
+  }
+}
+```
+
+The active value is exposed by `andmar_status` so the agent does not need hidden configuration context.
+
+### `developmentMetrics.enabled`
+
+- **Name:** `developmentMetrics.enabled` (boolean).
+- **Default:** `true`.
+- **Purpose:** enable the local bounded aggregate consumed by `andmar_report`.
+- **Scope:** development diagnostics only; it never gates completion.
+- **Privacy:** numeric/enum metadata only. No prompts, code, commands, tool output or reviewer output are stored.
+
+```jsonc
+{
+  "developmentMetrics": {
+    "enabled": false
+  }
+}
+```
+
+This setting is independent from external semantic observability. Disabling `ANDMAR_OBSERVABILITY_ENABLED` stops HTTP emission but does not disable local metrics; set `developmentMetrics.enabled=false` for a complete local metrics no-op.
+
 ## Semantic observability (environment, fail open)
 
 ### `ANDMAR_OBSERVABILITY_URL`
@@ -128,8 +166,8 @@ maintained.
 - **Default:** `http://localhost:4000`.
 - **Purpose:** optional endpoint compatible with
   `opencodev2-observability`'s `POST /events`.
-- **Scope:** semantic AndMar events only: routing, delegation, verification,
-  completion, contract and review.
+- **Scope:** semantic AndMar events only: intake, routing, delegation, verification,
+  completion, contract, review, delivery and bounded runtime errors.
 - **Failure behavior:** 1 s timeout, no retries, maximum 8 concurrent sends;
   failures are dropped and never affect AndMar execution.
 - **Privacy:** sends structured metadata only. It never sends prompts, task
@@ -138,8 +176,8 @@ maintained.
 ### `ANDMAR_OBSERVABILITY_ENABLED`
 
 - **Default:** enabled.
-- Set to `0` to disable semantic emission completely.
-- Observability is never required for AndMar to work.
+- Set to `0` to disable external HTTP semantic emission. Local `development-metrics` subscribers remain available unless `developmentMetrics.enabled=false`.
+- External observability is never required for AndMar to work.
 
 ```bash
 ANDMAR_OBSERVABILITY_URL=http://localhost:4000
@@ -150,8 +188,8 @@ ANDMAR_OBSERVABILITY_ENABLED=1
 
 The `intake` capability reads its own keys so model/timeout resolution stays
 capability-local: `src/core/jev-client.ts` holds only the shared Decisions
-transport (endpoint and payload shape, also used by review routing), no
-provider policy. These keys are **not** part of the validated
+transport (endpoint and payload shape) and no provider policy. Review no longer
+uses Jev. These keys are **not** part of the validated
 `HarnessConfig`: unknown or malformed values fall back to defaults instead of
 failing plugin setup. See [INTAKE.md](INTAKE.md) for the full pilot contract.
 
@@ -208,33 +246,34 @@ ANDMAR_INTAKE_TRACE=1
 ANDMAR_INTAKE_TRACE_CONTENT=1
 ```
 
-## Review routing options (environment only, fail open)
+## Review routing
 
-`andmar_request_review` consults one Jev decision only in the deterministic
-`audit` gray zone; these keys configure that routing call only. The reviewer
-model is never configured here — it stays the configured `frontier` profile
-or the parent session model. Unknown or malformed values fall back to
-defaults, and any Jev failure falls back to the deterministic minimum mode.
-See [ANDMAR-AI-CAPABILITIES.md](ANDMAR-AI-CAPABILITIES.md) and D-023.
+Review routing has **no environment configuration and no Jev call**.
+`andmar_request_review` uses the deterministic core table documented in D-032:
 
-### `ANDMAR_REVIEW_MODEL`
-
-- **Default:** `typesafe/jev-1.13`.
-- **Purpose:** which Jev model answers the review routing questions
-  (`semantic_scope`, `external_contract_risk`, `evidence_sufficiency`,
-  `review_depth`).
-- **Scope:** review routing only.
-
-### `ANDMAR_REVIEW_TIMEOUT_MS`
-
-- **Default:** `5000`. Clamped to 1000–15000 ms.
-- **Purpose:** bound the single routing Jev call; on timeout the review stays
-  at the deterministic minimum mode and never blocks.
-- **Scope:** review routing only; the review attempt deadline is separate
-  and fixed by core policy (90 s `audit`, 180 s `deep`). These are review
-  budgets, not delegation timeouts.
-
-```bash
-ANDMAR_REVIEW_MODEL=typesafe/jev-1.13
-ANDMAR_REVIEW_TIMEOUT_MS=5000
+```text
+trivial/docs/internal/review -> none
+feature/bugfix/refactor/debug -> optional advisory audit
+security/migration/architecture -> required deep review
 ```
+
+The reviewer model remains the configured `frontier` profile or the parent
+session model. The bounded review-session deadlines remain fixed core policy
+(90 s `audit`, 180 s `deep`); they are not provider/router configuration.
+
+Legacy `ANDMAR_REVIEW_MODEL` and `ANDMAR_REVIEW_TIMEOUT_MS` values are ignored
+because Review no longer performs semantic routing. Jev configuration applies
+to Intake only.
+
+
+## Engram integration
+
+Engram has no AndMar core configuration block. It is an optional external integration. Configure it with the upstream owner:
+
+```sh
+npm run engram:setup
+# equivalent ownership boundary:
+engram setup opencode
+```
+
+Use `engram init <canonical-project-name>` when a repository needs a stable Engram project identity across machines. Avoid a global `ENGRAM_PROJECT` during ordinary multi-project work. Deep diagnostics use `engram doctor --json` and `engram test --quick --json`. See [ENGRAM.md](ENGRAM.md).

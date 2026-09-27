@@ -5,6 +5,7 @@ import { createStateStore } from "./core/state.ts"
 import { capabilities } from "./generated/capabilities.ts"
 import { HARNESS_VERSION } from "./generated/version.ts"
 import { createSemanticObservability } from "./core/observability.ts"
+import { setupEngramIntegration } from "./integrations/engram/index.ts"
 
 export default Plugin.define({
   id: "andmar.ai",
@@ -19,6 +20,12 @@ export default Plugin.define({
       harnessVersion: HARNESS_VERSION,
     })
 
-    return setupCapabilities({ ctx, config, state, observability }, capabilities)
+    const disposeEngram = await setupEngramIntegration({ ctx, state, observability })
+    const disposeCapabilities = await setupCapabilities({ ctx, config, state, observability }, capabilities)
+
+    return () => {
+      disposeCapabilities()
+      disposeEngram()
+    }
   },
 })

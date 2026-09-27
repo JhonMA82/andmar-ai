@@ -11,8 +11,10 @@ platform.
 The name is a compound of **Andrea + Mario**; it is deliberately broader than
 "AndMar Harness", because the harness is the first product.
 
-> Status: **MVP** — intentionally small. Stable extension points and runtime
-> invariants first, more automation only when evidence demands it.
+> Baseline: **v0.15.0** — the planned eight-step core evolution (Intake →
+> Work Ledger → work-unit lifecycle → checkpoints → Completion → Review →
+> development metrics → Delivery) is **complete**. Further additions need
+> measured friction, not a new phase.
 
 ## The problem it solves
 
@@ -57,7 +59,9 @@ Concretely, decisions are made in this order:
 
 - It does not replace OpenCode's sessions, tools, permissions, storage, VCS,
   worktrees, model catalog or skill discovery.
-- It does not implement general semantic memory or a vector store.
+- It does not implement general semantic memory or a vector store; that is
+  the optional external [Engram](docs/ENGRAM.md) integration, never an AndMar
+  capability.
 - It does not implement an agent swarm or an agent taxonomy.
 - It does not embed methodologies such as ODD; those are consumers of
   primitives, never runtime infrastructure.
@@ -67,14 +71,16 @@ Concretely, decisions are made in this order:
 - It does not aim at feature parity with Gentle or any other harness.
 
 These are omissions by design, not missing TODOs. The full list of deferred
-items lives in [docs/MVP-SCOPE.md](docs/MVP-SCOPE.md).
+items lives in [docs/SCOPE.md](docs/SCOPE.md).
 
 ## Short flow of a task
 
 ```text
 request
   ↓
-understand obligations
+intake            (direct | enrich | structure)
+  ↓
+Work Ledger       (when the work is worth carrying across sessions)
   ↓
 execute with OpenCode
   ↓
@@ -82,9 +88,11 @@ verify exact revision
   ↓
 docs / version obligations
   ↓
-proportional review when needed
+proportional review (advisory for ordinary code, required deep for
+  ↓                 security / migration / architecture)
+completion        (only when the repository is consistent)
   ↓
-completion only when the repository is consistent
+delivery          (only when explicitly requested, one named operation)
 ```
 
 The step-by-step version, including which steps are conditional, is
@@ -144,28 +152,18 @@ The repository ships a model-agnostic `AndMar` primary agent in
 development and calls AndMar primitives only where they add deterministic
 value.
 
-## Tools exposed by the MVP
+## Tools
 
-Namespace `andmar`:
-
-| Tool | Purpose |
-|---|---|
-| `andmar_status` | harness/runtime state |
-| `andmar_route` | deterministic model-profile decision |
-| `andmar_delegate` / `andmar_resume` | bounded child-session work and resume by handle |
-| `andmar_change_impact` | documentation and version impact |
-| `andmar_suggest_checks` | suggest verification commands from project signals |
-| `andmar_record_receipt` / `andmar_verify_revision` | revision-bound verification evidence |
-| `andmar_completion_gate` | exact-revision completion check |
-| `andmar_intake` / `andmar_intake_trace` | request classification and its bounded dev trace |
-| `andmar_task_contract` | create, project, update, evidence, steer or close the Task Contract |
-| `andmar_request_review` | one routed (`none \| audit \| deep`) independent review round |
+Namespace `andmar`, registered by 9 capabilities (15 tools). The generated,
+authoritative id/version/tool inventory is
+[docs/CAPABILITIES.md](docs/CAPABILITIES.md); it is intentionally not
+duplicated here so this README cannot drift from it. Per-capability behavior
+is [docs/ANDMAR-AI-CAPABILITIES.md](docs/ANDMAR-AI-CAPABILITIES.md).
 
 Names are primitives, not methodologies: a future ODD skill can use them
-without AndMar knowing what ODD is. The generated, authoritative
-id/version/tool inventory is [docs/CAPABILITIES.md](docs/CAPABILITIES.md);
-per-capability behavior is
-[docs/ANDMAR-AI-CAPABILITIES.md](docs/ANDMAR-AI-CAPABILITIES.md).
+without AndMar knowing what ODD is. Development metrics are documented in
+[docs/DEVELOPMENT-METRICS.md](docs/DEVELOPMENT-METRICS.md) and final delivery
+coordination in [docs/DELIVERY.md](docs/DELIVERY.md).
 
 ## Model routing in one example
 
@@ -191,8 +189,9 @@ bun run check
 ```
 
 Runs manifest generation, the architecture check, typecheck and the pure
-deterministic test suite (routing, path mapping, semver impact, exact-revision
-completion, verification receipts, task contract). The deterministic core is
+deterministic test suite (routing, intake, Work Ledger lifecycle and
+checkpoints, verification receipts, exact-revision completion, review,
+delivery, development metrics, Engram integration). The deterministic core is
 plain TypeScript with no framework dependency.
 
 ## Next reading
@@ -216,12 +215,27 @@ Then by topic:
 - **Intake / Jev:** [`docs/INTAKE.md`](docs/INTAKE.md)
 - **Testing:** [`docs/TESTING.md`](docs/TESTING.md)
 - **Versioning:** [`docs/VERSIONING.md`](docs/VERSIONING.md)
-- **Scope and roadmap:** [`docs/MVP-SCOPE.md`](docs/MVP-SCOPE.md),
+- **Scope and roadmap:** [`docs/SCOPE.md`](docs/SCOPE.md),
   [`docs/ROADMAP.md`](docs/ROADMAP.md)
 - **Rationale and history:** [`docs/DECISIONS.md`](docs/DECISIONS.md),
   [`docs/INSPIRATIONS.md`](docs/INSPIRATIONS.md)
 - **OpenCode V2 API assumptions:** [`docs/OPENCODE-V2.md`](docs/OPENCODE-V2.md)
+- **Optional Engram memory:** [`docs/ENGRAM.md`](docs/ENGRAM.md)
 - **Rules for coding agents:** [`AGENTS.md`](AGENTS.md)
+
+## Optional Engram memory
+
+AndMar can use [Engram](https://github.com/Gentleman-Programming/engram) as advisory persistent memory without adding a memory capability to the core. Native Engram MCP tools remain owned by Engram; AndMar adds only status, bounded-use policy and metadata-only metrics.
+
+```sh
+npm run engram:setup
+# optional stable project identity
+engram init <canonical-project-name>
+```
+
+Memory never replaces `.andmar/work`, Task Contract state, or Verification evidence, and an Engram failure never blocks work. See [`docs/ENGRAM.md`](docs/ENGRAM.md).
+
+
 
 ## License
 

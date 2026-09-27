@@ -2,8 +2,6 @@ import type { Capability, StateStore } from "../../core/contracts.ts"
 import {
   DEFAULT_REQUIRED_CHECKS,
   receiptKey,
-  receiptPrefix,
-  summarizeVerification,
   truncateOutput,
   type VerificationCheck,
   type VerificationReceipt,
@@ -17,6 +15,7 @@ import {
   type ExecutionEvidence,
 } from "./evidence.ts"
 import { detectProjectChecks } from "./detect.ts"
+import { readVerificationState } from "../../core/verification-state.ts"
 
 const CHECKS = ["tests", "lint", "typecheck", "build", "custom"] as const
 
@@ -30,18 +29,6 @@ function refusalCategory(reason: string): string {
   if (reason.includes("did not complete") || reason.includes("failed execution")) return "failed-execution"
   if (reason.includes("bound to revision") || reason.includes("revision-compatible")) return "revision-mismatch"
   return "no-compatible-execution"
-}
-
-async function readReceipts(state: StateStore, revision: string): Promise<VerificationReceipt[]> {
-  const entries = await state.scan<VerificationReceipt>(receiptPrefix(revision))
-  return entries.map((entry) => entry.value)
-}
-
-async function readEvidenceMap(state: StateStore): Promise<Record<string, ExecutionEvidence>> {
-  const entries = await state.scan<ExecutionEvidence>(EXECUTION_EVIDENCE_PREFIX)
-  const map: Record<string, ExecutionEvidence> = {}
-  for (const entry of entries) map[entry.value.executionId] = entry.value
-  return map
 }
 
 async function readEvidenceList(state: StateStore): Promise<ExecutionEvidence[]> {
@@ -174,16 +161,13 @@ export const verificationCapability: Capability = {
           toolContext: any,
         ) => {
           const required = input.requiredChecks ?? DEFAULT_REQUIRED_CHECKS
-          const [receipts, evidence] = await Promise.all([
-            readReceipts(state, input.currentRevision),
-            readEvidenceMap(state),
-          ])
-          const summary = summarizeVerification(input.currentRevision, receipts, required, evidence)
+          const summary = await readVerificationState(state, input.currentRevision, required)
           observability?.emit({
             type: "andmar.verification",
             sessionID: sessionIDFrom(toolContext),
             payload: {
               action: "verify_revision",
+              revision: input.currentRevision,
               ok: summary.ok,
               requiredChecks: [...required],
               missingCount: summary.missing.length,

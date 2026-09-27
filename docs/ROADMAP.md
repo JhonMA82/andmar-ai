@@ -5,14 +5,23 @@ This is not a promised feature list. Each item has a trigger. Do not implement a
 **Scope:** forward-looking triggers only. What already exists is the generated
 inventory ([CAPABILITIES.md](CAPABILITIES.md)) plus
 [ANDMAR-AI-CAPABILITIES.md](ANDMAR-AI-CAPABILITIES.md); what is deliberately
-excluded is [MVP-SCOPE.md](MVP-SCOPE.md). This document is canonical for
+excluded is [SCOPE.md](SCOPE.md). This document is canonical for
 *triggers*, not for current behavior.
 
-## 0.1 — Current MVP
+## Current baseline — v0.15.0
 
-Already implemented; see [CAPABILITIES.md](CAPABILITIES.md) for the generated
-id/version/tool inventory and [ANDMAR-AI-CAPABILITIES.md](ANDMAR-AI-CAPABILITIES.md)
-for behavior. The distinctive pieces are:
+The planned eight-step core evolution is **complete**:
+
+```text
+Intake -> Work Ledger -> work-unit lifecycle -> work-unit checkpoints
+-> Completion simplification -> Review simplification
+-> development metrics -> Delivery
+```
+
+There is no Step 9. See [CAPABILITIES.md](CAPABILITIES.md) for the generated
+id/version/tool inventory (9 capabilities, 15 tools) and
+[ANDMAR-AI-CAPABILITIES.md](ANDMAR-AI-CAPABILITIES.md) for behavior. The
+distinctive pieces are:
 
 - capability loader and durable state;
 - deterministic model profiles;
@@ -21,9 +30,37 @@ for behavior. The distinctive pieces are:
 - verification receipts bound to observed execution evidence;
 - intake request-refinement pilot (deterministic-first, one typed Jev
   decision, explicit non-blocking fallback);
+- repository-native Work Ledger with deterministic Work Unit lifecycle and
+  two-phase checkpoint gate;
+- evidence-derived completion: `andmar_completion_gate` derives
+  verification/review truth from stored evidence and closes the Task
+  Contract in the same operation;
 - Task Contract behavioral core: per-session obligation record
-  (`andmar_task_contract`), requirement-gated completion, and bounded fresh
-  independent review (`andmar_request_review`, max two rounds).
+  (`andmar_task_contract`), requirement-gated completion, and proportional
+  deterministic review: ordinary code can use an optional advisory audit,
+  while security/migration/architecture require bounded fresh deep review
+  (`andmar_request_review`, at most one corrected-revision follow-up);
+- bounded development metrics (`andmar_report`), diagnostic only;
+- delivery authorization/readiness (`andmar_delivery`), execution native;
+- Engram as an optional lateral integration outside the capability
+  inventory.
+
+## How future work is classified
+
+Every item outside the baseline above is one of:
+
+```text
+bug fix
+simplification
+measured-friction improvement
+skill
+script
+external integration
+isolated capability   (only when a runtime guarantee requires it)
+```
+
+Nothing is scheduled by appearing in this file; each candidate below still
+needs its trigger to fire in real use.
 
 ## Candidate: workflow capability
 
@@ -73,6 +110,10 @@ Jev must not become an agent or general reasoning substitute.
 
 Previous trigger was "completion gate inputs become repeatedly manual". The `verification` capability now provides structured receipts (`andmar_record_receipt` / `andmar_verify_revision`) captured from native OpenCode shell/tool execution, with exact-revision semantics. Revision capture itself still takes the revision as explicit input; automating it from native VCS events remains a candidate.
 
+## Implemented: completion simplification
+
+The completion boundary now consumes those stored receipts plus Task Contract requirement evidence and stored review state. Normal callers provide the exact revision, task kind, docs/version status and proportional required checks; they no longer repeat `testsPassed` / `reviewPassed` booleans. A successful `andmar_completion_gate` closes the Task Contract in the same serialized operation. Ledger-backed work uses `completionReady:true` before the gate and `work-ledger-lifecycle.mjs finalize --revision ...` afterward to preserve portable final revision/timestamp without adding another runtime completion subsystem.
+
 ## Implemented (pilot): intake request refinement
 
 Previous trigger was "a measurable set of decisions that structured rules cannot classify reliably enough" for one narrow question: whether a request needs refinement before execution. The `intake` capability answers it with deterministic checks first and a single typed Jev call second (`andmar_intake` / `andmar_intake_trace`), with an explicit non-blocking fallback. Broader Jev uses below remain candidates.
@@ -89,17 +130,30 @@ Evaluate Lane/copy-on-write before building a custom strategy.
 
 Adapter must remain optional and event-driven; harness logic must work without it.
 
-## Candidate: release capability
+## Implemented: delivery boundary
 
-**Trigger:** version/changelog detection is reliable but manual updates remain a recurring source of release errors.
+The final planned core step is implemented as a narrow authorization/readiness gate. `andmar_delivery` never performs Git, PR, tag, publish, merge or release actions; OpenCode executes only the operation explicitly named by the current user. No general release automation subsystem is planned without new measured friction.
 
-Start with deterministic local mutations only. Publishing/PR automation is a separate later decision.
+## Core evolution is closed
+
+The eight-step path above is finished; future roadmap items are lateral
+extensions, bug fixes, simplifications, measured-friction improvements,
+skills, scripts, or isolated capabilities — none of them implies another
+core phase. New core behavior requires a new architectural decision plus
+real measured friction.
+
+
+## Implemented lateral integration: Engram persistent memory
+
+Engram is integrated outside the core/capability inventory. OpenCode uses native Engram MCP tools and Engram-provided MCP instructions; AndMar contributes only authority, bounded retrieval/save policy, status and metadata-only metrics. Memory never becomes current work state or completion evidence. See [ENGRAM.md](ENGRAM.md).
 
 ## Explicit non-roadmap
 
 These require a new architectural decision before implementation:
 
 - multi-runtime compatibility;
+- an AndMar memory subsystem or memory capability (persistent memory stays
+  with the optional Engram integration);
 - general vector memory;
 - autonomous self-improving agent mesh;
 - generic enterprise workflow platform;

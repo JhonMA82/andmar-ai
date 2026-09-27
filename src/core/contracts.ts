@@ -61,6 +61,12 @@ export interface HarnessConfig {
     enabled: boolean
     publicPaths: string[]
   }
+  delivery: {
+    workUnitCommits: "manual" | "auto"
+  }
+  developmentMetrics: {
+    enabled: boolean
+  }
 }
 
 import type { SemanticObservability } from "./observability.ts"
