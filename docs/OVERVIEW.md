@@ -96,8 +96,8 @@ verification      (andmar_suggest_checks -> run -> andmar_record_receipt
    ↓                -> andmar_verify_revision, all bound to the exact revision)
 lifecycle         (andmar_change_impact: documentation and version obligations)
    ↓
-independent review (andmar_request_review: none | audit | deep, max two rounds)
-   ↓                skipped when routing resolves to `none`
+independent review (andmar_request_review: deterministic none | audit | deep)
+   ↓                ordinary code: optional advisory audit; security/migration/architecture: required deep
 completion        (andmar_completion_gate)
 ```
 
@@ -110,7 +110,7 @@ completion        (andmar_completion_gate)
 | routing | when no routing or delegation decision is actually needed |
 | delegation | normal work stays in the primary session with native tools |
 | verification | `requiredChecks: []` only for tasks that genuinely require no checks; otherwise receipts must exist for the exact current revision |
-| independent review | deterministic routing resolves trivial/non-code work to `none`; review also needs an open non-completed contract |
+| independent review | skipped by default for ordinary feature/bugfix/refactor/debug work; optional advisory `audit` only when explicitly useful; required `deep` for security/migration/architecture |
 | completion gate | never skipped for non-trivial work; it is the only composition point |
 
 There is intentionally no workflow engine, scheduler or orchestration board
@@ -157,8 +157,10 @@ Request: **"Add a new option to the CLI."**
       the obligation and never bumps, tags or publishes anything
 
 9. review, if it applies
-      one fresh read/search-only child session audits the diff, the
-      requirements and the evidence; routing decides none | audit | deep
+      deterministic routing only: ordinary code does not require review;
+      an optional advisory audit may inspect a concrete semantic uncertainty;
+      security/migration/architecture require one fresh deep review, with at
+      most one corrected-revision follow-up after a blocking result
 
 10. completion
       Work Ledger status must first report completionReady for ledger-backed

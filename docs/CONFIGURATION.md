@@ -169,8 +169,8 @@ ANDMAR_OBSERVABILITY_ENABLED=1
 ## Intake options (capability-local, fail open)
 
 The `intake` capability reads its own keys so model/timeout resolution stays
-capability-local: `src/core/jev-client.ts` holds only the shared Decisions
-transport (endpoint and payload shape, also used by review routing), no
+capability-local: `src/core/jev-client.ts` holds only the Decisions
+transport (endpoint and payload shape, used by Intake alone), no
 provider policy. These keys are **not** part of the validated
 `HarnessConfig`: unknown or malformed values fall back to defaults instead of
 failing plugin setup. See [INTAKE.md](INTAKE.md) for the full pilot contract.
@@ -228,33 +228,21 @@ ANDMAR_INTAKE_TRACE=1
 ANDMAR_INTAKE_TRACE_CONTENT=1
 ```
 
-## Review routing options (environment only, fail open)
+## Review routing
 
-`andmar_request_review` consults one Jev decision only in the deterministic
-`audit` gray zone; these keys configure that routing call only. The reviewer
-model is never configured here — it stays the configured `frontier` profile
-or the parent session model. Unknown or malformed values fall back to
-defaults, and any Jev failure falls back to the deterministic minimum mode.
-See [ANDMAR-AI-CAPABILITIES.md](ANDMAR-AI-CAPABILITIES.md) and D-023.
+Review routing has **no environment configuration and no Jev call**.
+`andmar_request_review` uses the deterministic core table documented in D-032:
 
-### `ANDMAR_REVIEW_MODEL`
-
-- **Default:** `typesafe/jev-1.13`.
-- **Purpose:** which Jev model answers the review routing questions
-  (`semantic_scope`, `external_contract_risk`, `evidence_sufficiency`,
-  `review_depth`).
-- **Scope:** review routing only.
-
-### `ANDMAR_REVIEW_TIMEOUT_MS`
-
-- **Default:** `5000`. Clamped to 1000–15000 ms.
-- **Purpose:** bound the single routing Jev call; on timeout the review stays
-  at the deterministic minimum mode and never blocks.
-- **Scope:** review routing only; the review attempt deadline is separate
-  and fixed by core policy (90 s `audit`, 180 s `deep`). These are review
-  budgets, not delegation timeouts.
-
-```bash
-ANDMAR_REVIEW_MODEL=typesafe/jev-1.13
-ANDMAR_REVIEW_TIMEOUT_MS=5000
+```text
+trivial/docs/internal/review -> none
+feature/bugfix/refactor/debug -> optional advisory audit
+security/migration/architecture -> required deep review
 ```
+
+The reviewer model remains the configured `frontier` profile or the parent
+session model. The bounded review-session deadlines remain fixed core policy
+(90 s `audit`, 180 s `deep`); they are not provider/router configuration.
+
+Legacy `ANDMAR_REVIEW_MODEL` and `ANDMAR_REVIEW_TIMEOUT_MS` values are ignored
+because Review no longer performs semantic routing. Jev configuration applies
+to Intake only.

@@ -159,7 +159,7 @@ Namespace `andmar`:
 | `andmar_completion_gate` | evidence-derived exact-revision completion check; closes the Task Contract on success |
 | `andmar_intake` / `andmar_intake_trace` | request classification and its bounded dev trace |
 | `andmar_task_contract` | create, project, update, evidence, steer or compatibility-close the Task Contract |
-| `andmar_request_review` | one routed (`none \| audit \| deep`) independent review round |
+| `andmar_request_review` | deterministic bounded review: optional advisory `audit` for ordinary code; required `deep` for security/migration/architecture |
 
 Names are primitives, not methodologies: a future ODD skill can use them
 without AndMar knowing what ODD is. The generated, authoritative

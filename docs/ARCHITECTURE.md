@@ -191,11 +191,12 @@ Verification (`andmar_suggest_checks` → run via native shell
 Lifecycle (`andmar_change_impact` for docs/version obligations)
    ↓
 Independent review (`andmar_request_review`: deterministic `none | audit | deep`
-   ↓     routing, fresh frontier child session per round restricted to
-         read/glob/grep when available, sanitized compact evidence-audit
-         packet, max two rounds)
+   ↓     ordinary code: optional advisory audit; security/migration/architecture:
+         required deep review; fresh read/glob/grep-only frontier child,
+         sanitized compact evidence-audit packet, no unchanged-state retry,
+         at most one corrected-revision follow-up for required deep review)
 Completion (`andmar_completion_gate`: exact-revision evidence +
-   requirement gate + approved current review + clean lifecycle
+   requirement gate + required deep review when applicable + clean lifecycle
    gates + satisfied required verification)
 ```
 
@@ -371,7 +372,7 @@ verification evidence (observed execution + revision match)
      +-- tests passed?
      +-- every Task Contract requirement satisfied/blocked/skipped with evidence?
      +-- revision-bound requirement evidence current (not stale)?
-     +-- independent review approved for the current revision (when required)?
+     +-- required deep review approved for the current revision (security/migration/architecture only)?
      +-- docs clean/updated?
      `-- version/changelog clean/updated?
      |

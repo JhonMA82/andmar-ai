@@ -248,7 +248,7 @@ known limitations.
   refinement outcome. Full request text only with `ANDMAR_INTAKE_TRACE_CONTENT=1`.
 - **Configuration:** capability-local `intake.model` / `intake.timeoutMs`
   (model resolution stays capability-local; `src/core/jev-client.ts` holds
-  only the shared Decisions transport reused by review routing) plus
+  only the Decisions transport, used by Intake alone) plus
   environment: `OPENROUTER_API_KEY` (required for live Jev, never stored or
   logged), `ANDMAR_INTAKE_MODEL`, `ANDMAR_INTAKE_TIMEOUT_MS`,
   `ANDMAR_INTAKE_TRACE`, `ANDMAR_INTAKE_TRACE_CONTENT`. Plugin options win over
@@ -310,7 +310,9 @@ known limitations.
   `reasons`, `contractClosed`, and review status); `andmar_request_review` (input:
   `revision` plus bounded `changedPaths`/`verificationSummary`/
   `knownLimitations`; deterministic routing sets a `none | audit | deep`
-  review floor, `mode=none` returns `skipped` and stores nothing, otherwise a
+  mode with no Jev call: ordinary feature/bugfix/refactor/debug work gets an
+  optional advisory `audit`, security/migration/architecture get required
+  `deep`, and `mode=none` returns `skipped` and stores nothing; otherwise a
   sanitized compact packet (no receipt/execution identifiers) runs in a fresh
   frontier-profile child session restricted to `read`/`glob`/`grep` when the
   host exposes `ctx.permission.rules`).
@@ -324,38 +326,38 @@ known limitations.
   verification receipts/evidence, worker, journal, or intake keys.
 - **State:** contract (`goal`, requirements with status/evidence/reason,
   constraints, `reviewRequired`, `active`/`blocked`/`completed`) and review
-  records (`round`, fresh `reviewSessionID`, `revision`, `verdict`,
-  `findings`, `notes`) plus one current-revision availability marker when a
-  bounded reviewer exceeds its deadline. No transcripts, chain-of-thought,
-  prompts, or source code.
+  records (`round`, fresh `reviewSessionID`, `revision`, `contractStateToken`,
+  `verdict`, `findings`, `notes`) plus one exact-state terminal attempt marker
+  when a bounded reviewer times out or emits invalid final output. No
+  transcripts, chain-of-thought, prompts, or source code.
 - **Configuration:** reviewer model is the configured
   `frontier` profile or the parent session model (never a hard-coded id).
-  Review routing reads `ANDMAR_REVIEW_MODEL` / `ANDMAR_REVIEW_TIMEOUT_MS`
-  (fail open; see [CONFIGURATION.md](CONFIGURATION.md)).
+  Review routing has no environment knobs and no Jev dependency. Fixed review
+  attempt budgets remain 90 s `audit` / 180 s `deep`.
 - **External contracts:** `ctx.session.get/create/prompt/wait/context`
   through a review-specific bounded runner (delegation keeps its own generic
   child-task runner); verified against the installed
   `@opencode/plugin@2.0.4` types — see [OPENCODE-V2.md](OPENCODE-V2.md) for
   the read-only and compaction findings).
-- **Interaction:** review routing is deterministic first (`minimumReviewMode`:
-  trivial/non-code `none`, security/migration/architecture `deep`, ordinary
-  code-changing work `audit`); one Jev call in the `audit` gray zone may only
-  escalate to `deep` and never blocks (fallback is the deterministic
-  minimum). The same capability owns the completion gate, so a successful
+- **Interaction:** review routing is fully deterministic (`minimumReviewMode`:
+  trivial/non-code `none`, ordinary feature/bugfix/refactor/debug `audit`,
+  security/migration/architecture `deep`). Ordinary audit is advisory and does
+  not participate in completion; deep review is required. The same capability
+  owns the completion gate, so a successful
   exact-revision evaluation can close the Task Contract without a cross-
-  capability write or second close call. A current `audit`
-  timeout may degrade to deterministic evidence only when verification and
-  contract gates are green; `deep` unavailability stays fail-closed. `delegation`
+  capability write or second close call. `deep` unavailability stays
+  fail-closed. `delegation`
   ownership is untouched (review sessions are not worker records, so
   `andmar_resume` denies them).
 - **Failure / fallback:** duplicate active `create` refused (steer
   instead); absurd requirement transitions refused; `blocked`/`skipped`
   without reason refused; steering a `completed` contract refused; review
   without a contract refused; review on a `completed` contract refused (operational
-  continuations must not re-review approved work); rounds beyond two return `blocked`; invalid
-  reviewer output is reported and consumes no round. Review timeout is a
-  structured `unavailable` outcome, stores no review round, and is never
-  retried automatically (90 s `audit`, 180 s `deep`). Trivial tasks skip the
+  continuations must not re-review approved work); rounds beyond two return
+  `blocked`; the second stored round is the only corrected-revision follow-up
+  for required deep review. Timeout and invalid reviewer output both become a
+  structured exact-state `unavailable` outcome, store no review round, and a
+  repeated request for the same revision + contract state is refused. Trivial tasks skip the
   contract entirely (proportional escape hatch). With non-empty
   `requiredChecks`, completion derives pass/fail from stored verification;
   caller `testsPassed`/`reviewPassed` booleans are not authoritative.
@@ -364,7 +366,7 @@ known limitations.
   deny-all plus `read`/`glob`/`grep` session rules via
   `ctx.permission.rules` when the host exposes it (otherwise prompt-only and
   the result surfaces `permissionsApplied=false`);
-  reviewers never edit or fix. Reviewer packets and Jev routing state redact
+  reviewers never edit or fix. Reviewer packets redact
   opaque hashes and `receipt/...`/`execution/...`/`verification/...` internal
   references. Evidence stores pointers, never content.
 - **Testing contract:** deterministic unit tests for creation, steering,
@@ -382,9 +384,9 @@ known limitations.
   hijacking the compaction summary would destroy context; reviewer output
   quality depends on the model behind the `frontier` profile (without a
   mapping it inherits the parent model; verdict parsing is tolerant but a
-  reviewer that never emits final text leaves the review round unstored);
-  review deadline expiry is surfaced as unavailable rather than silently
-  retried; real OpenCode runtime
+  reviewer that never emits valid final text leaves the review round unstored
+  and terminal for that exact review state); review deadline expiry is surfaced
+  as unavailable rather than silently retried; real OpenCode runtime
   smoke is covered by manual testing (see [TESTING.md](TESTING.md)).
 
 ## AndMar primary agent

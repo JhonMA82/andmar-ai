@@ -22,8 +22,10 @@ for behavior. The distinctive pieces are:
 - intake request-refinement pilot (deterministic-first, one typed Jev
   decision, explicit non-blocking fallback);
 - Task Contract behavioral core: per-session obligation record
-  (`andmar_task_contract`), requirement-gated completion, and bounded fresh
-  independent review (`andmar_request_review`, max two rounds).
+  (`andmar_task_contract`), requirement-gated completion, and proportional
+  deterministic review: ordinary code can use an optional advisory audit,
+  while security/migration/architecture require bounded fresh deep review
+  (`andmar_request_review`, at most one corrected-revision follow-up).
 
 ## Candidate: workflow capability
 

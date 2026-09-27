@@ -33,7 +33,6 @@ import {
   type ReviewRecord,
   type TaskContract,
 } from "../../core/task-contract.ts"
-import { routeReviewWithJev } from "./review-jev.ts"
 
 const MAX_PACKET_FIELD_CHARS = 2000
 const MAX_CHANGED_PATHS = 100
@@ -87,6 +86,23 @@ async function readContract(state: StateStore, sessionID: string): Promise<TaskC
 async function readReviews(state: StateStore, sessionID: string): Promise<ReviewRecord[]> {
   const entries = await state.scan<ReviewRecord>(reviewPrefix(sessionID))
   return entries.map((entry) => entry.value).sort((a, b) => a.round - b.round)
+}
+
+function sameReviewState(
+  record: { revision: string; contractStateToken?: string | undefined },
+  revision: string,
+  stateToken: string,
+): boolean {
+  return record.revision === revision &&
+    (record.contractStateToken === undefined || record.contractStateToken === stateToken)
+}
+
+async function storeReviewUnavailable(
+  state: StateStore,
+  sessionID: string,
+  record: ReviewAvailabilityRecord,
+): Promise<void> {
+  await state.set(reviewAvailabilityKey(sessionID), record)
 }
 
 // Contract mutations are read-modify-write over the whole stored contract.
@@ -361,15 +377,9 @@ async function evaluateAndCloseCompletion(
         : undefined
 
   let effectiveReviewGate = reviewGate
-  let reviewDegraded = false
+  const reviewDegraded = false // compatibility field; optional audit no longer participates in completion.
   if (reviewGate !== undefined && !reviewGate.ok && currentReviewAvailability !== undefined) {
-    const currentReject =
-      reviewGate.latestRevision === input.currentRevision && reviewGate.latestVerdict === "reject"
-    const evidenceGateGreen = verification.ok && (combinedContractGate?.ok ?? true)
-    if (currentReviewAvailability.mode === "audit" && evidenceGateGreen && !currentReject) {
-      effectiveReviewGate = { ...reviewGate, ok: true, reasons: [] }
-      reviewDegraded = true
-    } else if (currentReviewAvailability.mode === "deep") {
+    if (currentReviewAvailability.mode === "deep") {
       effectiveReviewGate = {
         ...reviewGate,
         reasons: [
@@ -575,7 +585,7 @@ export const taskContractCapability: Capability = {
       editor.add({
         name: "request_review",
         description:
-          "Request one independent final review attempt in a fresh child session (frontier profile, read-only evidence auditor, compact packet from the active Task Contract). Verification must already have run for this revision. Review uses a dedicated bounded runner (audit 90s, deep 180s); timeout returns structured reviewStatus=unavailable, stores no review round, and must not trigger an automatic retry. Max two stored reject/correction rounds per task.",
+          "Request one bounded independent review attempt in a fresh child session (frontier profile, read-only evidence auditor, compact packet from the active Task Contract). Routing is deterministic: ordinary code uses optional advisory audit; security/migration/architecture require deep review. Verification must already have run for this revision. Timeout or invalid output is terminal for the same revision + Task Contract state and must not be retried automatically. Required deep review permits at most one corrected-revision follow-up.",
         input: {
           type: "object",
           properties: {
@@ -610,6 +620,40 @@ export const taskContractCapability: Capability = {
             return { content: `refused: stored contract is invalid: ${contractErrors.join("; ")}` }
           }
           const reviews = await readReviews(state, sessionID)
+          const stateToken = contractStateToken(contract)
+          const previousAvailability = await state.get<ReviewAvailabilityRecord>(reviewAvailabilityKey(sessionID))
+          if (
+            previousAvailability !== undefined &&
+            sameReviewState(previousAvailability, input.revision, stateToken)
+          ) {
+            observability?.emit({
+              type: "andmar.review",
+              sessionID,
+              payload: {
+                action: "denied",
+                reason: "terminal_attempt_same_state",
+                mode: previousAvailability.mode,
+                unavailableReason: previousAvailability.reason,
+              },
+            })
+            return {
+              content:
+                `refused: review already ended ${previousAvailability.reason} for this exact revision and Task Contract state. ` +
+                "Do not retry unchanged work; continue according to completion policy or change the implementation/contract first.",
+            }
+          }
+          if (previousAvailability !== undefined) {
+            await state.remove(reviewAvailabilityKey(sessionID))
+          }
+
+          const latestReview = reviews.at(-1)
+          if (latestReview !== undefined && sameReviewState(latestReview, input.revision, stateToken)) {
+            return {
+              content:
+                `refused: this exact revision and Task Contract state already has stored review round ${latestReview.round} ` +
+                `(${latestReview.verdict}). Do not review unchanged work again.`,
+            }
+          }
           if (reviews.length >= MAX_REVIEW_ROUNDS) {
             const latest = reviews.at(-1)!
             observability?.emit({
@@ -623,31 +667,30 @@ export const taskContractCapability: Capability = {
           }
 
           const changedPaths = (input.changedPaths ?? []).slice(0, MAX_CHANGED_PATHS)
-          const minimumMode = minimumReviewMode(contract.taskKind, changedPaths.length)
-          const routing = await routeReviewWithJev({
-            contract,
-            minimumMode,
-            changedPaths,
-            verificationSummary: input.verificationSummary
-              ? truncate(input.verificationSummary, MAX_PACKET_FIELD_CHARS)
-              : undefined,
-          })
+          const mode = minimumReviewMode(contract.taskKind, changedPaths.length)
+          if (mode === "audit" && reviews.length >= 1) {
+            observability?.emit({
+              type: "andmar.review",
+              sessionID,
+              payload: { action: "denied", reason: "advisory_audit_consumed", rounds: reviews.length },
+            })
+            return {
+              content:
+                "refused: the one bounded advisory audit for this task has already been consumed. " +
+                "Do not create an audit loop; Verification remains the primary guarantee.",
+            }
+          }
           observability?.emit({
             type: "andmar.review",
             sessionID,
             payload: {
               action: "routed",
-              mode: routing.mode,
-              minimumMode: routing.minimumMode,
-              source: routing.source,
-              jevCalled: routing.jevCalled,
-              jevAvailable: routing.jevAvailable,
-              reason: routing.reason ?? null,
-              latencyMs: routing.latencyMs ?? null,
+              mode,
+              source: "deterministic",
+              required: contract.reviewRequired,
             },
           })
-          await state.remove(reviewAvailabilityKey(sessionID))
-          if (routing.mode === "none") {
+          if (mode === "none") {
             return {
               content: JSON.stringify(
                 { stored: false, skipped: true, mode: "none", reason: "deterministic review bypass" },
@@ -658,7 +701,7 @@ export const taskContractCapability: Capability = {
           }
           const packet = buildReviewPacket(contract, {
             revision: input.revision,
-            reviewMode: routing.mode,
+            reviewMode: mode,
             changedPaths,
             verificationSummary: input.verificationSummary
               ? truncate(input.verificationSummary, MAX_PACKET_FIELD_CHARS)
@@ -674,31 +717,31 @@ export const taskContractCapability: Capability = {
           const selectedModel = model ?? parent?.model
           const child = await ctx.session.create({
             parentID: sessionID,
-            title: `AndMar ${routing.mode} review round ${round}`,
+            title: `AndMar ${mode} review round ${round}`,
             ...(selectedModel ? { model: selectedModel } : {}),
             metadata: { andmar: { profile: "frontier", role: "review", round } },
           })
           if (reviews.some((review) => review.reviewSessionID === child.id)) {
-            return { content: "refused: review session reuse detected; retry the review request" }
+            return { content: "refused: review session reuse detected; do not retry unchanged review state" }
           }
 
           const permissionsApplied = await restrictReviewerSession(ctx, child.id)
           const startedAt = Date.now()
           try {
-            const run = await runReview(ctx.session, child.id, packet, reviewTimeoutMs(routing.mode))
+            const run = await runReview(ctx.session, child.id, packet, reviewTimeoutMs(mode))
             if (run.status === "unavailable") {
               const unavailable: ReviewAvailabilityRecord = {
                 status: "unavailable",
-                mode: routing.mode,
+                mode,
                 reason: run.reason,
                 stage: run.stage,
                 revision: input.revision,
                 reviewSessionID: child.id,
                 elapsedMs: run.elapsedMs,
-                contractStateToken: contractStateToken(contract),
+                contractStateToken: stateToken,
                 at: Date.now(),
               }
-              await state.set(reviewAvailabilityKey(sessionID), unavailable)
+              await storeReviewUnavailable(state, sessionID, unavailable)
               observability?.emit({
                 type: "andmar.review",
                 sessionID,
@@ -707,7 +750,7 @@ export const taskContractCapability: Capability = {
                   round,
                   stored: false,
                   roundConsumed: false,
-                  mode: routing.mode,
+                  mode,
                   reason: run.reason,
                   stage: run.stage,
                   durationMs: run.elapsedMs,
@@ -719,11 +762,11 @@ export const taskContractCapability: Capability = {
                     stored: false,
                     roundConsumed: false,
                     reviewStatus: "unavailable",
-                    mode: routing.mode,
+                    mode,
                     reason: run.reason,
                     stage: run.stage,
                     elapsedMs: run.elapsedMs,
-                    completionPolicy: routing.mode === "audit" ? "evidence-gate" : "review-required",
+                    completionPolicy: contract.reviewRequired ? "review-required" : "advisory",
                   },
                   null,
                   2,
@@ -732,14 +775,38 @@ export const taskContractCapability: Capability = {
             }
             const text = run.text
             if (text === undefined) {
+              const unavailable: ReviewAvailabilityRecord = {
+                status: "unavailable",
+                mode,
+                reason: "invalid_output",
+                stage: "review.output",
+                revision: input.revision,
+                reviewSessionID: child.id,
+                elapsedMs: Date.now() - startedAt,
+                contractStateToken: stateToken,
+                at: Date.now(),
+              }
+              await storeReviewUnavailable(state, sessionID, unavailable)
               observability?.emit({
                 type: "andmar.review",
                 sessionID,
                 payload: { action: "invalid_output", round, stored: false, category: "no-text" },
               })
               return {
-                content:
-                  "invalid reviewer output: reviewer produced no final text response (only reasoning/tool calls); nothing was stored and no round was consumed. Re-request the review.",
+                content: JSON.stringify(
+                  {
+                    stored: false,
+                    roundConsumed: false,
+                    reviewStatus: "unavailable",
+                    mode,
+                    reason: "invalid_output",
+                    stage: "review.output",
+                    completionPolicy: contract.reviewRequired ? "review-required" : "advisory",
+                    detail: "reviewer produced no final text response",
+                  },
+                  null,
+                  2,
+                ),
               }
             }
             const bounded = truncate(text, 8000)
@@ -747,25 +814,74 @@ export const taskContractCapability: Capability = {
             try {
               parsed = extractJsonObject(bounded)
             } catch {
+              const unavailable: ReviewAvailabilityRecord = {
+                status: "unavailable",
+                mode,
+                reason: "invalid_output",
+                stage: "review.output",
+                revision: input.revision,
+                reviewSessionID: child.id,
+                elapsedMs: Date.now() - startedAt,
+                contractStateToken: stateToken,
+                at: Date.now(),
+              }
+              await storeReviewUnavailable(state, sessionID, unavailable)
               observability?.emit({
                 type: "andmar.review",
                 sessionID,
                 payload: { action: "invalid_output", round, stored: false },
               })
               return {
-                content:
-                  "invalid reviewer output: no parseable JSON {verdict, findings} found; nothing was stored and no round was consumed. Re-request the review.",
+                content: JSON.stringify(
+                  {
+                    stored: false,
+                    roundConsumed: false,
+                    reviewStatus: "unavailable",
+                    mode,
+                    reason: "invalid_output",
+                    stage: "review.output",
+                    completionPolicy: contract.reviewRequired ? "review-required" : "advisory",
+                    detail: "no parseable JSON {verdict, findings} found",
+                  },
+                  null,
+                  2,
+                ),
               }
             }
             const validated = validateReviewResult(parsed)
             if (!validated.ok) {
+              const unavailable: ReviewAvailabilityRecord = {
+                status: "unavailable",
+                mode,
+                reason: "invalid_output",
+                stage: "review.output",
+                revision: input.revision,
+                reviewSessionID: child.id,
+                elapsedMs: Date.now() - startedAt,
+                contractStateToken: stateToken,
+                at: Date.now(),
+              }
+              await storeReviewUnavailable(state, sessionID, unavailable)
               observability?.emit({
                 type: "andmar.review",
                 sessionID,
                 payload: { action: "invalid_output", round, stored: false },
               })
               return {
-                content: `invalid reviewer output: ${validated.error}; nothing was stored and no round was consumed. Re-request the review.`,
+                content: JSON.stringify(
+                  {
+                    stored: false,
+                    roundConsumed: false,
+                    reviewStatus: "unavailable",
+                    mode,
+                    reason: "invalid_output",
+                    stage: "review.output",
+                    completionPolicy: contract.reviewRequired ? "review-required" : "advisory",
+                    detail: validated.error,
+                  },
+                  null,
+                  2,
+                ),
               }
             }
             const blocking = validated.result.findings.filter((finding) => isBlockingFinding(contract, finding)).length
@@ -776,6 +892,7 @@ export const taskContractCapability: Capability = {
               round,
               reviewSessionID: child.id,
               revision: input.revision,
+              contractStateToken: stateToken,
               at: Date.now(),
             }
             await state.set(reviewKey(sessionID, round), record)
@@ -786,8 +903,8 @@ export const taskContractCapability: Capability = {
               payload: {
                 action: "completed",
                 round,
-                mode: routing.mode,
-                routingSource: routing.source,
+                mode,
+                routingSource: "deterministic",
                 permissionsApplied,
                 verdict: record.verdict,
                 reportedVerdict: validated.result.verdict,
@@ -803,8 +920,8 @@ export const taskContractCapability: Capability = {
                 {
                   stored: true,
                   round,
-                  mode: routing.mode,
-                  routingSource: routing.source,
+                  mode,
+                  routingSource: "deterministic",
                   permissionsApplied,
                   reviewSessionID: child.id,
                   result: { ...validated.result, verdict: effectiveVerdict },

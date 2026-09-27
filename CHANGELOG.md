@@ -2,6 +2,21 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
+## [0.12.0] - 2026-09-25
+
+### Changed
+
+- Review routing is now fully deterministic and no longer calls Jev. Jev remains an Intake-only decision primitive.
+- Ordinary `feature`/`bugfix`/`refactor`/`debug` work no longer requires independent review for completion; exact-revision Verification is the primary guarantee. `andmar_request_review` remains available as one bounded advisory `audit` when explicitly useful.
+- `security`/`migration`/`architecture` keep fail-closed required `deep` review. A blocking result permits one directed correction on a new revision and one fresh final review; there is no third review loop.
+- Review timeout and invalid reviewer output are now terminal for the exact revision + Task Contract state. Repeating `andmar_request_review` against unchanged state is refused deterministically instead of encouraging retry loops.
+- New review records carry `contractStateToken`, preventing a review of older obligations from silently satisfying a steered Task Contract while preserving compatibility with legacy records.
+- Optional audit state no longer participates in the completion gate, removing the previous audit-timeout degradation branch.
+
+### Removed
+
+- Removed the Review-specific Jev router (`src/capabilities/task-contract/review-jev.ts`) and its `ANDMAR_REVIEW_MODEL` / `ANDMAR_REVIEW_TIMEOUT_MS` configuration path.
+
 ## [0.11.0] - 2026-09-25
 
 ### Added

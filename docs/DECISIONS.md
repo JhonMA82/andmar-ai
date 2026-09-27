@@ -179,6 +179,8 @@ semantic uses still wait for measured friction.
 
 ## D-018 — Fresh independent review, max two rounds
 
+> **Superseded in part by D-032.** Fresh-session semantics and the two-record hard cap remain, but ordinary code no longer requires review for completion. The second stored round now represents the single allowed corrected-revision follow-up for required deep review, not a general retry loop.
+
 **Decision:** Non-trivial code-changing work requires one independent review in a new child session per round (`frontier` profile, prompt-constrained read-only, compact packet, structured `{verdict, findings}` response). Never resume a review session; after a correction the next round is a new session. Findings block only when linked to a requirement/constraint/desired outcome/missing evidence. Invalid reviewer output is reported and consumes no round. Two rejects block the task — no judge-of-judge.
 
 **Why:** The implementer's claims are not evidence, and reusing a review session anchors the second judgment. Two rounds bound cost and loops.
@@ -211,8 +213,9 @@ must produce a denied completion rather than silently falling back to legacy
 behavior.
 
 **Consequence:** Trivial task kinds retain the proportional escape hatch.
-Non-trivial work fails closed when the Task Contract/review boundary is
-missing.
+Non-trivial work fails closed when the Task Contract boundary is missing.
+Only security/migration/architecture fail closed when the required deep-review
+boundary is missing; ordinary code relies on exact-revision Verification.
 
 ---
 
@@ -230,18 +233,27 @@ missing.
 
 **Why:** Real use on small repositories showed reviewers spending roughly the entire child-session budget repeating verification that AndMar had already completed, causing `session.wait` timeouts without finding implementation defects. The same behavior would scale poorly on large repositories and duplicates responsibilities already owned by Verification.
 
-**Consequence:** `andmar_request_review` remains independent and fresh-session-based, but its packet explicitly treats exact-revision verification as existing execution evidence and asks the reviewer to judge its sufficiency. The 10-minute child-session safety ceiling is not increased. A timeout stores nothing, consumes no review round, emits `andmar.review action=timeout`, and may be retried at most once by policy without rerunning verification.
+**Consequence:** `andmar_request_review` remains independent and fresh-session-based, but its packet explicitly treats exact-revision verification as existing execution evidence and asks the reviewer to judge its sufficiency. A timeout stores nothing, consumes no review round, emits `andmar.review action=timeout`, and is terminal for the exact revision + Task Contract state. It is not retried unchanged.
 
 
 ## D-023 — Review depth is routed deterministically; Jev may only escalate
 
-**Decision:** Final review uses three categorical modes: `none`, `audit`, and `deep`. Deterministic policy sets the minimum: trivial/non-code work may use `none`; security, migration and architecture use `deep`; ordinary code-changing work uses `audit`. Jev is called only for the ordinary `audit` gray zone, receives semantic facts rather than internal receipt identifiers, and may only escalate to `deep`. Jev unavailability falls back to the deterministic minimum.
+> **Superseded by D-032.** Review keeps the categorical `none | audit | deep`
+> modes, but routing is now fully deterministic and Jev is no longer called by
+> Review. Jev remains an Intake-only decision primitive.
 
-**Why:** Repeated production-like trials showed the prior reviewer spending its child-session window rediscovering evidence, including treating opaque receipt keys as filesystem names and launching whole-disk searches. Task kind alone was also too coarse: a localized bugfix and a cross-cutting bugfix should not receive identical review depth.
+**Historical decision:** Review originally used three categorical modes with a deterministic floor and a Jev escalation from `audit` to `deep` for ordinary code. That extra semantic router is removed by D-032.
 
-**Consequence:** Review routing is cheap and deterministic first, semantic classification is delegated to Jev only where useful, and the frontier reviewer receives a bounded role. When supported by OpenCode V2, the review child is physically restricted to read/glob/grep operations, so prompt drift cannot turn Review back into Verification.
+**Why it changed:** Real use showed that Review routing itself did not justify another model call. The useful distinction is categorical and stable: ordinary code can rely on exact-revision Verification, while security/migration/architecture justify mandatory deep semantic review.
+
+**Current consequence:** See D-032. `minimumReviewMode()` is now the complete deterministic routing policy and Review has no Jev dependency.
 
 ## D-024 — Review timeout is availability, not a delegation failure
+
+> **Updated by D-032.** The bounded runner and structured availability outcome
+> remain. Ordinary `audit` is now advisory rather than a completion dependency,
+> so the old audit-degrade completion branch is no longer needed. Deep review
+> remains fail-closed.
 
 **Decision:** Independent Review has its own bounded session runner instead of
 sharing `runChildTask` with delegation. `audit` gets a 90-second wall-clock
@@ -249,12 +261,11 @@ budget and `deep` gets 180 seconds. Deadline expiry returns structured
 `reviewStatus=unavailable` with stage/elapsed metadata, stores no review round,
 and is never retried automatically.
 
-For current-revision `audit`, the completion gate may degrade to deterministic
-evidence only when exact-revision verification and the Task Contract requirement
-gate are both green and there is no current-revision blocking reject. `deep`
-unavailability remains fail-closed. The availability marker is bound to the
-contract state token, so steering/evidence mutations cannot reuse a stale
-timeout fallback.
+Ordinary `audit` is advisory and therefore never participates in the completion
+gate. `deep` unavailability remains fail-closed. The terminal attempt marker is
+bound to the exact revision and Task Contract state token, so unchanged timeout
+or invalid-output attempts cannot trigger retry loops and steering/evidence
+mutations cannot reuse a stale attempt state.
 
 **Why:** Review is a bounded semantic/evidence audit, not a worker. Reusing the
 generic child-task lifecycle made a stalled `session.wait` look like task
@@ -407,3 +418,53 @@ Intake can route requests correctly without lossy summarization, without new wor
 - Missing/failed/unverified receipts still fail closed; required review policy and audit/deep unavailability behavior are unchanged.
 - Completed Task Contracts continue to drive the existing operational-continuation fast path.
 - D-020's completion-seal close handshake is superseded for the normal flow; its legacy compatibility guard remains available for older callers.
+
+## D-032 — Review is deterministic, advisory for ordinary work, and required only for high-risk kinds
+
+**Decision:** Review is reduced to one deterministic policy table:
+
+```text
+trivial/docs/internal/review
+→ none
+
+feature/bugfix/refactor/debug
+→ exact-revision Verification is the primary guarantee
+→ review is not required for completion
+→ `andmar_request_review`, when explicitly useful, runs one bounded advisory audit
+
+security/migration/architecture
+→ deep independent review required for completion
+→ one initial review
+→ at most one directed correction + new revision + fresh final review
+→ no third review loop
+```
+
+Review no longer calls Jev. `minimumReviewMode()` is the complete routing policy.
+Jev remains in Intake only.
+
+A review attempt that times out or produces invalid output stores a bounded
+`task-contract-review-availability/<sessionID>` marker tied to both the exact
+revision and `contractStateToken`. A second request against that unchanged
+state is refused deterministically. The same no-repeat rule applies when an
+actual review record already exists for that exact revision/state. Changing the
+implementation revision or Task Contract state creates a new review state; a
+required deep review may then use the one remaining corrected-revision round.
+
+New review records include `contractStateToken`, so steering the Task Contract
+cannot silently reuse a review of older obligations. Legacy records without the
+token remain readable for compatibility.
+
+**Why:** Production-like use showed that ordinary review created the largest
+remaining harness friction: duplicated semantic ceremony, child-session
+timeouts, invalid-output retry temptation, and a second decision model (Jev)
+for a policy that can be expressed categorically. Exact-revision Verification
+already provides the deterministic guarantee for normal code changes. The
+independent reviewer adds the most value at security, migration, and
+architecture boundaries where semantic contract risk is materially higher.
+
+**Consequence:** Normal feature/bugfix/refactor/debug tasks can complete without
+opening a reviewer session when their Work Ledger, Task Contract, exact-revision
+Verification, and lifecycle obligations are green. Optional audit findings are
+advisory and never block completion. Required deep review stays read/search-only,
+fail-closed when unavailable, and bounded to one directed correction cycle.
+Review has no LLM routing dependency and no unchanged-state retry loop.

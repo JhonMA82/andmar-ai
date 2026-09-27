@@ -74,7 +74,8 @@ test("AndMar agent reports change, verification, requirements and limitations on
   assert.match(agent, /what changed, how it was verified/i)
   assert.match(agent, /which requirements were met|requirements.*met/i)
   assert.match(agent, /which real limitations remain|limitations remain/i)
-  assert.match(agent, /two (stored )?rejects the task is blocked|After two (stored )?rejects/i)
+  assert.match(agent, /one directed correction/i)
+  assert.match(agent, /there is no third review loop/i)
 })
 
 test("AndMar agent handles post-completion operational continuations proportionally", () => {
@@ -182,4 +183,13 @@ test("AndMar agent uses the simplified completion flow without a second close ce
   assert.match(agent, /contractClosed:true/i)
   assert.match(agent, /do not call `andmar_task_contract\(op=close\)` afterward/i)
   assert.match(agent, /work-ledger-lifecycle\.mjs finalize .*--revision <currentRevision>/i)
+})
+
+test("AndMar agent uses simplified deterministic review policy", () => {
+  assert.match(agent, /Verification is the primary completion guarantee/i)
+  assert.match(agent, /independent review is \*\*not required\*\*/i)
+  assert.match(agent, /security.*migration.*architecture.*deep.*required/i)
+  assert.match(agent, /never calls Jev/i)
+  assert.match(agent, /terminal for the exact revision \+ Task Contract state/i)
+  assert.match(agent, /Advisory audit findings do not block completion/i)
 })

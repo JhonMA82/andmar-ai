@@ -20,8 +20,8 @@ AndMar AI uses OpenCode V2 plugin storage for operational facts. This state is d
 | `verification/<revision>/<check>` | `verification` | `verification`, `task-contract` (read-only via `core/verification-state`) | a new revision starts with no receipts; old receipts are never reused; unbounded, no pruning yet |
 | `intake-trace/<timestamp>-<rand>` | `intake` | `andmar_intake_trace` queries | max 20 entries, oldest pruned first |
 | `task-contract/<sessionID>` | `task-contract` | `task-contract` | one active contract per session; `active` → `completed`/`blocked`; unbounded, no pruning yet |
-| `task-contract-review/<sessionID>/<round>` | `task-contract` | `task-contract` | max 2 rounds per task; a new round always uses a new child session; unbounded, no pruning yet |
-| `task-contract-review-availability/<sessionID>` | `task-contract` | `task-contract` | one current-revision review-unavailability marker; cleared on every new review request; unbounded, no pruning yet |
+| `task-contract-review/<sessionID>/<round>` | `task-contract` | `task-contract` | max 2 stored rounds; ordinary audit is optional/advisory, required deep review may use round 2 only after a corrected revision; unbounded, no pruning yet |
+| `task-contract-review-availability/<sessionID>` | `task-contract` | `task-contract` | one exact revision + contract-state terminal attempt marker for timeout/invalid output; stale markers are cleared when state changes; unbounded, no pruning yet |
 
 ### `runtime/last-start`
 
@@ -75,20 +75,24 @@ and evidence pointers.
 ### `task-contract-review/<sessionID>/<round>`
 
 One independent review record per round (`round`, fresh `reviewSessionID`,
-`revision`, `verdict`, linked `findings`, `notes`). At most two rounds per
-task; every round creates a new child session and review sessions are never
-resumed, so a correction is always judged from a fresh session. Invalid
-reviewer output is never stored and consumes no round.
+`revision`, `contractStateToken`, `verdict`, linked `findings`, `notes`). At
+most two rounds are stored. Ordinary feature/bugfix/refactor/debug review is
+optional and advisory. Security/migration/architecture require deep review;
+after one blocking result, a corrected new revision may consume the single
+remaining round. Review sessions are never resumed. A second review of the
+same exact revision + contract state is refused. Invalid reviewer output is
+never stored and consumes no round.
 
 ### `task-contract-review-availability/<sessionID>`
 
-One review-unavailability marker written when a bounded review attempt exceeds
-its deadline (`status: "unavailable"`, `mode`, `reason`, `stage`, `revision`,
-`reviewSessionID`, `elapsedMs`, `contractStateToken`, `at`). It is bound to
-the exact revision and Task Contract state token, so steering or evidence
-mutations cannot reuse a stale timeout fallback. The marker is cleared at the
-start of every new review request. Stores no transcripts, prompts or source
-code.
+One terminal review-attempt marker written when a bounded review attempt
+exceeds its deadline **or** produces invalid final output (`status:
+"unavailable"`, `mode`, `reason: deadline_exceeded | invalid_output`, `stage`,
+`revision`, `reviewSessionID`, `elapsedMs`, `contractStateToken`, `at`). It is
+bound to the exact revision and Task Contract state token. A repeated request
+against the same state is refused; changing revision or contract state makes
+the old marker stale and it is cleared before a new attempt. Stores no
+transcripts, prompts or source code.
 
 ## Worker record
 
