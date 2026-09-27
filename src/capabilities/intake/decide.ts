@@ -237,7 +237,7 @@ export function isTrivialBypass(request: string): boolean {
 const CONTINUATION_DENY_RE =
   /corrige|correg|arregl|\bfix\b|bug|cambi|necesari|refactor|debug|login|test|implement|añad|agrega|modifica|mejora|funcion|error|fallo|falla|pero|antes|tambi[eé]n|primero/i;
 const CONTINUATION_VERSION_RE = /versiona|versi[oó]n|\bversion\b|bump|changelog/i;
-const CONTINUATION_OPS_RE = /\bpush\b|\bcommit\b|\btag\b|\bsube\b|publica|publish/i;
+const CONTINUATION_OPS_RE = /\bpush\b|\bcommit\b|\btag\b|\bmerge\b|pull\s+request|\bPR\b|\brelease\b|\bsube\b|publica|publish/i;
 
 function continuationMutationFor(text: string): ContinuationMutation {
   const hasVersion = CONTINUATION_VERSION_RE.test(text);
@@ -267,7 +267,7 @@ export function deterministicContinuation(request: string): ContinuationDecision
   if (!allowed) {
     // Narrow generic fallback: short request with only version/ops vocabulary.
     const tokens = lower.replace(/[.!]+$/g, "").split(/[\s_]+/);
-    const vocab = new Set(["sube", "y", "versiona", "version", "versión", "versionar", "actualiza", "la", "el", "haz", "hacer", "crea", "crear", "commit", "push", "tag", "bump", "changelog", "publica", "publish", "por", "favor"]);
+    const vocab = new Set(["sube", "y", "versiona", "version", "versión", "versionar", "actualiza", "la", "el", "haz", "hacer", "crea", "crear", "abre", "abrir", "commit", "push", "tag", "merge", "fusiona", "pr", "pull", "request", "release", "bump", "changelog", "publica", "publish", "por", "favor"]);
     const allKnown = tokens.every((t) => vocab.has(t));
     if (!allKnown) return undefined;
     if (!CONTINUATION_VERSION_RE.test(lower) && !CONTINUATION_OPS_RE.test(lower)) return undefined;

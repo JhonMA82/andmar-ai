@@ -478,3 +478,11 @@ Recovery/rework metrics are derived read-only from the known portable Work Ledge
 **Why:** The harness needs evidence that its capabilities help more than they obstruct, but a telemetry subsystem would violate the thin-harness goal. Existing semantic events already cover runtime decisions, and Work Ledger already owns durable work-unit history.
 
 **Consequence:** `andmar_report` can show intervention, friction, useful-intervention, rework, and checkpoint-coverage rates without storing user content. Unknown facts such as false-block ground truth, rejected duplicate-work attempts, or independent work lost are reported as unmeasured rather than inferred. Metrics never decide task completion.
+
+## D-034 — Delivery gates authority/readiness; OpenCode owns execution
+
+**Decision:** Add one stateless `delivery` capability exposing `andmar_delivery(operation)`. It reads the latest raw user request from the current session and checks the current Task Contract status. The caller cannot submit an authorization boolean. Authorization is operation-specific for `commit`, `push`, `pull-request`, `merge`, `tag`, `version`, `publish`, and `release`; explicit negation denies. Active/blocked Task Contracts deny delivery, completed contracts are ready, and contract-less explicit operational/trivial continuations may proceed only with a native repository-state check.
+
+**Why:** Delivery needs a hard authority boundary, but implementing Git/provider execution would duplicate OpenCode and turn the harness into a workflow/release system. Raw-user intent already exists in session context and is the strongest available source for named-operation authorization.
+
+**Consequence:** `andmar_delivery` never executes VCS/provider actions and owns no durable state. Authorization does not expand from one operation to another. Work Unit checkpoint commits remain governed by `delivery.workUnitCommits`. This completes the planned core evolution; new core behavior now requires separate evidence and an architectural decision.

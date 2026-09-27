@@ -1,6 +1,7 @@
 export type SemanticEventType =
   | "andmar.routing"
   | "andmar.delegation"
+  | "andmar.delivery"
   | "andmar.verification"
   | "andmar.completion"
   | "andmar.contract"

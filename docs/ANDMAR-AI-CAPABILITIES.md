@@ -389,6 +389,19 @@ known limitations.
   as unavailable rather than silently retried; real OpenCode runtime
   smoke is covered by manual testing (see [TESTING.md](TESTING.md)).
 
+### `delivery`
+
+- **Purpose:** gate one named post-completion delivery operation with traceable current-user authorization and completion readiness.
+- **Public primitive:** `andmar_delivery` with `operation = commit | push | pull-request | merge | tag | version | publish | release`.
+- **Execution boundary:** never executes Git, provider APIs, PRs, tags, publishing or releases; OpenCode owns native execution.
+- **Authorization:** reads the latest raw user request directly from the OpenCode session. The caller cannot assert authorization. Authorization is operation-specific; explicit negation fails closed.
+- **Readiness:** an active/blocked Task Contract denies delivery. A completed Task Contract is ready. With no Task Contract, only an explicitly requested operational/trivial continuation can proceed and the agent must inspect native repository state before execution.
+- **State:** none. It reads `task-contract/<sessionID>` through the shared Task Contract key contract and stores no prompt/request content.
+- **Failure behavior:** missing raw request, missing operation-specific authorization, or unfinished Task Contract -> deny. Ambiguous target/scope remains a native user-question concern.
+- **Interaction:** Work Unit checkpoint commits remain governed separately by `delivery.workUnitCommits`; Delivery never converts that local policy into push/PR/release authority.
+- **Observability:** emits metadata-only `andmar.delivery` authorized/denied events.
+- **Boundary:** no Git client, no workflow engine, no release planner, no implicit operation expansion. See [DELIVERY.md](DELIVERY.md).
+
 ### `development-metrics`
 
 - **Purpose:** measure whether AndMar interventions are useful and where the harness itself creates friction.
@@ -438,7 +451,7 @@ Trigger: measured repeated token/context waste. Deterministic retention first, s
 
 Trigger: parallel writers need isolation beyond native OpenCode worktrees or repeatedly pay meaningful cache/setup cost.
 
-### `impact-analysis`, `docs-integrity`, `release`, `git-policy`, `budget`, `observability`, `recovery`
+### `impact-analysis`, `docs-integrity`, `budget`, `observability`, `recovery`
 
 Add only when the corresponding friction is demonstrated.
 

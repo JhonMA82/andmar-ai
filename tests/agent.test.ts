@@ -200,3 +200,13 @@ test("AndMar agent keeps development metrics diagnostic rather than ceremonial",
   assert.match(agent, /diagnosing repeated AndMar friction|explicit harness-tuning work/i)
   assert.match(agent, /never becomes a completion gate|metric thresholds never decide/i)
 })
+
+test("AndMar agent uses final Delivery gate without taking over Git/provider execution", () => {
+  assert.match(agent, /call `andmar_delivery` with exactly that operation/i)
+  assert.match(agent, /never pass or invent an authorization boolean/i)
+  assert.match(agent, /commit.*does not imply.*push/i)
+  assert.match(agent, /push.*does not imply.*PR/i)
+  assert.match(agent, /version.*does not imply.*tag\/publish\/release/i)
+  assert.match(agent, /only native OpenCode tools for the actual VCS\/provider action/i)
+  assert.match(agent, /Do not reopen a completed Task Contract or Work Ledger solely for delivery/i)
+})

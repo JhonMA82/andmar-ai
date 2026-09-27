@@ -403,6 +403,25 @@ Cross-capability verification reads use the minimal shared
 of receipts/evidence; `task-contract` consumes the derived exact-revision status
 without importing a sibling capability or duplicating storage ownership.
 
+## 7.1 Delivery boundary
+
+Delivery is the final core coordination layer, not a Git/release subsystem. `andmar_delivery` reads the current raw user instruction and the current Task Contract status, then returns whether one named operation is authorized and ready. It never executes the operation.
+
+```text
+completed work / explicit operational continuation
+        |
+        v
+andmar_delivery(operation)
+  +-- named by current user?
+  +-- explicitly negated?
+  `-- Task Contract completed (when present)?
+        |
+        v
+OpenCode native Git / PR / tag / publish / release tools
+```
+
+Authorization never expands transitively: commit does not imply push, push does not imply PR, PR does not imply merge, and version does not imply tag/publish/release. Work Unit checkpoint commits remain a separate local recovery policy. This closes the planned core evolution; future additions require demonstrated friction and should remain lateral extensions.
+
 ## 8. Documentation integrity
 
 Mappings live in configuration:
@@ -425,7 +444,7 @@ The MVP only computes likely impact:
 none | patch | minor | major
 ```
 
-It intentionally does not mutate `package.json`, create tags or publish releases. That belongs in a future release capability only if repeated use demonstrates the need.
+It does not mutate `package.json`, create tags or publish releases itself. The `delivery` capability now gates authorization/readiness for those named operations; OpenCode still performs any requested mutation natively.
 
 The policy and release procedure live in [VERSIONING.md](VERSIONING.md).
 

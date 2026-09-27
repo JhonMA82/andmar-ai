@@ -23,6 +23,7 @@ AndMar AI uses OpenCode V2 plugin storage for operational facts. This state is d
 | `task-contract-review/<sessionID>/<round>` | `task-contract` | `task-contract` | max 2 stored rounds; ordinary audit is optional/advisory, required deep review may use round 2 only after a corrected revision; unbounded, no pruning yet |
 | `task-contract-review-availability/<sessionID>` | `task-contract` | `task-contract` | one exact revision + contract-state terminal attempt marker for timeout/invalid output; stale markers are cleared when state changes; unbounded, no pruning yet |
 | `development-metrics/v1/aggregate` | `development-metrics` | `andmar_report` | one bounded metadata-only aggregate; overwritten as counters advance; disabled by `developmentMetrics.enabled=false` |
+| *(none)* | `delivery` | — | Delivery is stateless; it reads current session user intent + Task Contract readiness and stores no authorization copy |
 
 ### `runtime/last-start`
 

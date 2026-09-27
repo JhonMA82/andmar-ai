@@ -1,4 +1,5 @@
 import type { Capability, StateStore } from "../../core/contracts.ts";
+import { latestUserText } from "../../core/session.ts";
 import { contractKey, type TaskContract } from "../../core/task-contract.ts";
 import { callJev, MAX_STATE_CHARS, readApiKey, resolveJevModel, resolveJevTimeout, type RawAnswers } from "./jev.ts";
 import {
@@ -35,30 +36,7 @@ export function toolMessageIDFrom(toolContext: unknown): string | undefined {
     : undefined;
 }
 
-export function extractRawUserRequest(
-  messages: readonly any[],
-  currentAssistantMessageID?: string,
-): string | undefined {
-  let end = messages.length;
-
-  if (currentAssistantMessageID) {
-    const assistantIndex = messages.findIndex(
-      (message: any) => message?.id === currentAssistantMessageID,
-    );
-    if (assistantIndex >= 0) end = assistantIndex;
-  }
-
-  for (let index = end - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message?.type !== "user") continue;
-    if (typeof message?.text !== "string") continue;
-
-    const text = message.text.trim();
-    if (text !== "") return text;
-  }
-
-  return undefined;
-}
+export const extractRawUserRequest = latestUserText;
 
 function sessionIDFrom(toolContext: unknown): string {
   const ctx = toolContext as { sessionID?: unknown; session?: { id?: unknown }; metadata?: { sessionID?: unknown } } | undefined;

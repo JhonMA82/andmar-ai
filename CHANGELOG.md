@@ -2,6 +2,24 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
+## [0.14.0] - 2026-09-25
+
+### Added
+
+- New `delivery` capability and `andmar_delivery` tool: one deterministic boundary for post-completion `commit`, `push`, `pull-request`, `merge`, `tag`, `version`, `publish`, and `release` intent.
+- Delivery authorization is read directly from the current raw user message; callers cannot pass an `authorized=true` claim. Authorization is operation-specific and explicit negation fails closed.
+- Delivery readiness blocks while a Task Contract is still active/blocked and recognizes completed contracts or explicit operational/trivial continuations with no contract.
+
+### Changed
+
+- Post-completion operational continuations now call `andmar_delivery` before each named delivery action, then use native OpenCode Git/VCS/provider tools only when the gate allows it.
+- Intake continuation vocabulary recognizes PR/merge/release operations in addition to version/commit/tag/push/publish.
+- Core session utilities now expose one generic latest-user-message extractor reused by Intake and Delivery.
+
+### Core freeze
+
+- The planned Intake -> Work Ledger -> Work-unit lifecycle -> checkpoints -> Completion -> Review -> Development metrics -> Delivery evolution is complete. New functionality should default to skills, scripts, adapters, or isolated capabilities and require demonstrated friction before changing core behavior.
+
 ## [0.13.0] - 2026-09-25
 
 ### Added

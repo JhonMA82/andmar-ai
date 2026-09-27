@@ -12,7 +12,7 @@ AndMar AI is a thin policy and evidence layer over OpenCode V2. Use native OpenC
 For any non-trivial task:
 
 1. Call `andmar_status` once. If the tool is unavailable, state that the AndMar plugin is not active and do not imply AndMar verification guarantees.
-2. When the request is non-trivial or its intent is not sufficiently specified, call `andmar_intake` once before executing. `andmar_intake` reads the authoritative raw user request directly from the current OpenCode session. Do not paraphrase, summarize, or pass the request as a tool argument. Do not call it for every conversational reply; trivial edits skip it automatically via deterministic bypass. A new action request after a `completed` Task Contract must still go through intake when it could be an operational continuation (version/commit/tag/push/publish); normal conversational replies do not.
+2. When the request is non-trivial or its intent is not sufficiently specified, call `andmar_intake` once before executing. `andmar_intake` reads the authoritative raw user request directly from the current OpenCode session. Do not paraphrase, summarize, or pass the request as a tool argument. Do not call it for every conversational reply; trivial edits skip it automatically via deterministic bypass. A new action request after a `completed` Task Contract must still go through intake when it could be an operational continuation (version/commit/tag/push/PR/merge/publish/release); normal conversational replies do not.
 
 If `andmar_intake` returns `continuation.fastPath=true`, this is a post-completion operational continuation over an already-approved result. Keep `taskKind=internal`.
 
@@ -21,11 +21,11 @@ Do not create a new Work Ledger or reopen a completed ledger.
 Do not call `andmar_request_review`.
 Do not call `andmar_completion_gate` again.
 
-Execute only the explicitly requested release/VCS operations (version/changelog metadata, commit, tag, push, publish) with native OpenCode tools. Inspect the resulting diff/state and run only proportional checks needed for that operational mutation.
+For every requested post-completion delivery operation, call `andmar_delivery` with exactly that operation before executing it. Delivery reads the authoritative raw user instruction itself; never pass or invent an authorization boolean. If `allowed:false`, do not perform or substitute the operation. If `allowed:true`, execute only that named operation with native OpenCode Git/VCS/provider tools, inspect the resulting state, and run only proportional checks needed for that operational mutation.
+
+Authorization is operation-specific: `commit` does not imply `push`; `push` does not imply PR; PR does not imply merge; version does not imply tag/publish/release. A request like “termina la feature” authorizes none of them. Ask again only when the target/scope is materially ambiguous.
 
 If the request grows into any source/product behavior change or new technical requirement, leave the fast-path and use the normal Task Contract flow.
-
-An explicit user request to push/tag/publish is authorization for that named action; ask again only when target/scope is materially ambiguous.
 3. Classify the work using the smallest honest set of signals: kind, risk, uncertainty, reasoning need, scope, public API impact, and external side effects. Prefer `routeSignals` from `andmar_intake` (same `ChangeKind`/`Risk` taxonomy as `andmar_route`) over a parallel classification.
 4. Use `andmar_route` when a routing or delegation decision is needed. Do not call it mechanically for trivial edits.
 5. Handle the request according to the `andmar_intake` decision `mode` and `workProjection.mode`:
@@ -63,7 +63,7 @@ An explicit user request to push/tag/publish is authorization for that named act
    - After a Work Unit is done, checkpoint only a coherent product diff that has focused verification on the exact current working-state revision. Run `node "${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai/scripts/work-unit-checkpoint.mjs" prepare .andmar/work/<work-id> WU-N --revision <verified-revision>`. `prepare` is read-only and returns `ready`, changed paths, and the exact commit message/trailers.
    - Read `delivery.workUnitCommits` from the initial `andmar_status`. With `manual` (default), never create a checkpoint commit unless the user/repository explicitly authorized commits. With `auto`, a `ready:true` result authorizes that local Work Unit checkpoint only. In either mode, OpenCode performs staging/commit through native Git tools; AndMar never implements Git execution itself. Do not mix unrelated cleanup or another Work Unit into the checkpoint.
    - After the native commit, immediately run `.../work-unit-checkpoint.mjs record .andmar/work/<work-id> WU-N --commit <HEAD>`. `record` requires current HEAD, matching `Work-ID`, `Work-Unit`, and `Verified-Revision` trailers, then stores `Checkpoint: <sha>` in `WORK.md`. Reopening a done WU clears both its current Evidence and Checkpoint pointers. A Work Unit with no product changes outside `.andmar/work/**` needs no checkpoint.
-   - Work Unit checkpoint commits do not trigger mandatory review and never replace integrated final verification. `push`, PR, merge, tag, publish, and release remain separate operations requiring their own explicit authorization.
+   - Work Unit checkpoint commits do not trigger mandatory review and never replace integrated final verification. `push`, PR, merge, tag, publish, and release remain separate operations. Before each one, use `andmar_delivery`; only `allowed:true` permits native execution of that named action. `push`, PR, merge, tag, publish, and release remain separate operations requiring their own explicit authorization.
    - Do not write or edit Work Ledger files on every tool call. Native OpenCode `read`/`write`/`edit` remain appropriate for initialization, source/requirements/evidence content, steering, and material plan changes; use the lifecycle helper specifically for Work Unit state transitions.
    - Validate the structural integrity of the Work Ledger with `node "${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai/scripts/validate-work-ledger.mjs" .andmar/work/<work-id>` after initialization, steering that modifies requirements, and material work-unit list changes. The lifecycle helper already validates `status`, transitions, and finalization; do not add a separate validator call merely as completion ceremony.
    - Work directly with native OpenCode tools for implementation. Use `andmar_delegate` only when a bounded child task genuinely benefits from separate context or a different model profile. Resume owned child sessions with `andmar_resume` instead of recreating their context.
@@ -103,6 +103,10 @@ A practical Git fallback for the fingerprint, when a native VCS revision cannot 
 ```
 
 Run it through OpenCode's normal shell tool. Do not bypass permissions.
+
+## Delivery after completion
+
+Delivery is the final AndMar core boundary, not a Git client. When the user requests `commit`, `push`, `pull-request`, `merge`, `tag`, `version`, `publish`, or `release`, call `andmar_delivery` once per named operation after normal completion (or on an operational continuation). The tool derives authorization from the current raw user message and readiness from Task Contract state. Never infer authorization transitively and never execute a denied operation. After an allowed decision, use only native OpenCode tools for the actual VCS/provider action. Do not reopen a completed Task Contract or Work Ledger solely for delivery.
 
 ## Stronger verification for risky work
 

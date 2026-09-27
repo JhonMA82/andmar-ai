@@ -95,11 +95,13 @@ Evaluate Lane/copy-on-write before building a custom strategy.
 
 Adapter must remain optional and event-driven; harness logic must work without it.
 
-## Candidate: release capability
+## Implemented: delivery boundary
 
-**Trigger:** version/changelog detection is reliable but manual updates remain a recurring source of release errors.
+The final planned core step is implemented as a narrow authorization/readiness gate. `andmar_delivery` never performs Git, PR, tag, publish, merge or release actions; OpenCode executes only the operation explicitly named by the current user. No general release automation subsystem is planned without new measured friction.
 
-Start with deterministic local mutations only. Publishing/PR automation is a separate later decision.
+## Core evolution complete
+
+The planned eight-step Intake -> Work Ledger -> lifecycle -> checkpoints -> Completion -> Review -> Development metrics -> Delivery path is complete. Future roadmap items are lateral extensions and do not imply another core phase.
 
 ## Explicit non-roadmap
 
