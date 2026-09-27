@@ -498,3 +498,10 @@ delegation, verification and completion may emit bounded metadata to a local
 OpenCode runtime events remain owned by OpenCode/its observability plugin.
 
 The optional pieces must remain removable without breaking the core.
+
+
+## Lateral integrations
+
+Integrations are optional external adapters and are not capabilities. They may discover/configure an external system, expose bounded status, add agent guidance, or emit observability metadata, but they cannot become completion/readiness guarantees unless a future architectural decision explicitly promotes that responsibility.
+
+The first concrete integration is `src/integrations/engram/`. Engram owns persistent memory and native MCP tools; AndMar owns only the boundary described in [ENGRAM.md](ENGRAM.md). The presence of `integrations/` does not create a generic Integration framework; extract one only after another real integration demonstrates shared semantics.

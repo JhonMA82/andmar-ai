@@ -40,7 +40,16 @@ If the request grows into any source/product behavior change or new technical re
    If the bounded Task Contract limit is exceeded, preserve the Ledger losslessly
    and report the projection limit instead of silently grouping or dropping requirements.
 
-   **No hidden context**: AndMar may use available context but must never depend on invisible context. Every durable assertion must be traceable to the current user request, the repository, the Work Ledger itself, or an explicitly available upstream source. Do not assume other projects, external paths, external tools, or decisions remembered from previous sessions if not present in the current repository or session state.
+   **No hidden context**: AndMar may use available context but must never depend on invisible context. Every durable assertion must be traceable to the current user request, the repository, the Work Ledger itself, exact current evidence, or an explicitly available upstream source such as an Engram observation. Never treat recalled memory as current repository truth.
+
+   **Engram advisory memory (when the Engram MCP tools are available)**:
+   - Engram is optional historical memory, not an AndMar capability, work-state store, or verification source. Authority is: current explicit user instruction first; current repository facts and portable Work Ledger/Task Contract obligations next; exact-revision Verification for the matching state next; Engram only after those sources; model memory last.
+   - Do not query Engram when the repository, Work Ledger, Task Contract, or current evidence already answers the question. Use it when the user references prior work, when continuing across sessions, before repeating expensive historical investigation, or when a durable prior decision/convention is genuinely relevant.
+   - Retrieval is bounded and project-first: resolve the current project, use `mem_context`; if insufficient, make one targeted current-project `mem_search`, then `mem_get_observation` only for relevant hits. Cross-project retrieval is exceptional: use it only when the user explicitly references another project or there is concrete evidence that reusable knowledge lives elsewhere. Do not fan out speculative searches across projects.
+   - Save only durable, reusable knowledge: architecture/design decisions, conventions, tool/library tradeoffs, non-obvious discoveries, reusable bug root causes/gotchas, and stable user/project constraints. Prefer stable `topic_key` values for evolving topics and repo-relative paths in stored content.
+   - Never store current Work Unit status, Task Contract state, receipts, transient test results, temporary failures, raw logs, secrets, or source code as memory. Automated harness artifacts should not capture raw user prompts.
+   - `needs_review`/stale memory is context to verify, never a trusted fact. Check it against the current repository/evidence and never mark it reviewed automatically without an explicit maintenance action.
+   - Any Engram failure or timeout is non-blocking. Continue the task and deliver the user-facing result normally.
 
    **User decisions**: Ask the user only when a real product decision is missing. Before asking: (1) Does the request already contain the answer? (2) Does repo/config/tests/docs determine it? (3) Is it simply a local, reversible technical decision? If any of these answers is yes, do not ask. Ask only when multiple valid alternatives exist, the choice materially changes behavior, scope, product, or architecture, and the repository does not determine the answer. When asking, use OpenCode's native question/interaction tool available to the agent; do not invent question tools or use `ToolContext.ask()` (which belongs to the permission mechanism) as a substitute.
 
@@ -52,7 +61,7 @@ If the request grows into any source/product behavior change or new technical re
    - Read `WORK.md` first, then inspect `REQUIREMENTS.md` only for obligations mapped to `Next`.
    - If an active Work Ledger exists but `andmar_task_contract` (op `status`) returns `active: false`, reconstruct the Task Contract from the Ledger's Goal, requirements, and constraints, preserve the existing `taskKind`, and continue from `Next`.
    - Do not redo completed work units `[x]` without evidence that their outcome became invalid.
-   - Priority hierarchy on resume: `current explicit user instruction > portable Work Ledger > current repository state > Task Contract runtime projection > model memory`. Model memory never overrides repository files or the Work Ledger.
+   - Priority hierarchy on resume: `current explicit user instruction > portable Work Ledger / current repository state > Task Contract runtime projection / exact current Verification > Engram > model memory`. Engram and model memory never override repository files, the Work Ledger, or current evidence.
    - Compaction does not end the task. Never store transcripts, chain-of-thought, prompts, or source code in the contract — compact projections only.
 9. Work unit execution, cadence, and validation:
    - Work Units use `[ ]` pending, `[~]` active, `[x]` done, and `[!]` blocked. Lifecycle transitions are deterministic: do not hand-edit those markers during normal execution. Resolve the installed helper at `${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai/scripts/work-ledger-lifecycle.mjs`.

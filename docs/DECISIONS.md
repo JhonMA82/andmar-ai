@@ -486,3 +486,14 @@ Recovery/rework metrics are derived read-only from the known portable Work Ledge
 **Why:** Delivery needs a hard authority boundary, but implementing Git/provider execution would duplicate OpenCode and turn the harness into a workflow/release system. Raw-user intent already exists in session context and is the strongest available source for named-operation authorization.
 
 **Consequence:** `andmar_delivery` never executes VCS/provider actions and owns no durable state. Authorization does not expand from one operation to another. Work Unit checkpoint commits remain governed by `delivery.workUnitCommits`. This completes the planned core evolution; new core behavior now requires separate evidence and an architectural decision.
+
+
+## D-035 — Engram is an optional lateral integration, not a capability
+
+**Decision:** Integrate Engram under `src/integrations/engram/` without adding a capability, `andmar_mem_*` wrappers, a second memory store, or a completion dependency. Engram owns its MCP tools, storage, lifecycle, diagnostics, setup and sync. AndMar performs cheap discovery, exposes status, injects only AndMar-specific authority/bounded-use policy, and observes metadata-only call volume.
+
+The authoritative order is current explicit user instruction, current repository facts plus portable Work Ledger/Task Contract obligations, exact current Verification, Engram historical context, then model memory. Engram failure is always non-blocking. Current-project retrieval is preferred; cross-project retrieval requires explicit or concrete justification.
+
+**Why:** OpenCode V2 already consumes Engram MCP instructions and native `mem_*` tools successfully. Re-wrapping them would duplicate an existing subsystem and blur the completed core boundary. Work Ledger already owns current portable work state, so memory should retain durable historical knowledge rather than runtime task state.
+
+**Consequence:** The core inventory remains unchanged. Engram can be installed/removed independently. `andmar_status` reports its integration state, and development metrics can detect excessive or failing retrieval without storing query/result content. Deep health and maintenance stay delegated to `engram doctor`, `engram test`, sync, conflict and project-maintenance CLI commands.

@@ -1,5 +1,19 @@
 # Changelog
 
+
+## [0.15.0] - 2026-09-25
+
+### Added
+
+- Add optional `src/integrations/engram/` adapter without creating a capability or new AndMar memory tools.
+- Detect Engram version plus OpenCode MCP configuration and expose bounded status through `andmar_status`.
+- Upgrade integration availability evidence after a real native `engram.mem_*` tool call.
+- Add `npm run engram:setup`, delegating configuration to the official `engram setup opencode` path.
+- Add a short AndMar-specific memory policy: current-project first, bounded retrieval, cross-project only when justified, durable saves only, memory never used as work state/evidence.
+- Extend development metrics with metadata-only Engram call counts/failures/cross-project usage; queries and memory content are never captured.
+- Document Engram ownership, failure semantics, project identity, sync, diagnostics, and non-goals.
+- Core remains complete: capability/tool inventory stays at 9 capabilities / 15 tools.
+
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
 ## [0.14.0] - 2026-09-25

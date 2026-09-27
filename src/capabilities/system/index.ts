@@ -1,5 +1,6 @@
 import type { Capability } from "../../core/contracts.ts"
 import { HARNESS_VERSION } from "../../generated/version.ts"
+import { ENGRAM_STATUS_KEY, type EngramIntegrationStatus } from "../../integrations/engram/index.ts"
 
 export const systemCapability: Capability = {
   id: "system",
@@ -21,6 +22,7 @@ export const systemCapability: Capability = {
         options: { namespace: "andmar", codemode: true },
         execute: async () => {
           const workers = await state.scan("workers/")
+          const engram = await state.get<EngramIntegrationStatus>(ENGRAM_STATUS_KEY)
           return {
             content: JSON.stringify({
               harness: "AndMar AI",
@@ -35,6 +37,18 @@ export const systemCapability: Capability = {
               },
               developmentMetrics: {
                 enabled: config.developmentMetrics.enabled,
+              },
+              integrations: {
+                engram: engram ?? {
+                  provider: "engram",
+                  mode: "advisory",
+                  installed: false,
+                  configured: false,
+                  enabled: false,
+                  available: false,
+                  availabilityBasis: "unavailable",
+                  runtimeObserved: false,
+                },
               },
             }, null, 2),
           }

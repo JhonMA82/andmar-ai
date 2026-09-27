@@ -264,3 +264,16 @@ session model. The bounded review-session deadlines remain fixed core policy
 Legacy `ANDMAR_REVIEW_MODEL` and `ANDMAR_REVIEW_TIMEOUT_MS` values are ignored
 because Review no longer performs semantic routing. Jev configuration applies
 to Intake only.
+
+
+## Engram integration
+
+Engram has no AndMar core configuration block. It is an optional external integration. Configure it with the upstream owner:
+
+```sh
+npm run engram:setup
+# equivalent ownership boundary:
+engram setup opencode
+```
+
+Use `engram init <canonical-project-name>` when a repository needs a stable Engram project identity across machines. Avoid a global `ENGRAM_PROJECT` during ordinary multi-project work. Deep diagnostics use `engram doctor --json` and `engram test --quick --json`. See [ENGRAM.md](ENGRAM.md).

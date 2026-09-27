@@ -149,3 +149,8 @@ For environments without registry/network access, `bun run check:offline` exists
 ## Work Unit checkpoint regression coverage
 
 `tests/work-unit-checkpoint.test.ts` uses real temporary Git repositories. It covers exact verified-revision gating, metadata-only skip behavior, deterministic commit trailers, current-HEAD recording, rejection of mismatched Work Unit trailers, idempotent SHA recording, and stale checkpoint clearing on reopen. Work Ledger validator tests cover malformed/non-done/duplicate checkpoint references. `tests/install-dev.test.ts` executes the checkpoint helper through the installed global plugin path as a consumer-repository smoke.
+
+
+## Engram lateral integration regression coverage
+
+`tests/engram-integration.test.ts` verifies JSONC/OpenCode config discovery, effective precedence for partial overrides, agent-profile detection, fail-open startup semantics, runtime-observed availability, and metadata-only memory observability. `tests/engram-setup.test.ts` verifies that AndMar delegates configuration to the upstream-owned `engram setup opencode` command instead of rewriting MCP configuration itself. The suite intentionally does not mock Engram as completion evidence because memory is advisory.

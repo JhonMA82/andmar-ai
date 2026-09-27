@@ -50,6 +50,23 @@ try {
   record("agent", false, error?.code === "ENOENT" ? `${agentPath} is not installed` : String(error))
 }
 
+const engramVersion = spawnSync("engram", ["version"], { encoding: "utf8", timeout: 3000 })
+if (engramVersion.error?.code === "ENOENT") {
+  console.log("INFO  engram: optional integration not installed")
+} else if (engramVersion.status !== 0) {
+  console.log(`WARN  engram: ${(engramVersion.stderr || engramVersion.stdout || `exit ${engramVersion.status}`).trim()}`)
+} else {
+  console.log(`PASS  engram: ${(engramVersion.stdout || engramVersion.stderr).trim()} (optional advisory integration)`)
+  const engramDoctor = spawnSync("engram", ["doctor", "--json"], { encoding: "utf8", timeout: 15000 })
+  if (engramDoctor.error?.code === "ETIMEDOUT") {
+    console.log("WARN  engram-doctor: timed out; run `engram doctor --json` directly")
+  } else if (engramDoctor.status !== 0) {
+    console.log("WARN  engram-doctor: reported findings; run `engram doctor --json` directly (does not block AndMar core)")
+  } else {
+    console.log("PASS  engram-doctor: upstream diagnostics completed")
+  }
+}
+
 const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf8"))
 const pluginDependency = pkg.dependencies?.["@opencode/plugin"]
 record(

@@ -63,3 +63,8 @@ The default is `true` because AndMar itself is a development harness. Set it to 
 ## Usage
 
 Do not call `andmar_report` on every task. Use it when diagnosing repeated harness friction, evaluating whether a capability pays for itself, or during explicit AndMar tuning.
+
+
+## Engram integration metrics
+
+When native Engram MCP tools execute, the lateral integration emits metadata-only runtime events. The report counts memory calls, context/search/read/save operations, cross-project requests, and failures. It never records search queries, prompts, observation content, or tool output. These counters are diagnostic: high cross-project/search fan-out is a simplification signal, not a success metric.

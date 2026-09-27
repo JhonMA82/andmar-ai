@@ -210,3 +210,14 @@ test("AndMar agent uses final Delivery gate without taking over Git/provider exe
   assert.match(agent, /only native OpenCode tools for the actual VCS\/provider action/i)
   assert.match(agent, /Do not reopen a completed Task Contract or Work Ledger solely for delivery/i)
 })
+
+
+test("AndMar treats Engram as bounded advisory memory rather than a capability", () => {
+  assert.match(agent, /Engram advisory memory/i)
+  assert.match(agent, /not an AndMar capability/i)
+  assert.match(agent, /Cross-project retrieval is exceptional/i)
+  assert.match(agent, /Memory failure|Engram failure/i)
+  assert.match(agent, /never store current Work Unit status/i)
+  assert.match(agent, /topic_key/i)
+  assert.match(agent, /Engram > model memory/i)
+})

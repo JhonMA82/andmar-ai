@@ -229,3 +229,8 @@ the generated [CAPABILITIES.md](CAPABILITIES.md).
 | what is in and out of the MVP | [MVP-SCOPE.md](MVP-SCOPE.md), [ROADMAP.md](ROADMAP.md) |
 | OpenCode V2 API assumptions | [OPENCODE-V2.md](OPENCODE-V2.md) |
 | agent rules for coding agents | [../AGENTS.md](../AGENTS.md) |
+
+
+## Optional historical memory
+
+Engram can be attached as a lateral OpenCode MCP integration. It is advisory historical context only; Work Ledger/Task Contract and exact-revision Verification remain authoritative for current work. See [ENGRAM.md](ENGRAM.md).

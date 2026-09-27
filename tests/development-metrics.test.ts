@@ -66,10 +66,15 @@ test("development metrics classify interventions, friction and value without con
     payload: { action: "timeout" },
   }, 4)
   metrics = applyDevelopmentEvent(metrics, {
+    type: "andmar.runtime",
+    sessionID: "ses-1",
+    payload: { action: "engram_memory_call", operation: "mem_search", status: "completed", crossProject: true },
+  }, 5)
+  metrics = applyDevelopmentEvent(metrics, {
     type: "andmar.completion",
     sessionID: "ses-1",
     payload: { ok: true, finalCompletion: true },
-  }, 5)
+  }, 6)
 
   assert.equal(metrics.tasksObserved, 1)
   assert.equal(metrics.tasksCompleted, 1)
@@ -79,6 +84,9 @@ test("development metrics classify interventions, friction and value without con
   assert.equal(metrics.verification.staleEvidenceDetections, 2)
   assert.equal(metrics.verification.duplicateVerification, 1)
   assert.equal(metrics.review.timeouts, 1)
+  assert.equal(metrics.memory.calls, 1)
+  assert.equal(metrics.memory.searches, 1)
+  assert.equal(metrics.memory.crossProjectCalls, 1)
 })
 
 test("ledger metrics read only .andmar/work and derive rework/checkpoint recovery", async () => {

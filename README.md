@@ -224,7 +224,22 @@ Then by topic:
 - **Rationale and history:** [`docs/DECISIONS.md`](docs/DECISIONS.md),
   [`docs/INSPIRATIONS.md`](docs/INSPIRATIONS.md)
 - **OpenCode V2 API assumptions:** [`docs/OPENCODE-V2.md`](docs/OPENCODE-V2.md)
+- **Optional Engram memory:** [`docs/ENGRAM.md`](docs/ENGRAM.md)
 - **Rules for coding agents:** [`AGENTS.md`](AGENTS.md)
+
+## Optional Engram memory
+
+AndMar can use [Engram](https://github.com/Gentleman-Programming/engram) as advisory persistent memory without adding a memory capability to the core. Native Engram MCP tools remain owned by Engram; AndMar adds only status, bounded-use policy and metadata-only metrics.
+
+```sh
+npm run engram:setup
+# optional stable project identity
+engram init <canonical-project-name>
+```
+
+Memory never replaces `.andmar/work`, Task Contract state, or Verification evidence, and an Engram failure never blocks work. See [`docs/ENGRAM.md`](docs/ENGRAM.md).
+
+
 
 ## License
 

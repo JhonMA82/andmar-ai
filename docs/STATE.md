@@ -13,6 +13,7 @@ AndMar AI uses OpenCode V2 plugin storage for operational facts. This state is d
 | Keys | Owner | Readers | Lifecycle / cleanup |
 |---|---|---|---|
 | `runtime/last-start` | `system` | diagnostics | overwritten on every plugin setup |
+| `integrations/engram/status` | `integrations/engram` | `andmar_status`, integration hook | one bounded advisory snapshot overwritten at startup/observed native Engram calls; never stores memory content |
 | `workers/<parent>/<child>` | `delegation` | parent session (own children only) | `running` → `idle`/`failed`; no auto-prune yet |
 | `worker-by-session/<child>` | `delegation` | `delegation` (depth calculation) | written alongside `workers/`; no auto-prune yet |
 | `journal/<sessionID>/<callID>` | `system` | diagnostics | one entry per observed tool call; unbounded, no pruning yet |
@@ -29,6 +30,11 @@ AndMar AI uses OpenCode V2 plugin storage for operational facts. This state is d
 
 Last harness startup metadata (`at`, OpenCode version, project id, harness
 version). Written by `src/index.ts` on every setup.
+
+
+### `integrations/engram/status`
+
+One bounded snapshot for the optional Engram lateral integration: installed/configured/enabled flags, detected version, effective config source, agent-profile detection, availability basis, and last native Engram tool status/timestamp when observed. It contains no query, prompt, observation, or tool-output content. This state is diagnostic only and can never satisfy Completion or Delivery. Engram itself owns persistent semantic memory.
 
 ### `workers/<parentSessionID>/<childSessionID>`
 

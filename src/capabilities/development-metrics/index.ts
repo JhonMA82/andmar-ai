@@ -52,6 +52,15 @@ export interface DevelopmentMetricsState {
     capabilityErrors: number
     delegationFailures: number
   }
+  memory: {
+    calls: number
+    context: number
+    searches: number
+    reads: number
+    saves: number
+    crossProjectCalls: number
+    failures: number
+  }
   lastVerificationKey?: string
 }
 
@@ -71,6 +80,7 @@ function emptyMetrics(now = Date.now()): DevelopmentMetricsState {
     review: { rejections: 0, timeouts: 0, invalidOutputs: 0, unnecessaryRetriesPrevented: 0 },
     completion: { blocked: 0, completed: 0 },
     runtime: { capabilityErrors: 0, delegationFailures: 0 },
+    memory: { calls: 0, context: 0, searches: 0, reads: 0, saves: 0, crossProjectCalls: 0, failures: 0 },
   }
 }
 
@@ -108,6 +118,7 @@ export function applyDevelopmentEvent(
         review: { ...base.review, ...(current.review ?? {}) },
         completion: { ...base.completion, ...(current.completion ?? {}) },
         runtime: { ...base.runtime, ...(current.runtime ?? {}) },
+        memory: { ...base.memory, ...(current.memory ?? {}) },
       }
     : base
   next.updatedAt = now
@@ -193,6 +204,20 @@ export function applyDevelopmentEvent(
   if (event.type === "andmar.runtime" && payload.action === "capability_error") {
     next.runtime.capabilityErrors += 1
     next.frictions += 1
+  }
+
+  if (event.type === "andmar.runtime" && payload.action === "engram_memory_call") {
+    next.memory.calls += 1
+    const operation = string(payload.operation)
+    if (operation === "mem_context") next.memory.context += 1
+    if (operation === "mem_search") next.memory.searches += 1
+    if (operation === "mem_get_observation") next.memory.reads += 1
+    if (["mem_save", "mem_update", "mem_session_summary", "mem_capture_passive"].includes(operation)) next.memory.saves += 1
+    if (bool(payload.crossProject)) next.memory.crossProjectCalls += 1
+    if (payload.status !== "completed") {
+      next.memory.failures += 1
+      next.frictions += 1
+    }
   }
 
   return next
@@ -339,6 +364,7 @@ export const developmentMetricsCapability: Capability = {
                 review: metrics.review,
                 completion: metrics.completion,
                 runtime: metrics.runtime,
+                memory: metrics.memory,
               },
               workLedger: ledger,
               recovery: {
@@ -358,6 +384,7 @@ export const developmentMetricsCapability: Capability = {
                   "checkpoint/completed work-unit transitions",
                   "review timeout/invalid-output/retry-loop prevention",
                   "invalid verification evidence prevention",
+                  "Engram memory call volume/failures/cross-project usage (metadata only)",
                 ],
                 notYetMeasured: [
                   "false-block classification requires human ground truth",

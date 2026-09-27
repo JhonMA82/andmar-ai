@@ -103,6 +103,11 @@ The final planned core step is implemented as a narrow authorization/readiness g
 
 The planned eight-step Intake -> Work Ledger -> lifecycle -> checkpoints -> Completion -> Review -> Development metrics -> Delivery path is complete. Future roadmap items are lateral extensions and do not imply another core phase.
 
+
+## Implemented lateral integration: Engram persistent memory
+
+Engram is integrated outside the core/capability inventory. OpenCode uses native Engram MCP tools and Engram-provided MCP instructions; AndMar contributes only authority, bounded retrieval/save policy, status and metadata-only metrics. Memory never becomes current work state or completion evidence. See [ENGRAM.md](ENGRAM.md).
+
 ## Explicit non-roadmap
 
 These require a new architectural decision before implementation:
