@@ -170,6 +170,10 @@ Request: **"Add a new option to the CLI."**
       The agent then finalizes the portable Ledger with that accepted revision.
 ```
 
+Outside the normal task path, `andmar_report` can inspect bounded local
+development metrics when the user or harness maintainer is evaluating AndMar
+itself. Metrics never become step 11 or a completion requirement.
+
 No step above assumes the agent's own claim. "Implementation finished" is a
 candidate completion; only the gate decides.
 
@@ -218,6 +222,7 @@ the generated [CAPABILITIES.md](CAPABILITIES.md).
 | state keys and ownership | [STATE.md](STATE.md) |
 | receipts, evidence, revision binding | [VERIFICATION.md](VERIFICATION.md) |
 | intake, Jev, trace, fallback | [INTAKE.md](INTAKE.md) |
+| development metrics / harness value and friction | [DEVELOPMENT-METRICS.md](DEVELOPMENT-METRICS.md) |
 | testing and current limitations | [TESTING.md](TESTING.md) |
 | version and changelog policy | [VERSIONING.md](VERSIONING.md) |
 | why the architecture is shaped this way | [DECISIONS.md](DECISIONS.md) |

@@ -167,6 +167,7 @@ export const verificationCapability: Capability = {
             sessionID: sessionIDFrom(toolContext),
             payload: {
               action: "verify_revision",
+              revision: input.currentRevision,
               ok: summary.ok,
               requiredChecks: [...required],
               missingCount: summary.missing.length,

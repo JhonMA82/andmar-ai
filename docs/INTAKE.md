@@ -260,8 +260,8 @@ otherwise the default:
 ```
 
 Model resolution lives in the capability. `src/core/jev-client.ts` holds only
-the Decisions transport (endpoint, fetch and payload shape); Intake is its
-only caller and no provider policy lives in core.
+the shared Decisions transport (endpoint, fetch and payload shape) reused by
+review routing in `task-contract`; no provider policy lives in core.
 
 ## Contract verification (2026-09-21)
 

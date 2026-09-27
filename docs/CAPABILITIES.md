@@ -10,6 +10,7 @@ For purpose, boundaries, state ownership and failure behavior see the canonical
 | Capability | Version | Description | Tools exposed |
 |---|---|---|---|
 | `delegation` | 1 | Bounded child-session delegation with model-profile routing and durable handles. | `andmar_delegate`<br>`andmar_resume` |
+| `development-metrics` | 1 | Bounded local metrics for AndMar intervention, friction, value and recovery during development. | `andmar_report` |
 | `intake` | 2 | Request refinement intake: deterministic-first classification into direct, enrich, or structure with a single structured Jev decision and explicit fallback. | `andmar_intake`<br>`andmar_intake_trace` |
 | `lifecycle` | 3 | Deterministic documentation and version impact detection. | `andmar_change_impact` |
 | `routing` | 1 | Deterministic minimum-sufficient model profile selection. | `andmar_route` |

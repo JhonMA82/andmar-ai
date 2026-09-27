@@ -249,6 +249,7 @@ Mode: lightweight
 - [x] WU-1 — Outcome
   - Requirements: REQ-1
   - Evidence: EV-1
+  - Checkpoint: abcdef1234567890
 
 ## Evidence
 - EV-1: old verification
@@ -263,7 +264,8 @@ WU-1 — all work units complete; prepare final verification
     const work = await readWork(dir)
     assert.match(work, /- \[~\] WU-1/)
     assert.doesNotMatch(work, /\s+- Evidence: EV-1/)
-    assert.match(work, /done → active — source change invalidated outcome/)
+    assert.doesNotMatch(work, /\s+- Checkpoint: abcdef1234567890/)
+    assert.match(work, /done → active — source change invalidated outcome; previous checkpoint abcdef1234567890/)
     assert.equal((await validateWorkLedger(dir)).valid, true)
   } finally {
     await rm(base, { recursive: true, force: true })

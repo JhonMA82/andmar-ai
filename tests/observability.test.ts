@@ -65,3 +65,23 @@ test("semantic observability is fail-open and ignores missing session ids", asyn
     globalThis.fetch = originalFetch
   }
 })
+
+test("local semantic subscribers still receive metadata when external transport is disabled", async () => {
+  const originalEnabled = process.env.ANDMAR_OBSERVABILITY_ENABLED
+  process.env.ANDMAR_OBSERVABILITY_ENABLED = "0"
+  try {
+    const sink = createSemanticObservability({ directory: "/tmp/project" })
+    const events: any[] = []
+    const unsubscribe = sink.subscribe((event) => events.push(event))
+    sink.emit({ type: "andmar.intake", sessionID: "ses-1", payload: { action: "decision", mode: "direct" } })
+    assert.equal(events.length, 1)
+    assert.equal(events[0]?.type, "andmar.intake")
+    assert.deepEqual(events[0]?.payload, { action: "decision", mode: "direct" })
+    unsubscribe()
+    sink.emit({ type: "andmar.runtime", sessionID: "ses-1", payload: { action: "capability_error" } })
+    assert.equal(events.length, 1)
+  } finally {
+    if (originalEnabled === undefined) delete process.env.ANDMAR_OBSERVABILITY_ENABLED
+    else process.env.ANDMAR_OBSERVABILITY_ENABLED = originalEnabled
+  }
+})

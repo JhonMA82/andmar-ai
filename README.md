@@ -160,12 +160,14 @@ Namespace `andmar`:
 | `andmar_intake` / `andmar_intake_trace` | request classification and its bounded dev trace |
 | `andmar_task_contract` | create, project, update, evidence, steer or compatibility-close the Task Contract |
 | `andmar_request_review` | deterministic bounded review: optional advisory `audit` for ordinary code; required `deep` for security/migration/architecture |
+| `andmar_report` | bounded local development metrics: intervention, friction, useful intervention, rework and checkpoint recovery |
 
 Names are primitives, not methodologies: a future ODD skill can use them
 without AndMar knowing what ODD is. The generated, authoritative
 id/version/tool inventory is [docs/CAPABILITIES.md](docs/CAPABILITIES.md);
 per-capability behavior is
-[docs/ANDMAR-AI-CAPABILITIES.md](docs/ANDMAR-AI-CAPABILITIES.md).
+[docs/ANDMAR-AI-CAPABILITIES.md](docs/ANDMAR-AI-CAPABILITIES.md). Development metrics are documented in
+[docs/DEVELOPMENT-METRICS.md](docs/DEVELOPMENT-METRICS.md).
 
 ## Model routing in one example
 

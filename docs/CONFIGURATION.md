@@ -141,6 +141,24 @@ maintained.
 
 The active value is exposed by `andmar_status` so the agent does not need hidden configuration context.
 
+### `developmentMetrics.enabled`
+
+- **Name:** `developmentMetrics.enabled` (boolean).
+- **Default:** `true`.
+- **Purpose:** enable the local bounded aggregate consumed by `andmar_report`.
+- **Scope:** development diagnostics only; it never gates completion.
+- **Privacy:** numeric/enum metadata only. No prompts, code, commands, tool output or reviewer output are stored.
+
+```jsonc
+{
+  "developmentMetrics": {
+    "enabled": false
+  }
+}
+```
+
+This setting is independent from external semantic observability. Disabling `ANDMAR_OBSERVABILITY_ENABLED` stops HTTP emission but does not disable local metrics; set `developmentMetrics.enabled=false` for a complete local metrics no-op.
+
 ## Semantic observability (environment, fail open)
 
 ### `ANDMAR_OBSERVABILITY_URL`
@@ -148,8 +166,8 @@ The active value is exposed by `andmar_status` so the agent does not need hidden
 - **Default:** `http://localhost:4000`.
 - **Purpose:** optional endpoint compatible with
   `opencodev2-observability`'s `POST /events`.
-- **Scope:** semantic AndMar events only: routing, delegation, verification,
-  completion, contract and review.
+- **Scope:** semantic AndMar events only: intake, routing, delegation, verification,
+  completion, contract, review and bounded runtime errors.
 - **Failure behavior:** 1 s timeout, no retries, maximum 8 concurrent sends;
   failures are dropped and never affect AndMar execution.
 - **Privacy:** sends structured metadata only. It never sends prompts, task
@@ -158,8 +176,8 @@ The active value is exposed by `andmar_status` so the agent does not need hidden
 ### `ANDMAR_OBSERVABILITY_ENABLED`
 
 - **Default:** enabled.
-- Set to `0` to disable semantic emission completely.
-- Observability is never required for AndMar to work.
+- Set to `0` to disable external HTTP semantic emission. Local `development-metrics` subscribers remain available unless `developmentMetrics.enabled=false`.
+- External observability is never required for AndMar to work.
 
 ```bash
 ANDMAR_OBSERVABILITY_URL=http://localhost:4000
@@ -169,9 +187,9 @@ ANDMAR_OBSERVABILITY_ENABLED=1
 ## Intake options (capability-local, fail open)
 
 The `intake` capability reads its own keys so model/timeout resolution stays
-capability-local: `src/core/jev-client.ts` holds only the Decisions
-transport (endpoint and payload shape, used by Intake alone), no
-provider policy. These keys are **not** part of the validated
+capability-local: `src/core/jev-client.ts` holds only the shared Decisions
+transport (endpoint and payload shape) and no provider policy. Review no longer
+uses Jev. These keys are **not** part of the validated
 `HarnessConfig`: unknown or malformed values fall back to defaults instead of
 failing plugin setup. See [INTAKE.md](INTAKE.md) for the full pilot contract.
 

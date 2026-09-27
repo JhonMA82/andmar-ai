@@ -7,6 +7,7 @@ test("uses safe defaults", () => {
   assert.equal(config.delegation.maxDepth, 3)
   assert.equal(config.shell.maxTimeoutMs, 120_000)
   assert.equal(config.delivery.workUnitCommits, "manual")
+  assert.equal(config.developmentMetrics.enabled, true)
 })
 
 test("rejects invalid depth rather than silently accepting it", () => {
@@ -29,5 +30,14 @@ test("validates work-unit commit policy", () => {
   assert.throws(
     () => resolveConfig({ delivery: { workUnitCommits: "always" } }),
     /delivery\.workUnitCommits/,
+  )
+})
+
+
+test("validates development metrics toggle", () => {
+  assert.equal(resolveConfig({ developmentMetrics: { enabled: false } }).developmentMetrics.enabled, false)
+  assert.throws(
+    () => resolveConfig({ developmentMetrics: { enabled: "yes" } }),
+    /developmentMetrics\.enabled/,
   )
 })

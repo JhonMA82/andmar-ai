@@ -5,6 +5,8 @@ export type SemanticEventType =
   | "andmar.completion"
   | "andmar.contract"
   | "andmar.review"
+  | "andmar.intake"
+  | "andmar.runtime"
 
 export interface SemanticEventInput {
   type: SemanticEventType
@@ -12,8 +14,11 @@ export interface SemanticEventInput {
   payload: Record<string, unknown>
 }
 
+export type SemanticEventListener = (event: SemanticEventInput) => void
+
 export interface SemanticObservability {
   emit(event: SemanticEventInput): void
+  subscribe(listener: SemanticEventListener): () => void
 }
 
 const DEFAULT_URL = "http://localhost:4000"
@@ -56,18 +61,39 @@ function safePayload(payload: Record<string, unknown>): Record<string, unknown> 
 export function createSemanticObservability(location: any): SemanticObservability {
   const app = sourceApp(location)
   let inFlight = 0
+  const listeners = new Set<SemanticEventListener>()
 
   return {
+    subscribe(listener) {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
     emit(event) {
-      if (!enabled()) return
       if (typeof event.sessionID !== "string" || event.sessionID === "") return
+
+      const normalized: SemanticEventInput = {
+        ...event,
+        payload: safePayload(event.payload),
+      }
+
+      // Local subscribers (for example development metrics) remain available
+      // even when the optional external observability endpoint is disabled.
+      for (const listener of listeners) {
+        try {
+          listener(normalized)
+        } catch {
+          // Observability must never become a runtime failure.
+        }
+      }
+
+      if (!enabled()) return
       if (inFlight >= MAX_IN_FLIGHT) return
 
       const body = JSON.stringify({
         source_app: app,
-        session_id: event.sessionID,
-        event_type: event.type,
-        payload: safePayload(event.payload),
+        session_id: normalized.sessionID,
+        event_type: normalized.type,
+        payload: normalized.payload,
       })
 
       inFlight += 1

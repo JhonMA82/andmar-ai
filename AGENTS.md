@@ -108,6 +108,7 @@ Do not add a semantic router until real ambiguous routing cases demonstrate the 
 - For recoverable Work Unit commits, use `work-unit-checkpoint.mjs` as a two-phase gate: `prepare` validates a done/evidenced WU against the exact verified working-state revision; OpenCode performs the native Git commit; `record` stores the current HEAD SHA in `WORK.md`. The helper never stages, commits, pushes, merges, tags, or releases.
 - `delivery.workUnitCommits` is `manual` by default and may be `auto` only by explicit configuration. `auto` authorizes local checkpoint commits only; it never authorizes push/PR/merge/tag/publish/release.
 - Completion is one runtime boundary, not a ceremony chain: for Ledger-backed work require lifecycle `status` → `completionReady:true`, call `andmar_completion_gate` with exact revision/task kind/docs/version/required checks, let the gate derive stored verification/review truth and close the Task Contract on success, then run lifecycle `finalize --revision <accepted-revision>`. Do not repeat manual `testsPassed`/`reviewPassed` claims or call a second normal-flow Task Contract close.
+- Development metrics are diagnostics, not a new gate. `andmar_report` reads one bounded metadata aggregate plus `.andmar/work/*/WORK.md`; never make every task call it, never store prompts/code/tool output in metrics, and never treat a metric threshold as completion authority.
 
 ## Documentation map (read before changing)
 

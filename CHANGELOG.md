@@ -2,6 +2,21 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
+## [0.13.0] - 2026-09-25
+
+### Added
+
+- New `development-metrics` capability and `andmar_report` tool for bounded local measurement of Harness Intervention Rate, Harness Friction Rate, Useful Intervention Rate, Work Unit rework, and checkpoint coverage.
+- Metadata-only Intake and runtime-error semantic events, plus consecutive exact-revision verification duplication detection.
+- Read-only Work Ledger recovery metrics from `.andmar/work/*/WORK.md`, bounded to 100 ledgers and never expanded into a repository-wide scan.
+- Reopen lifecycle history now preserves the previous checkpoint SHA before clearing the active pointer, allowing checkpoint-protected recovery to be measured without a second source of truth.
+
+### Changed
+
+- `SemanticObservability` now supports local subscribers independently of the optional external HTTP sink. External observability can be disabled while local development metrics continue to work.
+- `andmar_status` exposes `developmentMetrics.enabled`; the default is `true` and `false` makes local metric aggregation a no-op.
+- Development metrics are explicitly diagnostic: they do not add a workflow step, completion threshold, dashboard, SQLite database, or project-local telemetry file. Unknown facts are reported as unmeasured rather than guessed.
+
 ## [0.12.0] - 2026-09-25
 
 ### Changed

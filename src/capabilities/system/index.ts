@@ -5,7 +5,7 @@ export const systemCapability: Capability = {
   id: "system",
   version: 1,
   description: "Core safety rails, status and lightweight execution journaling.",
-  async setup({ ctx, config, state }) {
+  async setup({ ctx, config, state, observability }) {
     const disposers: Array<() => void> = []
 
     const toolRegistration = await ctx.tool.transform((editor: any) => {
@@ -33,6 +33,9 @@ export const systemCapability: Capability = {
               delivery: {
                 workUnitCommits: config.delivery.workUnitCommits,
               },
+              developmentMetrics: {
+                enabled: config.developmentMetrics.enabled,
+              },
             }, null, 2),
           }
         },
@@ -57,6 +60,17 @@ export const systemCapability: Capability = {
         ...(typeof callID === "string" ? { callID } : {}),
         at: Date.now(),
       })
+      if (
+        typeof event.tool === "string" &&
+        event.tool.startsWith("andmar_") &&
+        event.status !== "completed"
+      ) {
+        observability?.emit({
+          type: "andmar.runtime",
+          sessionID: event.sessionID,
+          payload: { action: "capability_error", tool: event.tool, status: event.status ?? "unknown" },
+        })
+      }
     })
     if (afterHook?.dispose) disposers.push(() => void afterHook.dispose())
 

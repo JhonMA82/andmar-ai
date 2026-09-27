@@ -22,6 +22,7 @@ AndMar AI uses OpenCode V2 plugin storage for operational facts. This state is d
 | `task-contract/<sessionID>` | `task-contract` | `task-contract` | one active contract per session; `active` → `completed`/`blocked`; unbounded, no pruning yet |
 | `task-contract-review/<sessionID>/<round>` | `task-contract` | `task-contract` | max 2 stored rounds; ordinary audit is optional/advisory, required deep review may use round 2 only after a corrected revision; unbounded, no pruning yet |
 | `task-contract-review-availability/<sessionID>` | `task-contract` | `task-contract` | one exact revision + contract-state terminal attempt marker for timeout/invalid output; stale markers are cleared when state changes; unbounded, no pruning yet |
+| `development-metrics/v1/aggregate` | `development-metrics` | `andmar_report` | one bounded metadata-only aggregate; overwritten as counters advance; disabled by `developmentMetrics.enabled=false` |
 
 ### `runtime/last-start`
 
@@ -83,6 +84,10 @@ remaining round. Review sessions are never resumed. A second review of the
 same exact revision + contract state is refused. Invalid reviewer output is
 never stored and consumes no round.
 
+### `development-metrics/v1/aggregate`
+
+One bounded local aggregate of semantic-event counters used by `andmar_report`. It contains timestamps and numeric counters only (tasks observed/completed, interventions, useful interventions, friction categories and the last verification identity used solely for consecutive duplicate detection). It never stores prompts, requirement text, code, commands, tool output or reviewer output. Work Ledger rework/checkpoint metrics are read from `.andmar/work/*/WORK.md` at report time and are not mirrored into plugin state.
+
 ### `task-contract-review-availability/<sessionID>`
 
 One terminal review-attempt marker written when a bounded review attempt
@@ -111,7 +116,7 @@ transcripts, prompts or source code.
 ## Durable vs temporal
 
 - **Durable:** every key family above survives OpenCode restarts via plugin
-  storage. Capped only for `intake-trace/` (20 entries).
+  storage. `intake-trace/` is capped at 20 entries; `development-metrics/v1/aggregate` is a single bounded record rather than an event log.
 - **Temporal:** hook disposers and in-flight tool executions live only in the
   setup closure; a restart drops them. There is deliberately no project-level
   active-task record yet (see [TESTING.md](TESTING.md)): after a restart,

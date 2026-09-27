@@ -248,7 +248,7 @@ known limitations.
   refinement outcome. Full request text only with `ANDMAR_INTAKE_TRACE_CONTENT=1`.
 - **Configuration:** capability-local `intake.model` / `intake.timeoutMs`
   (model resolution stays capability-local; `src/core/jev-client.ts` holds
-  only the Decisions transport, used by Intake alone) plus
+  only the shared Decisions transport reused by review routing) plus
   environment: `OPENROUTER_API_KEY` (required for live Jev, never stored or
   logged), `ANDMAR_INTAKE_MODEL`, `ANDMAR_INTAKE_TIMEOUT_MS`,
   `ANDMAR_INTAKE_TRACE`, `ANDMAR_INTAKE_TRACE_CONTENT`. Plugin options win over
@@ -388,6 +388,18 @@ known limitations.
   and terminal for that exact review state); review deadline expiry is surfaced
   as unavailable rather than silently retried; real OpenCode runtime
   smoke is covered by manual testing (see [TESTING.md](TESTING.md)).
+
+### `development-metrics`
+
+- **Purpose:** measure whether AndMar interventions are useful and where the harness itself creates friction.
+- **Tool:** `andmar_report`.
+- **State ownership:** one bounded `development-metrics/v1/aggregate` record in plugin storage.
+- **Inputs:** metadata-only semantic events already emitted by Intake, Verification, Review, Completion, Delegation and runtime hooks.
+- **Portable recovery view:** report reads only `.andmar/work/*/WORK.md` (max 100 ledgers) to derive Work Unit completion/reopen/block/resume/checkpoint counts.
+- **Privacy:** never persists prompts, code, commands, tool output, requirement text, reviewer output, or chain-of-thought.
+- **Failure behavior:** metrics are fail-open and diagnostic; recording/report failure can never block implementation or completion.
+- **Configuration:** `developmentMetrics.enabled` defaults to `true`; set `false` for local no-op aggregation. External semantic-event transport is controlled separately by `ANDMAR_OBSERVABILITY_ENABLED`.
+- **Boundary:** no dashboard, SQLite, project-local telemetry file, metric threshold gate, or automatic per-task report. See [DEVELOPMENT-METRICS.md](DEVELOPMENT-METRICS.md).
 
 ## AndMar primary agent
 

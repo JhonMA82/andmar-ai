@@ -204,6 +204,8 @@ There is intentionally no generic Workflow engine between these steps: each
 transition is an explicit primitive call by the agent, and the completion gate
 is the only composition point. See D-015 for why Workflow stays deferred.
 
+`development-metrics` sits outside this request flow. It subscribes to the existing metadata-only semantic-event primitive and exposes `andmar_report` only for explicit harness diagnostics/tuning; it is not another execution step or gate. Work Ledger recovery counts are read only from `.andmar/work/*/WORK.md`. See [DEVELOPMENT-METRICS.md](DEVELOPMENT-METRICS.md) and D-033.
+
 ### 2.3 Documentation ownership
 
 Documentation ownership follows the same boundary rule as code:

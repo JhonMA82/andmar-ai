@@ -169,6 +169,18 @@ function setUnitField(lines, unitId, field, value) {
   if (value !== null) lines.splice(target.line + 1, 0, `  - ${field}: ${value}`);
 }
 
+function getUnitField(lines, unitId, field) {
+  const units = parseWorkUnits(lines);
+  const target = units.find((unit) => unit.id === unitId);
+  if (!target) throw new Error(`Unknown Work Unit: ${unitId}`);
+  const fieldRe = new RegExp(`^\\s+-\\s+${field}:\\s*(.*)$`, "i");
+  for (let i = target.line + 1; i < target.blockEnd; i += 1) {
+    const match = lines[i].match(fieldRe);
+    if (match) return (match[1] ?? "").trim();
+  }
+  return undefined;
+}
+
 function parseEvidenceIds(value) {
   if (!value) return [];
   const matches = value.match(/EV-\d+/gi) ?? [];
@@ -321,12 +333,16 @@ export async function runWorkUnitLifecycle(command, targetDir, unitArg, options 
     if (current !== "done") throw new Error(`reopen requires done Work Unit; ${unitId} is ${current}`);
     if (!options.reason?.trim()) throw new Error("reopen requires --reason");
     if (activeOther) throw new Error(`Cannot reopen ${unitId}; ${activeOther.id} is already active`);
+    const previousCheckpoint = getUnitField(lines, unitId, "Checkpoint");
     setUnitState(lines, unitId, "active");
     setUnitField(lines, unitId, "Evidence", null);
     setUnitField(lines, unitId, "Checkpoint", null);
     setLedgerStatus(lines, "active");
     setNext(lines, `${unitId} — reopened outcome`);
-    appendLifecycleEvent(lines, `${unitId}: done → active — ${options.reason.trim()}`);
+    appendLifecycleEvent(
+      lines,
+      `${unitId}: done → active — ${options.reason.trim()}${previousCheckpoint && previousCheckpoint !== "none" ? `; previous checkpoint ${previousCheckpoint}` : ""}`,
+    );
   } else {
     throw new Error(`Unknown command: ${command}`);
   }

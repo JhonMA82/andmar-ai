@@ -468,3 +468,13 @@ Verification, and lifecycle obligations are green. Optional audit findings are
 advisory and never block completion. Required deep review stays read/search-only,
 fail-closed when unavailable, and bounded to one directed correction cycle.
 Review has no LLM routing dependency and no unchanged-state retry loop.
+
+## D-033 — Development metrics reuse semantic events and remain diagnostic
+
+**Decision:** Development metrics are implemented as one isolated `development-metrics` capability exposing `andmar_report`. It subscribes to the existing metadata-only `SemanticObservability` bus and persists one bounded aggregate at `development-metrics/v1/aggregate`. It does not create a dashboard, SQLite database, project-local metrics file, workflow phase, or completion gate.
+
+Recovery/rework metrics are derived read-only from the known portable Work Ledger path `.andmar/work/*/WORK.md`. The scan is bounded to 100 ledgers and never expands into a repository-wide filesystem scan. Work Unit reopen history preserves the previous checkpoint SHA when one existed before the active pointer is cleared, allowing recovery protection to be measured without another source of truth.
+
+**Why:** The harness needs evidence that its capabilities help more than they obstruct, but a telemetry subsystem would violate the thin-harness goal. Existing semantic events already cover runtime decisions, and Work Ledger already owns durable work-unit history.
+
+**Consequence:** `andmar_report` can show intervention, friction, useful-intervention, rework, and checkpoint-coverage rates without storing user content. Unknown facts such as false-block ground truth, rejected duplicate-work attempts, or independent work lost are reported as unmeasured rather than inferred. Metrics never decide task completion.

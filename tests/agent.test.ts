@@ -193,3 +193,10 @@ test("AndMar agent uses simplified deterministic review policy", () => {
   assert.match(agent, /terminal for the exact revision \+ Task Contract state/i)
   assert.match(agent, /Advisory audit findings do not block completion/i)
 })
+
+
+test("AndMar agent keeps development metrics diagnostic rather than ceremonial", () => {
+  assert.match(agent, /Do \*\*not\*\* call `andmar_report` on every task/i)
+  assert.match(agent, /diagnosing repeated AndMar friction|explicit harness-tuning work/i)
+  assert.match(agent, /never becomes a completion gate|metric thresholds never decide/i)
+})
