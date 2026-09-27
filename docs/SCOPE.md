@@ -87,6 +87,14 @@ operation (`commit`, `push`, `pull-request`, `merge`, `tag`, `version`,
 `publish`, `release`). OpenCode executes the operation with native tools.
 Authorization is operation-specific and never inferred transitively.
 
+GitHub-bound delivery is layered (D-037): official OpenCode GitHub surface
+for execution and credentials, then a **thin deterministic adapter** — lateral
+conventions plus a scripts/skill surface, never a capability and never a Git
+client — that shapes branch slug, commit trailers, PR title/body and
+release-note sections from the Work Ledger, Task Contract and `CHANGELOG.md`.
+The adapter grants no authority and never widens what `andmar_delivery`
+allowed. Non-GitHub destinations stay plain native tools.
+
 ### Development metrics
 
 `andmar_report` reports bounded local diagnostics (intervention, friction,
@@ -103,6 +111,10 @@ signals). Metrics never gate completion or delivery.
   /events`; no capability depends on delivery succeeding.
 - **Skills and scripts**: knowledge and deterministic automation loaded
   through OpenCode, outside the capability inventory.
+- **Thin deterministic delivery adapter** (D-037): lateral conventions plus a
+  scripts/skill surface that shapes GitHub-bound delivery artifacts over the
+  official OpenCode GitHub surface. It is not a capability, not a Git client,
+  and grants no authority.
 
 ## Intentional non-goals
 
@@ -119,7 +131,9 @@ These are omissions by design, not missing TODOs:
 - multi-runtime compatibility or a provider/model abstraction layer;
 - a custom terminal dashboard, file leases, or a generic plugin framework
   on top of the capability framework;
-- autonomous PR/release publication.
+- autonomous PR/release publication (the thin deterministic delivery adapter
+  only shapes artifacts for an already authorized operation; it never decides,
+  schedules or automates a delivery).
 
 ## Legacy compatibility
 

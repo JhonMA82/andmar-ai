@@ -508,7 +508,7 @@ Recovery/rework metrics are derived read-only from the known portable Work Ledge
 
 **Why:** Delivery needs a hard authority boundary, but implementing Git/provider execution would duplicate OpenCode and turn the harness into a workflow/release system. Raw-user intent already exists in session context and is the strongest available source for named-operation authorization.
 
-**Consequence:** `andmar_delivery` never executes VCS/provider actions and owns no durable state. Authorization does not expand from one operation to another. Work Unit checkpoint commits remain governed by `delivery.workUnitCommits`. This completes the planned core evolution; new core behavior now requires separate evidence and an architectural decision.
+**Consequence:** `andmar_delivery` never executes VCS/provider actions and owns no durable state. Authorization does not expand from one operation to another. Work Unit checkpoint commits remain governed by `delivery.workUnitCommits`. This completes the planned core evolution; new core behavior now requires separate evidence and an architectural decision. GitHub-bound execution is layered over the official OpenCode GitHub surface plus a thin deterministic adapter (D-037) that shapes branch slug, commit trailers, PR title/body and release-note sections from the Work Ledger, Task Contract and `CHANGELOG.md`; the adapter is lateral, grants no authority, and non-GitHub destinations stay plain native tools.
 
 
 ## D-035 — Engram is an optional lateral integration, not a capability
@@ -520,6 +520,7 @@ The authoritative order is current explicit user instruction, current repository
 **Why:** OpenCode V2 already consumes Engram MCP instructions and native `mem_*` tools successfully. Re-wrapping them would duplicate an existing subsystem and blur the completed core boundary. Work Ledger already owns current portable work state, so memory should retain durable historical knowledge rather than runtime task state.
 
 **Consequence:** The core inventory remains unchanged. Engram can be installed/removed independently. `andmar_status` reports its integration state, and development metrics can detect excessive or failing retrieval without storing query/result content. Deep health and maintenance stay delegated to `engram doctor`, `engram test`, sync, conflict and project-maintenance CLI commands.
+
 
 ---
 
@@ -568,3 +569,29 @@ unverified completion. Risky work keeps stronger verification as a
 primary-agent discipline ("adversarial final inspection"), not as another
 agent. Reintroducing any second LLM judge requires a new architectural decision
 with fresh evidence.
+
+## D-037 — Outbound GitHub delivery layers a thin deterministic adapter over the official OpenCode GitHub surface
+
+**Decision:** The outbound delivery path is one-directional and layered by proximity to the platform:
+
+```text
+intake / route / work-unit / verify / completion   (AndMar request + completion pipeline)
+        -> AndMar delivery boundary (andmar_delivery: authorization + readiness only)
+        -> official OpenCode GitHub surface (execution + credentials)
+        -> thin deterministic adapter (artifact shaping + reconciliation)
+        -> GitHub (destination)
+```
+
+The adapter is lateral: documented conventions plus a scripts/skill surface. It is never a capability, never a Git client, never a release engine, and never an authorization source. Its only job is to make every externally visible artifact deterministic: branch slug, commit trailers, PR title/body and release-note sections derived from the portable Work Ledger, the Task Contract and `CHANGELOG.md`. Nothing in the payload is improvised by a model at execution time. Credentials, provider calls, retries and resulting state stay with OpenCode's native tools.
+
+The verified official surface (checked 2026-09-26) is OpenCode's GitHub integration: the GitHub Action `anomalyco/opencode/github`, the GitHub App `opencode-agent` installed through `opencode github install`, and its OIDC / `GITHUB_TOKEN` conventions, documented at `opencode.ai/docs/github/` (there is no GitHub page under `opencode.ai/v2/docs/`). That surface is event-triggered and runs OpenCode inside GitHub Actions runners; AndMar therefore claims **no** official outbound GitHub PR/release API. Outbound mutations execute through native OpenCode Git/`gh` tools under those token conventions, and only after `andmar_delivery` allows the one named operation.
+
+**Why:** Determinism at the platform boundary is the cheapest way to keep delivery reproducible without growing the harness: the same Ledger, Task Contract and diff must produce the same branch name, trailers and PR description, so external artifacts stop depending on model improvisation. Keeping the adapter thin and lateral preserves D-034 (authority stays in `andmar_delivery`), preserves the core freeze, and avoids writing a second GitHub client or a release engine. Naming the official surface honestly prevents a false architecture claim.
+
+**Consequence:**
+
+- Authorization remains per-operation and non-transitive: the adapter can never widen what `andmar_delivery` allowed, and a denied operation has no adapter path.
+- An unknown mutation result is reconciled against real repository/PR state before any retry; it is never permission to repeat a side effect.
+- A missing or unconfigured official surface is reported as a limitation and the operation stops; it is never a reason to substitute another authority.
+- The adapter stays outside the capability inventory (skills/scripts/adapters), so no capability, core module or manifest changes with it.
+- Scope non-goals are unchanged: no release engine, no autonomous PR/release publication, no inbound GitHub-triggered pipeline in this decision.

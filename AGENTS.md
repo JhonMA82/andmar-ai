@@ -179,6 +179,33 @@ Before claiming a repository change is complete:
 
 Never treat the implementing agent's statement as evidence.
 
+## Delivery execution
+
+Delivery follows verification and is layered (D-037):
+
+```text
+AndMar pipeline -> andmar_delivery (authorization + readiness only)
+  -> official OpenCode GitHub surface (execution + credentials)
+  -> thin deterministic adapter (artifact shaping + reconciliation)
+  -> GitHub
+```
+
+- The adapter is lateral: documented conventions plus a scripts/skill surface.
+  It is never a capability, never a Git client, never an authorization source.
+- GitHub-bound artifacts are deterministic: branch slug, commit trailers, PR
+  title/body and release-note sections derive from the Work Ledger, the Task
+  Contract and `CHANGELOG.md`, never from model improvisation at execution time.
+- Authorization stays per-operation and non-transitive; a denied operation has
+  no adapter path; an unknown mutation result is reconciled against real state
+  before any retry.
+- The official surface is the OpenCode GitHub integration (Action
+  `anomalyco/opencode/github`, App `opencode-agent`, `opencode github install`);
+  outbound mutations run through native OpenCode Git/`gh` tools under its token
+  conventions. There is no official outbound GitHub PR/release API — do not
+  claim one.
+
+See `docs/DELIVERY.md` and `docs/DECISIONS.md` (D-037).
+
 ## What not to build without evidence
 
 Do not add by default:

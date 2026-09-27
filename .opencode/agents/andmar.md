@@ -20,7 +20,7 @@ Do not create, steer, reopen, or replace the completed Task Contract.
 Do not create a new Work Ledger or reopen a completed ledger.
 Do not call `andmar_completion_gate` again.
 
-For every requested post-completion delivery operation, call `andmar_delivery` with exactly that operation before executing it. Delivery reads the authoritative raw user instruction itself; never pass or invent an authorization boolean. If `allowed:false`, do not perform or substitute the operation. If `allowed:true`, execute only that named operation with native OpenCode Git/VCS/provider tools, inspect the resulting state, and run only proportional checks needed for that operational mutation.
+For every requested post-completion delivery operation, call `andmar_delivery` with exactly that operation before executing it. Delivery reads the authoritative raw user instruction itself; never pass or invent an authorization boolean. If `allowed:false`, do not perform or substitute the operation. If `allowed:true`, execute only that named operation with native OpenCode Git/VCS/provider tools, inspect the resulting state, and run only proportional checks needed for that operational mutation. For GitHub-bound operations, shape the artifacts with the deterministic delivery adapter conventions (`docs/DELIVERY.md`, D-037) before the native mutation.
 
 Authorization is operation-specific: `commit` does not imply `push`; `push` does not imply PR; PR does not imply merge; version does not imply tag/publish/release. A request like “termina la feature” authorizes none of them. Ask again only when the target/scope is materially ambiguous.
 
@@ -136,6 +136,8 @@ Run it through OpenCode's normal shell tool. Do not bypass permissions.
 ## Delivery after completion
 
 Delivery is the final AndMar core boundary, not a Git client. When the user requests `commit`, `push`, `pull-request`, `merge`, `tag`, `version`, `publish`, or `release`, call `andmar_delivery` once per named operation after normal completion (or on an operational continuation). The tool derives authorization from the current raw user message and readiness from Task Contract state. Never infer authorization transitively and never execute a denied operation. After an allowed decision, use only native OpenCode tools for the actual VCS/provider action. Do not reopen a completed Task Contract or Work Ledger solely for delivery.
+
+GitHub-bound execution is layered (D-037): the official OpenCode GitHub surface (Action `anomalyco/opencode/github`, App `opencode-agent`, `opencode github install`, OIDC / `GITHUB_TOKEN` conventions) plus a thin deterministic adapter that derives branch slug, commit trailers, PR title/body and release-note sections from the Work Ledger, Task Contract and `CHANGELOG.md`. The adapter is lateral: it never grants or widens authority, a denied operation has no adapter path, and an unknown mutation result is reconciled against real repository/PR state before any retry. There is no official outbound GitHub PR/release API; outbound mutations run through native OpenCode Git/`gh` tools and non-GitHub destinations stay plain native tools.
 
 ## Stronger verification for risky work
 

@@ -412,16 +412,29 @@ Delivery is the final core coordination layer, not a Git/release subsystem. `and
 completed work / explicit operational continuation
         |
         v
-andmar_delivery(operation)
+andmar_delivery(operation)              AndMar: authorization + readiness only
   +-- named by current user?
   +-- explicitly negated?
   `-- Task Contract completed (when present)?
         |
         v
 OpenCode native Git / PR / tag / publish / release tools
+        |
+        +-- GitHub destinations layer the D-037 path:
+        |     official OpenCode GitHub surface (Action anomalyco/opencode/github,
+        |     App opencode-agent, OIDC / GITHUB_TOKEN conventions; outbound
+        |     mutations via native OpenCode Git / gh tools)
+        |        -> thin deterministic adapter (lateral: conventions +
+        |           scripts/skill) shaping branch slug, commit trailers, PR
+        |           title/body and release-note sections from Work Ledger +
+        |           Task Contract + CHANGELOG
+        |        -> GitHub (destination)
+        |
+        `-- non-GitHub destinations (registry publish, generic release) stay
+            plain native tools with no adapter
 ```
 
-Authorization never expands transitively: commit does not imply push, push does not imply PR, PR does not imply merge, and version does not imply tag/publish/release. Work Unit checkpoint commits remain a separate local recovery policy. This closes the planned core evolution; future additions require demonstrated friction and should remain lateral extensions.
+The layering is proximity to the platform, not call order: every GitHub-bound artifact is derived from Ledger/Contract/CHANGELOG, shaped by the adapter, and mutated through the official OpenCode GitHub surface. Authorization never expands transitively: commit does not imply push, push does not imply PR, PR does not imply merge, and version does not imply tag/publish/release. The adapter cannot widen what `andmar_delivery` allowed, and unknown mutation results are reconciled against real state before any retry (D-037). Work Unit checkpoint commits remain a separate local recovery policy. This closes the planned core evolution; future additions require demonstrated friction and should remain lateral extensions.
 
 ## 8. Documentation integrity
 

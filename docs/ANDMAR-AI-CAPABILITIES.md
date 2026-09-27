@@ -360,14 +360,14 @@ known limitations.
 
 - **Purpose:** gate one named post-completion delivery operation with traceable current-user authorization and completion readiness.
 - **Public primitive:** `andmar_delivery` with `operation = commit | push | pull-request | merge | tag | version | publish | release`.
-- **Execution boundary:** never executes Git, provider APIs, PRs, tags, publishing or releases; OpenCode owns native execution.
+- **Execution boundary:** never executes Git, provider APIs, PRs, tags, publishing or releases; OpenCode owns native execution. GitHub-bound execution is layered (D-037) over the official OpenCode GitHub surface plus a thin deterministic adapter that shapes branch slug, commit trailers, PR title/body and release-note sections from the Work Ledger, Task Contract and `CHANGELOG.md`.
 - **Authorization:** reads the latest raw user request directly from the OpenCode session. The caller cannot assert authorization. Authorization is operation-specific; explicit negation fails closed.
 - **Readiness:** an active/blocked Task Contract denies delivery. A completed Task Contract is ready. With no Task Contract, only an explicitly requested operational/trivial continuation can proceed and the agent must inspect native repository state before execution.
 - **State:** none. It reads `task-contract/<sessionID>` through the shared Task Contract key contract and stores no prompt/request content.
 - **Failure behavior:** missing raw request, missing operation-specific authorization, or unfinished Task Contract -> deny. Ambiguous target/scope remains a native user-question concern.
 - **Interaction:** Work Unit checkpoint commits remain governed separately by `delivery.workUnitCommits`; Delivery never converts that local policy into push/PR/release authority.
 - **Observability:** emits metadata-only `andmar.delivery` authorized/denied events.
-- **Boundary:** no Git client, no workflow engine, no release planner, no implicit operation expansion. See [DELIVERY.md](DELIVERY.md).
+- **Boundary:** no Git client, no workflow engine, no release planner, no implicit operation expansion. The deterministic delivery adapter is lateral (conventions + scripts/skill), grants no authority, and never widens an allowed operation. See [DELIVERY.md](DELIVERY.md).
 
 ### `development-metrics`
 

@@ -2,9 +2,18 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
+
+## [Unreleased]
+
+### Added
+
+- Record D-037: outbound GitHub delivery is layered — AndMar pipeline, `andmar_delivery` (authorization + readiness only), official OpenCode GitHub surface (Action `anomalyco/opencode/github`, App `opencode-agent`, OIDC / `GITHUB_TOKEN` conventions), thin deterministic adapter, GitHub. The adapter is lateral (conventions + scripts/skill), never a capability or a Git client, and shapes branch slug, commit trailers, PR title/body and release-note sections from the Work Ledger, Task Contract and `CHANGELOG.md`.
+- Document the delivery execution boundary in `AGENTS.md`, `docs/DELIVERY.md`, `docs/ARCHITECTURE.md` 7.1, `docs/SCOPE.md`, the AndMar agent policy and the `delivery` capability reference. Non-goals are unchanged: no release engine, no autonomous PR/release publication.
+
 ## [0.15.1] - 2026-09-28
 
 ### Changed
+
 
 - AndMar completion is now determined only by explicit Task Contract obligations, deterministic exact-revision Verification, and docs/version obligations. No second LLM judges completion.
 - `evaluateCompletionV2` takes `(currentRevision, evidence, verification, requiredChecks, contractGate)`; the review-gate parameter is gone.
