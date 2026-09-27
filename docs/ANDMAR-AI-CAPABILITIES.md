@@ -455,9 +455,12 @@ Trigger: parallel writers need isolation beyond native OpenCode worktrees or rep
 
 Add only when the corresponding friction is demonstrated.
 
-### `memory`
+### `memory` — intentionally not a candidate
 
-Low priority for the harness. Memory is not operational state, history, or context. Prefer an external OpenCode memory plugin unless AndMar-specific semantics become necessary.
+Memory is intentionally not an AndMar capability.
+
+Persistent historical memory is provided by the optional Engram integration.
+See [ENGRAM.md](ENGRAM.md).
 
 ## Boundary test for a new capability
 

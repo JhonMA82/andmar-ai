@@ -63,6 +63,12 @@ semantic uses still wait for measured friction.
 
 ## D-006 — Operational state is not memory
 
+> **Superseded in part by D-035.** The separation itself still holds —
+> `ctx.storage` remains durable execution state and is never semantic memory —
+> but memory is no longer simply excluded from the project: Engram is an
+> optional lateral integration that keeps historical memory outside both
+> `ctx.storage` and the capability inventory.
+
 **Decision:** Worker handles, journal data and runtime facts use OpenCode plugin storage.
 
 **Why:** Execution continuity should not depend on semantic memory/retrieval.
@@ -220,6 +226,11 @@ boundary is missing; ordinary code relies on exact-revision Verification.
 ---
 
 ## D-021 — Completed-task operational continuations use a proportional fast-path
+
+> **Updated by D-034.** Post-completion delivery operations now pass through
+> `andmar_delivery` authorization/readiness before OpenCode executes the named
+> operation natively. There is still no release capability and no release
+> engine.
 
 **Decision:** A new request after a `completed` Task Contract that only operates on the already-approved result (version/changelog metadata, commit, tag, push, publish) runs as `continuation.fastPath=true` with `taskKind=internal`: no new/reopened contract, no `andmar_request_review`, no `andmar_completion_gate` replay. Obvious wording fast-paths deterministically with no Jev; ambiguous wording uses the same single Jev call plus three conditional questions. Fallback never fast-paths. `andmar_request_review` refuses completed contracts.
 

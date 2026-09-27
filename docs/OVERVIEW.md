@@ -62,6 +62,7 @@ Ownership:
 | OpenCode V2 | the runtime: sessions, tool execution, permissions, storage, model catalog, VCS, worktrees, skill discovery/loading |
 | AndMar core | minimal infrastructure and contracts: config, state adapter, capability loader, model policy, small shared helpers |
 | Capabilities | generic runtime guarantees integrated with OpenCode hooks/tools/state |
+| Integrations | optional external adapters (`src/integrations/engram/`): discovery, bounded status and policy for a system AndMar does not own; removable and fail-open |
 | Skills | knowledge and procedures, loaded by the model through OpenCode's native skill mechanism |
 | Scripts | deterministic specialized automation, invoked by a skill or by repository tooling |
 
@@ -99,6 +100,9 @@ lifecycle         (andmar_change_impact: documentation and version obligations)
 independent review (andmar_request_review: deterministic none | audit | deep)
    ↓                ordinary code: optional advisory audit; security/migration/architecture: required deep
 completion        (andmar_completion_gate)
+   ↓
+delivery          (andmar_delivery: only when the user explicitly requests one
+                    named operation; OpenCode executes it natively)
 ```
 
 ### Which steps are conditional
@@ -172,7 +176,12 @@ Request: **"Add a new option to the CLI."**
 
 Outside the normal task path, `andmar_report` can inspect bounded local
 development metrics when the user or harness maintainer is evaluating AndMar
-itself. Metrics never become step 11 or a completion requirement.
+itself. Metrics never become a flow step or a completion requirement.
+
+Post-completion delivery (`commit`, `push`, `pull-request`, `merge`, `tag`,
+`version`, `publish`, `release`) is outside the flow above: it happens only
+when the user explicitly names an operation, `andmar_delivery` authorizes and
+readies that operation, and OpenCode executes it with native tools.
 
 No step above assumes the agent's own claim. "Implementation finished" is a
 candidate completion; only the gate decides.
@@ -226,7 +235,7 @@ the generated [CAPABILITIES.md](CAPABILITIES.md).
 | testing and current limitations | [TESTING.md](TESTING.md) |
 | version and changelog policy | [VERSIONING.md](VERSIONING.md) |
 | why the architecture is shaped this way | [DECISIONS.md](DECISIONS.md) |
-| what is in and out of the MVP | [MVP-SCOPE.md](MVP-SCOPE.md), [ROADMAP.md](ROADMAP.md) |
+| what is in and out of scope | [SCOPE.md](SCOPE.md), [ROADMAP.md](ROADMAP.md) |
 | OpenCode V2 API assumptions | [OPENCODE-V2.md](OPENCODE-V2.md) |
 | agent rules for coding agents | [../AGENTS.md](../AGENTS.md) |
 

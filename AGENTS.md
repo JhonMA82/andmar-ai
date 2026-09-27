@@ -128,7 +128,7 @@ intake / Jev / trace / fallback        -> docs/INTAKE.md
 work ledger / portable continuity      -> docs/WORK-LEDGER.md
 request flow / completion policy       -> assets/agents/andmar.md
 why the architecture is this way       -> docs/DECISIONS.md
-what is in / out of the MVP            -> docs/MVP-SCOPE.md
+what is in / out of scope              -> docs/SCOPE.md
 real-world testing (Bun flow)          -> docs/TESTING.md
 version / changelog policy             -> docs/VERSIONING.md
 OpenCode V2 API assumptions            -> docs/OPENCODE-V2.md
@@ -154,7 +154,7 @@ When changing a capability:
 
 Documentation impact is mapping-driven. Do not spread filename-specific conditions through the codebase.
 
-Version impact is a gate, not an automatic release system. The MVP reports the likely SemVer class from explicit change metadata and public-surface paths. It does not publish releases.
+Version impact is a gate, not an automatic release system. AndMar reports the likely SemVer class from explicit change metadata and public-surface paths. It does not publish releases.
 
 Any behavior change to the harness itself must update at least one of:
 

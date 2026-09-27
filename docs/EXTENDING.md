@@ -145,7 +145,7 @@ If execution semantics become repetitive, add one generic workflow capability an
 
 ## Backwards compatibility
 
-MVP state keys are treated as an internal contract. If a state shape changes:
+Current state keys are treated as an internal contract. If a state shape changes:
 
 - increment the capability version;
 - add a small deterministic migration if persisted state would otherwise break;

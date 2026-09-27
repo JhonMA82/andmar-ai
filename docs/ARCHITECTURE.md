@@ -93,7 +93,8 @@ Current inventory (generated, never hand-edited):
 [CAPABILITY-CONTRACT.md](CAPABILITY-CONTRACT.md).
 
 Future examples such as `workflow`, `context-projection` or
-`worktree-provider` are not part of the current MVP. The narrow `jev-decisions`
+`worktree-provider` are not part of the current system; they are
+measured-friction candidates. The narrow `jev-decisions`
 extension point is implemented as the `intake` pilot (typed Jev answers only,
 no free text).
 
@@ -245,7 +246,7 @@ provider/model catalog  (AndMar stores ModelRef values already valid in
                          OpenCode, and never guesses an ID)
 VCS                     (revision capture uses explicit fingerprints;
                          there is no parallel VCS layer)
-worktrees               (the MVP does not override worktrees; a future
+worktrees               (AndMar does not override worktrees; a future
                          adapter would use ctx.worktree.transform())
 ```
 
@@ -357,7 +358,9 @@ intake-trace/...                 task-contract*/...
 
 This is not long-term semantic memory. It is durable execution state.
 
-A future memory capability must not overload these keys or change their semantics.
+Persistent memory never overloads these keys or changes their semantics:
+Engram (`src/integrations/engram/`) is historical advisory context outside
+`ctx.storage`, and Work Ledger state lives in the repository instead.
 
 ## 7. Completion model
 
@@ -438,13 +441,13 @@ The option shape, defaults and matcher syntax live in
 
 ## 9. Versioning integrity
 
-The MVP only computes likely impact:
+AndMar only computes likely impact:
 
 ```text
 none | patch | minor | major
 ```
 
-It does not mutate `package.json`, create tags or publish releases itself. The `delivery` capability now gates authorization/readiness for those named operations; OpenCode still performs any requested mutation natively.
+It does not mutate `package.json`, create tags or publish releases itself. The `delivery` capability gates authorization/readiness for those named operations; OpenCode still performs any requested mutation natively.
 
 The policy and release procedure live in [VERSIONING.md](VERSIONING.md).
 
@@ -500,8 +503,21 @@ OpenCode runtime events remain owned by OpenCode/its observability plugin.
 The optional pieces must remain removable without breaking the core.
 
 
-## Lateral integrations
+## Integrations
+
+> **Integration ≠ Capability.** A capability is a runtime guarantee AndMar
+> owns; an integration only connects an external system.
 
 Integrations are optional external adapters and are not capabilities. They may discover/configure an external system, expose bounded status, add agent guidance, or emit observability metadata, but they cannot become completion/readiness guarantees unless a future architectural decision explicitly promotes that responsibility.
+
+An integration:
+
+- connects a system that lives outside AndMar;
+- is optional and removable without touching the core or a capability;
+- may fail open: its unavailability or failure never blocks execution,
+  Completion or Delivery;
+- does not participate in Completion or Verification automatically;
+- does not acquire core authority: no new state ownership, no new completion
+  rule, no new tool namespace.
 
 The first concrete integration is `src/integrations/engram/`. Engram owns persistent memory and native MCP tools; AndMar owns only the boundary described in [ENGRAM.md](ENGRAM.md). The presence of `integrations/` does not create a generic Integration framework; extract one only after another real integration demonstrates shared semantics.

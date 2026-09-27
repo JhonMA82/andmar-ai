@@ -5,9 +5,17 @@ that should drive the next capability, and the current limitations. The
 system-level explanation is [OVERVIEW.md](OVERVIEW.md); the architecture is
 [ARCHITECTURE.md](ARCHITECTURE.md).
 
-Base snapshot: `JhonMA82/andmar-ai` main at commit `2f50effef624570b6e686d71caa6d430f77a467f`, plus the intake pilot, the `AndMar` primary agent, and the verification-evidence changes documented in the changelog.
+**Historical base snapshot (0.7.x era):** `JhonMA82/andmar-ai` main at commit `2f50effef624570b6e686d71caa6d430f77a467f`, plus the intake pilot, the `AndMar` primary agent, and the verification-evidence changes documented in the changelog. Current behavior is described by [SCOPE.md](SCOPE.md) and the generated [CAPABILITIES.md](CAPABILITIES.md).
 
-This package is intentionally at the point where real use should drive the next capability.
+The core evolution (Intake → Work Ledger → lifecycle → checkpoints →
+Completion → Review → development metrics → Delivery) is complete at
+`v0.15.0`; real use should now drive measured-friction improvements, bug
+fixes and simplifications rather than a new capability.
+
+At the `v0.15.0` consolidation revision, `bun run check` runs **258**
+deterministic tests (architecture check + typecheck + suite). Treat that
+number as revision-bound: the current value is whatever `bun run check`
+prints in your checkout.
 
 ## Install the development build
 
@@ -32,7 +40,7 @@ Start OpenCode in the project you want to test and use **Tab** to select the `An
 
 ## What the first tests should answer
 
-Do not add Workflow, context projection, memory, or more agents before these tests produce evidence that they are needed. (The narrow `intake` Jev pilot is already implemented; broader semantic uses still wait for evidence.)
+Do not add Workflow, context projection, or more agents before these tests produce evidence that they are needed. Do not add an AndMar memory subsystem or memory capability: Engram is the existing optional external memory integration (see [ENGRAM.md](ENGRAM.md)), and it never becomes work state or completion evidence. (The narrow `intake` Jev pilot is already implemented; broader semantic uses still wait for evidence.)
 
 | Scenario | Example | What to observe |
 |---|---|---|
@@ -53,12 +61,17 @@ For every scenario record:
 
 ## Current limitation being measured
 
-AndMar AI has durable verification, contract and child-worker state, but it does **not** yet have a project-level active-task/workflow record.
+AndMar AI has durable verification and contract state in `ctx.storage`, plus
+the repository-native Work Ledger (`.andmar/work/<work-id>/`) for portable
+cross-session continuity. It deliberately still has no runtime workflow or
+orchestration record.
 
 The session-scoped Task Contract (`andmar_task_contract`) now covers the
 active-task part for the current session: goal, requirements, constraints,
 blockers and review rounds survive restarts via plugin storage, and
-`status` re-projects them compactly after compaction. What is still deliberately missing is cross-session takeover:
+`status` re-projects them compactly after compaction. Work Ledger recovery
+covers the portable side: `WORK.md` is read before restarting from scratch,
+and the deterministic lifecycle helper restores unit state. What is still deliberately missing is cross-session takeover:
 `andmar_resume` intentionally enforces parent-session ownership for delegated
 child sessions, and review sessions are never resumed at all. A brand-new
 parent session therefore must not silently take ownership of an old child.

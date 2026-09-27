@@ -15,7 +15,7 @@ Useful patterns:
 - typed/small-model decision primitives;
 - explicit permission/coordination concepts.
 
-Not copied into MVP:
+Not copied into AndMar:
 
 - large predefined agent taxonomy;
 - fast/deep agent duplication;
@@ -31,7 +31,7 @@ Useful patterns:
 - cache semantic decisions;
 - fail open when context optimization fails.
 
-MVP decision:
+Decision:
 
 - architecture reserves the idea, but context pruning/Jev waits for real context-cost measurements.
 
@@ -44,7 +44,7 @@ Useful patterns:
 - bounded returned result;
 - depth and ownership guards.
 
-MVP adoption:
+Adoption:
 
 - native child sessions, handles, depth, resume and ownership.
 
@@ -56,7 +56,7 @@ Useful patterns:
 - operational state in native storage;
 - deterministic rehydration after context lifecycle events.
 
-MVP adoption:
+Adoption:
 
 - methodology remains outside core;
 - operational state is explicitly separate from memory/context.
@@ -71,7 +71,7 @@ Useful patterns:
 - soft prompt policy vs hard runtime policy;
 - reconcile uncertain side effects before retrying.
 
-MVP adoption:
+Adoption:
 
 - exact-revision completion gate and hard-policy mindset.
 
@@ -90,7 +90,7 @@ Useful patterns:
 - manage only resources you own;
 - destructive actions require deterministic guards.
 
-MVP decision:
+Decision:
 
 - keep OpenCode native worktrees first; Lane can become an optional strategy later.
 
@@ -106,7 +106,7 @@ Useful patterns:
 - worker output as untrusted data;
 - delegation cannot increase authority.
 
-MVP decision:
+Decision:
 
 - do not build the workflow engine yet. If demonstrated, start with only sequence/parallel/gate/repeat.
 
@@ -119,6 +119,6 @@ Useful patterns:
 - control-plane mutations can be serialized while workers remain parallel;
 - strong ownership before manipulating resources.
 
-MVP decision:
+Decision:
 
 - no UI dependency; preserve normal OpenCode sessions/events so Herdr-style integrations remain possible.

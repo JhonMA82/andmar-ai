@@ -1,6 +1,6 @@
 # OpenCode V2 API Assumptions
 
-This file records the OpenCode V2 primitives the MVP intentionally relies on, so future upgrades can audit compatibility without reading the entire repository.
+This file records the OpenCode V2 primitives AndMar intentionally relies on, so future upgrades can audit compatibility without reading the entire repository.
 
 **Scope:** the external contract this repository depends on. Architectural
 boundaries derived from it are summarized in [ARCHITECTURE.md](ARCHITECTURE.md)
@@ -8,7 +8,7 @@ boundaries derived from it are summarized in [ARCHITECTURE.md](ARCHITECTURE.md)
 
 Validated package target for this test build: `@opencode/plugin@2.0.4`.
 
-Reference documentation used during the MVP design:
+Reference documentation used during the design:
 
 - https://opencode.ai/v2/docs/build/plugins
 - https://opencode.ai/v2/docs/plugins
@@ -174,7 +174,7 @@ rather than shelling out to Git unless a V2 API gap is demonstrated.
 
 ## Worktrees
 
-The MVP does not override worktrees. A future adapter should use `ctx.worktree.transform()` so removing the adapter restores OpenCode's strategy.
+AndMar does not override worktrees. A future adapter should use `ctx.worktree.transform()` so removing the adapter restores OpenCode's strategy.
 
 ## Upgrade audit checklist
 

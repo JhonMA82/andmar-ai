@@ -1,5 +1,6 @@
 # Changelog
 
+All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
 ## [0.15.0] - 2026-09-25
 
@@ -14,7 +15,9 @@
 - Document Engram ownership, failure semantics, project identity, sync, diagnostics, and non-goals.
 - Core remains complete: capability/tool inventory stays at 9 capabilities / 15 tools.
 
-All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
+### Changed
+
+- Documentation consolidated on the `v0.15.0` baseline: retired `docs/MVP-SCOPE.md` in favor of the current `docs/SCOPE.md`, marked the roadmap core evolution as complete, aligned README/ARCHITECTURE/TESTING/VERSIONING/OVERVIEW with the implemented Delivery, Review and Engram boundaries, and marked superseded decisions (`D-006` superseded in part by `D-035`, `D-021` updated by `D-034`).
 
 ## [0.14.0] - 2026-09-25
 
