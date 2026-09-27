@@ -247,8 +247,9 @@ known limitations.
   called/available flags, source, reason, latency, raw typed answers, and the
   refinement outcome. Full request text only with `ANDMAR_INTAKE_TRACE_CONTENT=1`.
 - **Configuration:** capability-local `intake.model` / `intake.timeoutMs`
-  (model resolution stays capability-local; `src/core/jev-client.ts` holds
-  only the shared Decisions transport reused by review routing) plus
+  (model resolution stays capability-local; `src/capabilities/intake/jev-client.ts`
+  holds only the Decisions transport used by Intake, and review routing is
+  deterministic with no Jev dependency) plus
   environment: `OPENROUTER_API_KEY` (required for live Jev, never stored or
   logged), `ANDMAR_INTAKE_MODEL`, `ANDMAR_INTAKE_TIMEOUT_MS`,
   `ANDMAR_INTAKE_TRACE`, `ANDMAR_INTAKE_TRACE_CONTENT`. Plugin options win over

@@ -104,7 +104,8 @@ ctx.session.context({ sessionID })       // SessionMessageInfo[]
 user prompt (`SessionInboxUser`). To obtain a child's response the pattern
 is `prompt -> wait -> context`. Delegation uses the generic
 `src/core/session.ts` (`runChildTask`); final review uses the narrower
-`src/core/review-session.ts` (`runReview`) so review has its own short
+`src/capabilities/task-contract/review-session.ts` (`runReview`) so review has
+its own short
 wall-clock budget and structured unavailable result without changing worker
 delegation semantics. Before v0.5.x both capabilities serialized the
 prompt result object instead of the child's actual answer; real smoke

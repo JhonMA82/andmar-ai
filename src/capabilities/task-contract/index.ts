@@ -2,7 +2,7 @@ import type { Capability, ChangeKind, CompletionEvidence, StateStore } from "../
 import { evaluateCompletionV2 } from "../../core/lifecycle.ts"
 import { readVerificationState } from "../../core/verification-state.ts"
 import type { SemanticObservability } from "../../core/observability.ts"
-import { runReview } from "../../core/review-session.ts"
+import { runReview } from "./review-session.ts"
 import {
   MAX_REVIEW_ROUNDS,
   buildReviewPacket,

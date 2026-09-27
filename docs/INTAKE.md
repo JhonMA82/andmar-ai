@@ -259,9 +259,11 @@ otherwise the default:
 { "intake": { "model": "typesafe/jev-1.13", "timeoutMs": 8000 } }
 ```
 
-Model resolution lives in the capability. `src/core/jev-client.ts` holds only
-the shared Decisions transport (endpoint, fetch and payload shape) reused by
-review routing in `task-contract`; no provider policy lives in core.
+Model resolution lives in the capability. `src/capabilities/intake/jev-client.ts`
+holds only the OpenRouter Decisions transport (endpoint, fetch and payload
+shape) used by Intake; no provider policy lives in core. Jev is owned
+exclusively by Intake — review routing is deterministic and has no Jev
+dependency.
 
 ## Contract verification (2026-09-21)
 
