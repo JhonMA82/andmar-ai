@@ -8,7 +8,7 @@ inventory ([CAPABILITIES.md](CAPABILITIES.md)) plus
 excluded is [SCOPE.md](SCOPE.md). This document is canonical for
 *triggers*, not for current behavior.
 
-## Current baseline — v0.15.0
+## Current baseline — v0.15.1
 
 The planned core evolution is **complete**:
 

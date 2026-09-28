@@ -2,7 +2,7 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
-## [Unreleased]
+## [0.15.1] - 2026-09-28
 
 ### Changed
 
