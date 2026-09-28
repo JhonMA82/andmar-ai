@@ -144,7 +144,7 @@ known limitations.
 - **Produces:** documentation/version staleness obligations. **Consumes:**
   configured documentation rules and public paths only.
 - **Owns:** no state keys of its own. **Must not own:** receipts, evidence,
-  contracts, reviews, or completion state.
+  contracts, or completion state.
 - **State:** stateless.
 - **Configuration:** `documentation.rules` (unique ids, `code`/`docs` glob
   patterns with `*`/`**`/`?`), `versioning.enabled` and
@@ -248,8 +248,7 @@ known limitations.
   refinement outcome. Full request text only with `ANDMAR_INTAKE_TRACE_CONTENT=1`.
 - **Configuration:** capability-local `intake.model` / `intake.timeoutMs`
   (model resolution stays capability-local; `src/capabilities/intake/jev-client.ts`
-  holds only the Decisions transport used by Intake, and review routing is
-  deterministic with no Jev dependency) plus
+  holds only the Decisions transport used by Intake) plus
   environment: `OPENROUTER_API_KEY` (required for live Jev, never stored or
   logged), `ANDMAR_INTAKE_MODEL`, `ANDMAR_INTAKE_TIMEOUT_MS`,
   `ANDMAR_INTAKE_TRACE`, `ANDMAR_INTAKE_TRACE_CONTENT`. Plugin options win over
@@ -291,104 +290,71 @@ known limitations.
 
 - **Purpose:** Persist and update the active Task Contract — the small,
   bounded record of what the user actually asked for (goal, explicit
-  requirements, constraints, requirement evidence) — plus bounded
-  independent review rounds, so implementation finishing is never confused
-  with the user's request being fulfilled.
+  requirements, constraints, requirement evidence) — and enforce the
+  evidence-derived completion boundary, so implementation finishing is never
+  confused with the user's request being fulfilled.
 - **Non-goals:** Not a workflow engine, plan, specification system, memory,
   TODO list, DAG, swarm, or ODD/RDD infrastructure. No priorities, scores,
-  weights, or percentages.
+  weights, or percentages. No second LLM that judges whether the task is
+  done; that subsystem was removed in 0.15.x (see
+  [DECISIONS.md](DECISIONS.md)).
 - **Public primitives:** `andmar_task_contract` (single tool, `op`:
   `create` with goal/desiredOutcome/requirements/constraints plus optional
-  verificationSurface/reviewRequired and deterministic `REQ-N`/`CON-N` ids;
-  `status` returning a compact reinjectable brief with counts; `update` for
-  requirement transitions; `record_evidence` binding one evidence pointer of
-  type `verification`/`runtime`/`diff`/`review`/`user-decision`/`external` to
-  a requirement; `steer` appending new obligations without removing;
-  `close` marking `completed`/`blocked`, with completed-close retained as a
-  compatibility path); `andmar_completion_gate` (input: `currentRevision`,
-  `taskKind`, `docsStatus`, `versionStatus`, optional `requiredChecks`; legacy
-  `CompletionEvidence` accepted for compatibility; output includes `ok`,
-  `reasons`, `contractClosed`, and review status); `andmar_request_review` (input:
-  `revision` plus bounded `changedPaths`/`verificationSummary`/
-  `knownLimitations`; deterministic routing sets a `none | audit | deep`
-  mode with no Jev call: ordinary feature/bugfix/refactor/debug work gets an
-  optional advisory `audit`, security/migration/architecture get required
-  `deep`, and `mode=none` returns `skipped` and stores nothing; otherwise a
-  sanitized compact packet (no receipt/execution identifiers) runs in a fresh
-  frontier-profile child session restricted to `read`/`glob`/`grep` when the
-  host exposes `ctx.permission.rules`).
-- **Produces:** the session's contract, up to two review records, and final
-  completion verdict/closure. **Consumes:** routing-adjacent
-  triviality/review-need helpers from core plus verification receipts/evidence
-  read-only at completion.
-- **Owns:** `task-contract/<sessionID>`,
-  `task-contract-review/<sessionID>/<round>`,
-  `task-contract-review-availability/<sessionID>`. **Must not own:**
-  verification receipts/evidence, worker, journal, or intake keys.
-- **State:** contract (`goal`, requirements with status/evidence/reason,
-  constraints, `reviewRequired`, `active`/`blocked`/`completed`) and review
-  records (`round`, fresh `reviewSessionID`, `revision`, `contractStateToken`,
-  `verdict`, `findings`, `notes`) plus one exact-state terminal attempt marker
-  when a bounded reviewer times out or emits invalid final output. No
-  transcripts, chain-of-thought, prompts, or source code.
-- **Configuration:** reviewer model is the configured
-  `frontier` profile or the parent session model (never a hard-coded id).
-  Review routing has no environment knobs and no Jev dependency. Fixed review
-  attempt budgets remain 90 s `audit` / 180 s `deep`.
-- **External contracts:** `ctx.session.get/create/prompt/wait/context`
-  through a review-specific bounded runner (delegation keeps its own generic
-  child-task runner); verified against the installed
-  `@opencode/plugin@2.0.4` types — see [OPENCODE-V2.md](OPENCODE-V2.md) for
-  the read-only and compaction findings).
-- **Interaction:** review routing is fully deterministic (`minimumReviewMode`:
-  trivial/non-code `none`, ordinary feature/bugfix/refactor/debug `audit`,
-  security/migration/architecture `deep`). Ordinary audit is advisory and does
-  not participate in completion; deep review is required. The same capability
-  owns the completion gate, so a successful
-  exact-revision evaluation can close the Task Contract without a cross-
-  capability write or second close call. `deep` unavailability stays
-  fail-closed. `delegation`
-  ownership is untouched (review sessions are not worker records, so
-  `andmar_resume` denies them).
+  verificationSurface and deterministic `REQ-N`/`CON-N` ids;
+  `status` returning a compact reinjectable brief with requirement counts;
+  `update` for requirement transitions; `record_evidence` binding one
+  evidence pointer of type `verification`/`runtime`/`diff`/`user-decision`/
+  `external` to a requirement; `steer` appending new obligations without
+  removing; `close` marking `completed`/`blocked`, with completed-close
+  retained as a compatibility path); `andmar_completion_gate` (input:
+  `currentRevision`, `taskKind`, `docsStatus`, `versionStatus`, optional
+  `requiredChecks`; legacy `CompletionEvidence` accepted for compatibility;
+  output includes `ok`, `reasons`, and `contractClosed`).
+- **Produces:** the session's contract and the final completion
+  verdict/closure. **Consumes:** core triviality helpers plus verification
+  receipts/evidence read-only at completion.
+- **Owns:** `task-contract/<sessionID>` and
+  `task-contract-completion/<sessionID>` (the completion seal). **Must not
+  own:** verification receipts/evidence, worker, journal, or intake keys.
+- **State:** contract only (`goal`, optional `desiredOutcome`/
+  `verificationSurface`, requirements with status/evidence/reason,
+  constraints, `active`/`blocked`/`completed`). No transcripts,
+  chain-of-thought, prompts, or source code. Old `task-contract-review*`
+  entries from previous versions are unused data; nothing reads or writes
+  them and no migration exists.
+- **Configuration:** none. The capability has no environment knobs and no
+  model selection; it reuses the configured verification and documentation/
+  version surfaces.
+- **External contracts:** verification receipts/evidence read through
+  `src/core/verification-state.ts` at completion; no child sessions are
+  created.
+- **Interaction:** the same capability owns the completion gate, so a
+  successful exact-revision evaluation closes the Task Contract without a
+  cross-capability write or second close call. Completion order is fixed:
+  exact-revision verification, Task Contract requirement gate, docs/version
+  obligations. `delegation` ownership is untouched.
 - **Failure / fallback:** duplicate active `create` refused (steer
   instead); absurd requirement transitions refused; `blocked`/`skipped`
-  without reason refused; steering a `completed` contract refused; review
-  without a contract refused; review on a `completed` contract refused (operational
-  continuations must not re-review approved work); rounds beyond two return
-  `blocked`; the second stored round is the only corrected-revision follow-up
-  for required deep review. Timeout and invalid reviewer output both become a
-  structured exact-state `unavailable` outcome, store no review round, and a
-  repeated request for the same revision + contract state is refused. Trivial tasks skip the
-  contract entirely (proportional escape hatch). With non-empty
-  `requiredChecks`, completion derives pass/fail from stored verification;
-  caller `testsPassed`/`reviewPassed` booleans are not authoritative.
-- **Security / trust:** review sessions inherit parent permissions like any
-  native child and are additionally constrained to read/search-only review:
-  deny-all plus `read`/`glob`/`grep` session rules via
-  `ctx.permission.rules` when the host exposes it (otherwise prompt-only and
-  the result surfaces `permissionsApplied=false`);
-  reviewers never edit or fix. Reviewer packets redact
-  opaque hashes and `receipt/...`/`execution/...`/`verification/...` internal
-  references. Evidence stores pointers, never content.
+  without reason refused; steering a `completed` contract refused; trivial
+  tasks skip the contract entirely (proportional escape hatch). With
+  non-empty `requiredChecks`, completion derives pass/fail from stored
+  verification; a caller `testsPassed` boolean is not authoritative.
+- **Security / trust:** evidence stores pointers, never content. No child
+  session, reviewer prompt, or reviewer permission policy exists.
 - **Testing contract:** deterministic unit tests for creation, steering,
-  pending/evidence/blocked/stale gates, review validation, freshness, round
-  cap, and trivial bypass, plus tool-level positive/negative smoke through
-  the completion gate (`tests/task-contract.test.ts`).
+  evidence, pending/evidence/blocked/stale gates, and trivial bypass, plus
+  tool-level positive/negative smoke proving that contract + exact-revision
+  verification completes a task and that missing verification still blocks it
+  (`tests/task-contract.test.ts`).
 - **Observability:** emits `andmar.contract` (action plus requirement
-  counts, never texts) and `andmar.review` (round, verdict, finding
-  counts, plus routing `mode`/`source`/`permissionsApplied` metadata, never
-  packet or output), plus `andmar.completion` with bounded verification,
-  requirement, review, lifecycle-status and `contractClosed` metadata.
-- **Known limitations:** reviewer read-only is API-enforced only when the
-  host exposes `ctx.permission.rules`; older hosts fall back to prompt
-  enforcement; compaction continuity is pull-based (`status`) because
-  hijacking the compaction summary would destroy context; reviewer output
-  quality depends on the model behind the `frontier` profile (without a
-  mapping it inherits the parent model; verdict parsing is tolerant but a
-  reviewer that never emits valid final text leaves the review round unstored
-  and terminal for that exact review state); review deadline expiry is surfaced
-  as unavailable rather than silently retried; real OpenCode runtime
-  smoke is covered by manual testing (see [TESTING.md](TESTING.md)).
+  counts, never texts) and `andmar.completion` with bounded verification,
+  requirement, lifecycle-status and `contractClosed` metadata. There is no
+  `andmar.review` event.
+- **Known limitations:** compaction continuity is pull-based (`status`)
+  because hijacking the compaction summary would destroy context; the
+  `evidence` input object of the completion gate is a legacy compatibility
+  path; real OpenCode runtime smoke is covered by manual testing (see
+  [TESTING.md](TESTING.md)).
 
 ### `delivery`
 
@@ -408,9 +374,9 @@ known limitations.
 - **Purpose:** measure whether AndMar interventions are useful and where the harness itself creates friction.
 - **Tool:** `andmar_report`.
 - **State ownership:** one bounded `development-metrics/v1/aggregate` record in plugin storage.
-- **Inputs:** metadata-only semantic events already emitted by Intake, Verification, Review, Completion, Delegation and runtime hooks.
+- **Inputs:** metadata-only semantic events already emitted by Intake, Verification, Completion, Delegation and runtime hooks.
 - **Portable recovery view:** report reads only `.andmar/work/*/WORK.md` (max 100 ledgers) to derive Work Unit completion/reopen/block/resume/checkpoint counts.
-- **Privacy:** never persists prompts, code, commands, tool output, requirement text, reviewer output, or chain-of-thought.
+- **Privacy:** never persists prompts, code, commands, tool output, requirement text, or chain-of-thought.
 - **Failure behavior:** metrics are fail-open and diagnostic; recording/report failure can never block implementation or completion.
 - **Configuration:** `developmentMetrics.enabled` defaults to `true`; set `false` for local no-op aggregation. External semantic-event transport is controlled separately by `ANDMAR_OBSERVABILITY_ENABLED`.
 - **Boundary:** no dashboard, SQLite, project-local telemetry file, metric threshold gate, or automatic per-task report. See [DEVELOPMENT-METRICS.md](DEVELOPMENT-METRICS.md).
@@ -433,7 +399,7 @@ Candidates are evidence-driven, not a build queue.
 
 ### `workflow`
 
-Trigger: repeated real-world friction coordinating task state, completion contracts, resume, or bounded review/correction loops.
+Trigger: repeated real-world friction coordinating task state, completion contracts, or resume.
 
 Start small. The first implementation should solve the observed problem before adding generic DAGs or a workflow DSL.
 

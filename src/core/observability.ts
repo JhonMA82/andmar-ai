@@ -5,7 +5,6 @@ export type SemanticEventType =
   | "andmar.verification"
   | "andmar.completion"
   | "andmar.contract"
-  | "andmar.review"
   | "andmar.intake"
   | "andmar.runtime"
 

@@ -491,7 +491,7 @@ test("completed contract + obvious operational fast-paths without Jev", async ()
     const state = memoryState();
     await state.set("task-contract/ses-op", {
       id: "tc-ses-op", sessionID: "ses-op", goal: "done", requirements: [], constraints: [],
-      reviewRequired: false, status: "completed", createdAt: 1, updatedAt: 1,
+      status: "completed", createdAt: 1, updatedAt: 1,
     });
     let jevCalled = false;
     const original = (globalThis as { fetch?: unknown }).fetch;
@@ -513,7 +513,7 @@ test("completed contract + ambiguous Jev operational uses one Jev call and fast-
     const state = memoryState();
     await state.set("task-contract/ses-amb", {
       id: "tc-ses-amb", sessionID: "ses-amb", goal: "done", requirements: [], constraints: [],
-      reviewRequired: false, status: "completed", createdAt: 1, updatedAt: 1,
+      status: "completed", createdAt: 1, updatedAt: 1,
     });
     let calls = 0;
     let seenQuestions: string[] = [];

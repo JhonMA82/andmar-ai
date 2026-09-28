@@ -2,6 +2,41 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
+## [Unreleased]
+
+### Changed
+
+- AndMar completion is now determined only by explicit Task Contract obligations, deterministic exact-revision Verification, and docs/version obligations. No second LLM judges completion.
+- `evaluateCompletionV2` takes `(currentRevision, evidence, verification, requiredChecks, contractGate)`; the review-gate parameter is gone.
+- `contractMetrics`, `summarizeContract` and `formatContractBrief` now take only the contract. `ContractMetrics` reports requirement counts only.
+- `andmar_completion_gate` derives and reports verification, requirement and docs/version truth only. Removing Review did not weaken verification: a manual `testsPassed: true` still cannot replace stored exact-revision Verification where verification is required.
+- Task Contract creation still requires `taskKind`; it now selects the completion obligations and triviality policy instead of a review policy.
+- Capability/tool inventory is now 9 capabilities / 14 tools.
+- Agent instructions, README, AGENTS.md and every current-state document describe completion without a Review workflow. Risky work keeps stronger verification as a primary-agent discipline, renamed "adversarial final inspection".
+
+### Removed
+
+- The entire AndMar independent-review subsystem: the `andmar_request_review` tool, reviewer child sessions, review routing (`none | audit | deep`), review rounds, review timeout, review availability state, review gate and review requirement in completion.
+- `src/capabilities/task-contract/review-session.ts` and its dedicated test file.
+- Review domain types and helpers: `ReviewVerdict`, `ReviewMode`, `ReviewFinding`, `ReviewResult`, `ReviewRecord`, `ReviewAvailabilityRecord`, `ReviewGateResult`, `MAX_REVIEW_ROUNDS`, `REQUIRED_REVIEW_KINDS`, `requiresIndependentReview`, `minimumReviewMode`, `evaluateReviewGate`, `validateReviewResult`, `buildReviewPacket`, `isBlockingFinding`, reviewer permission narrowing and reviewer-output extraction.
+- `TaskContract.reviewRequired` and the `reviewRequired must be derived from taskKind` validation, plus `reviewRequired` from creation, events, status output, summaries and briefs.
+- The `review` requirement-evidence type; the remaining types are `verification`, `runtime`, `diff`, `user-decision`, `external`.
+- `CompletionEvidence.reviewPassed` and the `evidence.reviewPassed === false` completion check.
+- The `andmar.review` semantic event type and all its emitters.
+- The Development Metrics Review section: `activity.review`, `review.rejections`, `review.timeouts`, `review.invalidOutputs`, `review.unnecessaryRetriesPrevented`, the `andmar.review` event processing, and the review coverage strings.
+- The `task-contract-review/<sessionID>/...` and `task-contract-review-availability/<sessionID>` state keys.
+
+### Not changed
+
+- No compatibility layer, stub, flag, adapter or state migration was added. Old stored review entries simply become unused data; nothing reads or writes them.
+- The `ChangeKind` value `"review"` is unrelated and remains: it classifies a user-requested review-the-code task.
+- Exact-revision Verification, receipts, required checks, stale-revision detection, requirement evidence, Work Ledger, Work Units, checkpoints, `finalize`, and Delegation are unchanged.
+
+### Documentation
+
+- Recorded the removal as `D-036` and marked the superseded review decisions (`D-018`, `D-022`, `D-023`, `D-024`, `D-032`; `D-017`, `D-019`, `D-020`, `D-021`, `D-029`, `D-031` updated) as historical.
+- `docs/STATE.md`, `docs/CONFIGURATION.md`, `docs/VERIFICATION.md`, `docs/ARCHITECTURE.md`, `docs/OVERVIEW.md`, `docs/SCOPE.md`, `docs/ROADMAP.md`, `docs/TESTING.md`, `docs/OPENCODE-V2.md`, `docs/WORK-LEDGER.md`, `docs/DEVELOPMENT-METRICS.md` and `docs/ANDMAR-AI-CAPABILITIES.md` describe the current architecture without Review.
+
 ## [0.15.0] - 2026-09-25
 
 ### Added

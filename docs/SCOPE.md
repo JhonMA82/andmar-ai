@@ -20,9 +20,8 @@ The planned eight-step core evolution is finished:
 3. Work-unit lifecycle       deterministic helper
 4. Work-unit checkpoints     focused verification + recovery commits
 5. Completion simplification evidence-derived completion
-6. Review simplification     deterministic + bounded review
-7. Development metrics       intervention / friction / recovery / value
-8. Delivery                  authorization + readiness only
+6. Development metrics       intervention / friction / recovery / value
+7. Delivery                  authorization + readiness only
 ```
 
 There is no planned Step 9. Additional work is classified as a bug fix, a
@@ -46,7 +45,6 @@ see [CAPABILITIES.md](CAPABILITIES.md) and
 - documentation/version impact detection;
 - exact-revision verification evidence;
 - evidence-derived completion boundary;
-- deterministic, bounded review routing;
 - authorization/readiness gating for delivery operations.
 
 ### OpenCode integration
@@ -75,26 +73,12 @@ helpers (`validate-work-ledger.mjs`, `work-ledger-lifecycle.mjs`,
 ### Completion
 
 `completionReady` in the Ledger -> integrated exact-revision Verification ->
-required deep review only when applicable -> `andmar_completion_gate`, which
-derives verification/review truth from stored evidence and closes the Task
+`andmar_completion_gate`, which derives verification truth from stored evidence,
+requires every Task Contract requirement to be resolved and evidenced for the
+same revision, requires clean docs/version obligations, and closes the Task
 Contract in the same operation -> Ledger `finalize --revision`.
 
-### Review
-
-```text
-trivial / docs / internal     -> none
-feature / bugfix / refactor
-/debug                        -> Verification primary; independent review is
-                                 advisory (one bounded audit) and never
-                                 required for completion
-security / migration
-/architecture                 -> required deep review: initial review, at
-                                 most one directed correction at a new
-                                 revision, one fresh final review
-```
-
-Review has no Jev dependency, re-runs no verification, performs no
-filesystem-wide scans, and has no automatic retry loop.
+There is no independent-review subsystem. No second LLM judges completion.
 
 ### Delivery
 
@@ -142,9 +126,8 @@ These are omissions by design, not missing TODOs:
 Compatibility paths remain only because tests still cover them; the normal
 agent flow neither uses nor recommends them:
 
-- manual `testsPassed` / `reviewPassed` completion inputs;
-- legacy completion-seal / completed-close compatibility;
-- legacy review records without `contractStateToken`.
+- the manual `testsPassed` completion input;
+- legacy completion-seal / completed-close compatibility.
 
 Removing them is a separate breaking change with real evidence, not part of
 routine cleanup.

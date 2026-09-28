@@ -2,27 +2,17 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import {
   MAX_REQUIREMENTS,
-  MAX_REVIEW_ROUNDS,
-  buildReviewPacket,
   contractStateToken,
   createTaskContract,
   evaluateRequirementGate,
-  evaluateReviewGate,
   formatContractBrief,
-  isBlockingFinding,
   isTrivialTask,
-  minimumReviewMode,
   recordRequirementEvidence,
-  reviewAvailabilityKey,
-  requiresIndependentReview,
   steerTaskContract,
   updateRequirementStatus,
-  validateReviewResult,
-  type ReviewRecord,
   type TaskContract,
 } from "../src/core/task-contract.ts"
 import { evaluateCompletionV2 } from "../src/core/lifecycle.ts"
-import { ChildSessionTimeoutError } from "../src/core/session.ts"
 import { taskContractCapability } from "../src/capabilities/task-contract/index.ts"
 
 function makeContract(): TaskContract {
@@ -34,17 +24,6 @@ function makeContract(): TaskContract {
   })
   assert.equal(created.ok, true)
   return (created as { ok: true; contract: TaskContract }).contract
-}
-
-function reviewRecord(round: number, verdict: "approve" | "reject", revision: string): ReviewRecord {
-  return {
-    verdict,
-    findings: verdict === "approve" ? [] : [{ requirementId: "REQ-3", observation: "tests not updated", evidencePointer: "diff" }],
-    round,
-    reviewSessionID: `review-ses-${round}`,
-    revision,
-    at: round,
-  }
 }
 
 // --- Contract creation: goal + requirements + constraints stored correctly ---
@@ -153,133 +132,20 @@ test("revision-bound evidence for another revision is stale", () => {
   assert.deepEqual(gate.stale, ["REQ-1"])
 })
 
-// --- Review required: non-trivial code task without review -> denied ---
+// --- Trivial task: no mandatory contract ceremony ---
 
-test("required review without any recorded review denies completion", () => {
-  const contract = makeContract()
-  const gate = evaluateReviewGate(contract, [], "rev-a", true)
-  assert.equal(gate.ok, false)
-  assert.match(gate.reasons.join(" "), /no review recorded/)
-})
-
-test("review rejection denies completion", () => {
-  const contract = makeContract()
-  const gate = evaluateReviewGate(contract, [reviewRecord(1, "reject", "rev-a")], "rev-a", true)
-  assert.equal(gate.ok, false)
-  assert.match(gate.reasons.join(" "), /blocking finding/)
-  assert.equal(gate.rejectCount, 1)
-})
-
-test("current approved review passes the review gate", () => {
-  const contract = makeContract()
-  const gate = evaluateReviewGate(contract, [reviewRecord(1, "approve", "rev-a")], "rev-a", true)
-  assert.equal(gate.ok, true)
-})
-
-test("stale review revision denies completion", () => {
-  const contract = makeContract()
-  const gate = evaluateReviewGate(contract, [reviewRecord(1, "approve", "rev-a")], "rev-b", true)
-  assert.equal(gate.ok, false)
-  assert.match(gate.reasons.join(" "), /not the current revision/)
-})
-
-test("new review records are stale when Task Contract obligations change", () => {
-  const contract = makeContract()
-  const reviewed: ReviewRecord = {
-    ...reviewRecord(1, "approve", "rev-a"),
-    contractStateToken: contractStateToken(contract),
-  }
-  const steered = steerTaskContract(contract, { addConstraints: ["preserve wire compatibility"] })
-  assert.equal(steered.ok, true)
-  if (!steered.ok) return
-  const gate = evaluateReviewGate(steered.contract, [reviewed], "rev-a", true)
-  assert.equal(gate.ok, false)
-  assert.match(gate.reasons.join(" "), /older Task Contract state/)
-})
-
-// --- Fresh second review: session #1 != session #2; max 2 rounds -> blocked ---
-
-test("second review round uses a different session and two rejects block the task", () => {
-  const contract = makeContract()
-  const reviews = [reviewRecord(1, "reject", "rev-a"), reviewRecord(2, "reject", "rev-b")]
-  assert.notEqual(reviews[0]?.reviewSessionID, reviews[1]?.reviewSessionID)
-  const gate = evaluateReviewGate(contract, reviews, "rev-b", true)
-  assert.equal(gate.ok, false)
-  assert.equal(gate.exhausted, true)
-  assert.equal(gate.rounds, MAX_REVIEW_ROUNDS)
-  assert.match(gate.reasons.join(" "), /blocked/)
-})
-
-// --- Review findings only block when linked to a real requirement/constraint ---
-
-test("unlinked findings are advisory while linked findings block", () => {
-  const contract = makeContract()
-  assert.equal(
-    isBlockingFinding(contract, { requirementId: "REQ-3", observation: "missed", evidencePointer: "diff" }),
-    true,
-  )
-  assert.equal(
-    isBlockingFinding(contract, { constraintId: "CON-1", observation: "touched Persona", evidencePointer: "diff" }),
-    true,
-  )
-  assert.equal(isBlockingFinding(contract, { observation: "I would organize files differently", evidencePointer: "taste" }), false)
-})
-
-test("invalid reviewer output never becomes success", () => {
-  assert.equal(validateReviewResult({ verdict: "approve", findings: "yes" }).ok, false)
-  assert.equal(validateReviewResult({ verdict: "maybe", findings: [] }).ok, false)
-  assert.equal(
-    validateReviewResult({ verdict: "approve", findings: [{ observation: "ok", evidencePointer: "diff" }] }).ok,
-    true,
-  )
-})
-
-test("reviewer verdict variants normalize to the canonical enum", () => {
-  assert.equal(validateReviewResult({ verdict: "APPROVE", findings: [] }).ok, true)
-  assert.equal(validateReviewResult({ verdict: "APPROVE", findings: [] } as any).result.verdict, "approve")
-  assert.equal(validateReviewResult({ verdict: "Rejected.", findings: [] }).ok, true)
-  assert.equal(validateReviewResult({ verdict: "rejected", findings: [] } as any).result.verdict, "reject")
-  assert.equal(validateReviewResult({ verdict: "approved ", findings: [] }).ok, true)
-  assert.equal(validateReviewResult({ verdict: "maybe", findings: [] }).ok, false)
-  assert.equal(validateReviewResult({ verdict: "OK", findings: [] }).ok, false)
-})
-
-test("review packet audits existing evidence and forbids broad re-verification", () => {
-  const packet = buildReviewPacket(makeContract(), {
-    revision: "rev-a",
-    verificationSummary: "tests: passed; typecheck: passed; runtime smoke: passed",
-  })
-  assert.match(packet, /read-only/i)
-  assert.match(packet, /not verification execution/i)
-  assert.match(packet, /Do NOT use shell, curl, package managers, test runners/i)
-  assert.match(packet, /stay bounded to changed paths/i)
-  assert.match(packet, /target=missing-evidence/i)
-  assert.match(packet, /Existing exact-revision verification summary:/i)
-  assert.match(packet, /exactly the lowercase string "approve" or "reject"/)
-})
-
-test("review packet without verification summary does not invite broad verification", () => {
-  const packet = buildReviewPacket(makeContract(), { revision: "rev-a" })
-  assert.match(packet, /verification summary: not supplied/i)
-  assert.match(packet, /Do not compensate by running broad verification/i)
-})
-
-// --- Trivial task: no mandatory contract/reviewer ceremony ---
-
-test("tiny documentation change needs no contract or review ceremony", () => {
+test("tiny documentation change needs no contract ceremony", () => {
   assert.equal(isTrivialTask("docs-format", 1), true)
   assert.equal(isTrivialTask("feature", 1), false)
-  assert.equal(requiresIndependentReview("docs-format"), false)
-  assert.equal(requiresIndependentReview("feature"), false)
-  assert.equal(requiresIndependentReview("security"), true)
-  assert.equal(requiresIndependentReview("migration"), true)
-  assert.equal(requiresIndependentReview("architecture"), true)
-  assert.equal(requiresIndependentReview(undefined), true)
+  assert.equal(isTrivialTask("security", 1), false)
+  assert.equal(isTrivialTask("migration", 1), false)
+  assert.equal(isTrivialTask("architecture", 1), false)
+  assert.equal(isTrivialTask(undefined), false)
 })
 
 // --- Completion V2: full composition ---
 
-test("completion V2 passes only with verification, contract and review all green", () => {
+test("completion V2 passes only with exact-revision verification and a green requirement gate", () => {
   let contract = makeContract()
   for (const id of ["REQ-1", "REQ-2", "REQ-3", "REQ-4"]) {
     contract = (
@@ -293,30 +159,57 @@ test("completion V2 passes only with verification, contract and review all green
   const evidence = { revision: "rev-a", testsPassed: true, docsStatus: "clean" as const, versionStatus: "clean" as const }
   const verification = { ok: true, missing: [], failed: [], unverified: [], reasons: [] }
   const contractGate = evaluateRequirementGate(contract, "rev-a")
-  const reviewGate = evaluateReviewGate(contract, [reviewRecord(1, "approve", "rev-a")], "rev-a", true)
-  assert.equal(evaluateCompletionV2("rev-a", evidence, verification, ["tests"], contractGate, reviewGate).ok, true)
+  assert.equal(evaluateCompletionV2("rev-a", evidence, verification, ["tests"], contractGate).ok, true)
 
   const pendingGate = evaluateRequirementGate(makeContract(), "rev-a")
-  assert.equal(evaluateCompletionV2("rev-a", evidence, verification, ["tests"], pendingGate, reviewGate).ok, false)
+  assert.equal(evaluateCompletionV2("rev-a", evidence, verification, ["tests"], pendingGate).ok, false)
 })
 
-// --- Review packet stays compact: no transcript, bounded context ---
-
-test("review packet carries goal, requirements, constraints and revision without transcript", () => {
-  const packet = buildReviewPacket(makeContract(), { revision: "rev-a", changedPaths: ["src/a.ts"] })
-  assert.match(packet, /Original goal/)
-  assert.match(packet, /REQ-1/)
-  assert.match(packet, /CON-1/)
-  assert.match(packet, /rev-a/)
-  assert.match(packet, /ONLY one JSON object/)
-  assert.ok(packet.length < 6000)
+test("completion V2 still blocks when required verification is missing", () => {
+  let contract = makeContract()
+  for (const id of ["REQ-1", "REQ-2", "REQ-3", "REQ-4"]) {
+    contract = (
+      recordRequirementEvidence(contract, id, { type: "verification", reference: "tests", revision: "rev-a" }) as {
+        ok: true
+        contract: TaskContract
+      }
+    ).contract
+    contract = (updateRequirementStatus(contract, id, "satisfied") as { ok: true; contract: TaskContract }).contract
+  }
+  const evidence = { revision: "rev-a", testsPassed: true, docsStatus: "clean" as const, versionStatus: "clean" as const }
+  const unverified = {
+    ok: false,
+    missing: [],
+    failed: [],
+    unverified: ["tests"],
+    reasons: ["unverified receipts (no valid completed same-revision execution): tests"],
+  }
+  const contractGate = evaluateRequirementGate(contract, "rev-a")
+  const result = evaluateCompletionV2("rev-a", evidence, unverified, ["tests"], contractGate)
+  assert.equal(result.ok, false)
+  assert.match(result.reasons.join(" "), /required verification/)
 })
 
 test("contract brief is a compact projection for post-compaction continuity", () => {
-  const brief = formatContractBrief(makeContract(), [])
+  const brief = formatContractBrief(makeContract())
   assert.match(brief, /Goal:/)
   assert.match(brief, /REQ-1 pending/)
   assert.match(brief, /CON-1 constraint/)
+})
+
+// --- The independent-review subsystem no longer exists. ---
+
+test("task-contract exposes contract + completion only, with no review tool or child session", async () => {
+  const state: any = createMemoryState()
+  const { ctx, tools } = createToolHarness()
+  let createdSessions = 0
+  ctx.session.create = async (input: any) => {
+    createdSessions += 1
+    return { id: `unexpected-child-${createdSessions}`, ...input }
+  }
+  await taskContractCapability.setup({ ctx, config: { models: {} } as any, state })
+  assert.deepEqual([...tools.keys()].sort(), ["completion_gate", "task_contract"])
+  assert.equal(tools.get("request_review"), undefined)
 })
 
 // ---------------------------------------------------------------------------
@@ -410,159 +303,6 @@ test("task_contract tool: create refuses duplicate active contracts and status p
   assert.equal(summary.metrics.requirementsPending, 2)
 })
 
-test("required deep review allows one directed correction round in a fresh session", async () => {
-  const state: any = createMemoryState()
-  const createdSessions: string[] = []
-  const { ctx, tools } = createToolHarness()
-  let promptCount = 0
-  ctx.session.create = async (input: any) => {
-    const id = `review-ses-${createdSessions.length + 1}`
-    createdSessions.push(id)
-    return { id, ...input }
-  }
-  ctx.session.prompt = async () => {
-    promptCount += 1
-    if (promptCount === 1) {
-      return { text: JSON.stringify({ verdict: "reject", findings: [{ requirementId: "REQ-1", observation: "missing", evidencePointer: "diff" }] }) }
-    }
-    return { text: JSON.stringify({ verdict: "approve", findings: [] }) }
-  }
-  await taskContractCapability.setup({ ctx, config: { models: {} } as any, state })
-  const contract = tools.get("task_contract")
-  await contract.execute({ op: "create", taskKind: "security", goal: "Harden auth", requirements: ["no bypass"] }, { sessionID: "ses-1" })
-  const review = tools.get("request_review")
-
-  const first: any = await review.execute({ revision: "rev-a" }, { sessionID: "ses-1" })
-  assert.match(first.content, /"stored": true/)
-  const second: any = await review.execute({ revision: "rev-b" }, { sessionID: "ses-1" })
-  assert.match(second.content, /"stored": true/)
-  assert.notEqual(createdSessions[0], createdSessions[1])
-
-  const third: any = await review.execute({ revision: "rev-c" }, { sessionID: "ses-1" })
-  assert.match(third.content, /^blocked:/)
-})
-
-test("ordinary advisory audit is bounded to one stored round per task", async () => {
-  const state: any = createMemoryState()
-  const { ctx, tools } = createToolHarness()
-  let created = 0
-  ctx.session.create = async (input: any) => ({ id: `audit-ses-${++created}`, ...input })
-  ctx.session.prompt = async () => ({ text: JSON.stringify({ verdict: "approve", findings: [] }) })
-  await taskContractCapability.setup({ ctx, config: { models: {} } as any, state })
-  await tools.get("task_contract").execute(
-    { op: "create", taskKind: "feature", goal: "Add --json flag", requirements: ["keep default output"] },
-    { sessionID: "ses-audit-once" },
-  )
-
-  const review = tools.get("request_review")
-  const first: any = await review.execute({ revision: "rev-a" }, { sessionID: "ses-audit-once" })
-  assert.match(first.content, /"stored": true/)
-
-  const second: any = await review.execute({ revision: "rev-b" }, { sessionID: "ses-audit-once" })
-  assert.match(second.content, /^refused: the one bounded advisory audit/)
-  assert.equal(created, 1)
-})
-
-test("request_review refuses duplicate review of the same revision and contract state", async () => {
-  const state: any = createMemoryState()
-  const { ctx, tools } = createToolHarness()
-  ctx.session.create = async (input: any) => ({ id: "review-ses-1", ...input })
-  ctx.session.prompt = async () => ({ text: JSON.stringify({ verdict: "approve", findings: [] }) })
-  await taskContractCapability.setup({ ctx, config: { models: {} } as any, state })
-  await tools.get("task_contract").execute(
-    { op: "create", taskKind: "security", goal: "Harden auth", requirements: ["no bypass"] },
-    { sessionID: "ses-repeat" },
-  )
-
-  const review = tools.get("request_review")
-  const first: any = await review.execute({ revision: "rev-a" }, { sessionID: "ses-repeat" })
-  assert.match(first.content, /"stored": true/)
-  const repeated: any = await review.execute({ revision: "rev-a" }, { sessionID: "ses-repeat" })
-  assert.match(repeated.content, /^refused: this exact revision and Task Contract state already has stored review/)
-})
-
-test("request_review on a completed contract is refused", async () => {
-  const state: any = createMemoryState()
-  const { ctx, tools } = createToolHarness()
-  await taskContractCapability.setup({ ctx, config: { models: {} } as any, state })
-  const contract = tools.get("task_contract")
-  await contract.execute({ op: "create", taskKind: "feature", goal: "Add --json flag", requirements: ["keep default output"] }, { sessionID: "ses-done" })
-  const status: any = await contract.execute({ op: "status" }, { sessionID: "ses-done" })
-  const current = JSON.parse(status.content).contract
-  await state.set("task-contract-completion/ses-done", {
-    revision: "rev-a",
-    taskKind: "feature",
-    contractStateToken: contractStateToken(current),
-    at: Date.now(),
-  })
-  await contract.execute({ op: "close", outcome: "completed", revision: "rev-a" }, { sessionID: "ses-done" })
-  const refused: any = await tools.get("request_review").execute({ revision: "rev-a" }, { sessionID: "ses-done" })
-  assert.match(refused.content, /^refused: this Task Contract is already completed/)
-})
-
-test("request_review timeout consumes no round and is terminal for unchanged review state", async () => {
-  const state: any = createMemoryState()
-  const { ctx, tools } = createToolHarness()
-  ctx.session.wait = async () => {
-    throw new ChildSessionTimeoutError("child session timed out during session.wait")
-  }
-  ctx.session.context = async () => []
-  await taskContractCapability.setup({ ctx, config: { models: {} } as any, state })
-  const contract = tools.get("task_contract")
-  await contract.execute(
-    { op: "create", taskKind: "feature", goal: "Add --json flag", requirements: ["keep default output"] },
-    { sessionID: "ses-timeout" },
-  )
-
-  const review: any = await tools.get("request_review").execute(
-    { revision: "rev-a", verificationSummary: "tests: passed; typecheck: passed" },
-    { sessionID: "ses-timeout" },
-  )
-
-  const timeout = JSON.parse(review.content)
-  assert.equal(timeout.reviewStatus, "unavailable")
-  assert.equal(timeout.roundConsumed, false)
-  assert.equal(timeout.mode, "audit")
-  assert.equal(timeout.reason, "deadline_exceeded")
-  assert.equal(timeout.completionPolicy, "advisory")
-  const stored = await state.scan("task-contract-review/ses-timeout/")
-  assert.equal(stored.length, 0)
-  const availability = await state.get(reviewAvailabilityKey("ses-timeout"))
-  assert.equal(availability?.status, "unavailable")
-  assert.equal(availability?.revision, "rev-a")
-
-  const repeated: any = await tools.get("request_review").execute(
-    { revision: "rev-a", verificationSummary: "tests: passed; typecheck: passed" },
-    { sessionID: "ses-timeout" },
-  )
-  assert.match(repeated.content, /^refused: review already ended deadline_exceeded/)
-})
-
-test("request_review reads the reviewer answer through the real prompt->wait->context contract", async () => {
-  const state: any = createMemoryState()
-  const { ctx, tools } = createToolHarness()
-  let waited = 0
-  ctx.session.wait = async () => {
-    waited += 1
-    return undefined
-  }
-  // Real V2 shape: assistant messages carry `content` items, not `parts`.
-  ctx.session.context = async () => [
-    {
-      type: "assistant",
-      time: { created: Date.now(), completed: Date.now() },
-      content: [{ type: "text", text: JSON.stringify({ verdict: "approve", findings: [] }) }],
-    },
-  ]
-  await taskContractCapability.setup({ ctx, config: { models: {} } as any, state })
-  const contract = tools.get("task_contract")
-  await contract.execute({ op: "create", taskKind: "feature", goal: "Add --json flag", requirements: ["keep default output"] }, { sessionID: "ses-1" })
-  const review: any = await tools.get("request_review").execute({ revision: "rev-a" }, { sessionID: "ses-1" })
-  assert.match(review.content, /"stored": true/)
-  assert.match(review.content, /"verdict": "approve"/)
-  assert.ok(waited >= 1)
-})
-
 test("concurrent contract mutations are serialized instead of last-write-wins", async () => {
   const state: any = createMemoryState()
   const { ctx, tools } = createToolHarness()
@@ -590,54 +330,6 @@ test("concurrent contract mutations are serialized instead of last-write-wins", 
     assert.ok(req.evidence.length >= 1, `${req.id} lost its evidence`)
   }
 })
-
-test("delegation-free reviewer: invalid review output consumes no round even through wait/context", async () => {
-  const state: any = createMemoryState()
-  const { ctx, tools } = createToolHarness()
-  ctx.session.wait = async () => undefined
-  ctx.session.context = async () => [
-    {
-      type: "assistant",
-      time: { created: Date.now(), completed: Date.now() },
-      content: [{ type: "text", text: "I could not decide, sorry." }],
-    },
-  ]
-  await taskContractCapability.setup({ ctx, config: { models: {} } as any, state })
-  const contract = tools.get("task_contract")
-  await contract.execute({ op: "create", taskKind: "feature", goal: "Add --json flag", requirements: ["keep default output"] }, { sessionID: "ses-1" })
-  const result: any = await tools.get("request_review").execute({ revision: "rev-a" }, { sessionID: "ses-1" })
-  const parsed = JSON.parse(result.content)
-  assert.equal(parsed.reviewStatus, "unavailable")
-  assert.equal(parsed.reason, "invalid_output")
-  assert.equal(parsed.roundConsumed, false)
-  const stored = await state.scan("task-contract-review/")
-  assert.equal(stored.length, 0)
-})
-
-test("request_review with invalid reviewer output stores nothing and consumes no round", async () => {
-  const state: any = createMemoryState()
-  const { ctx, tools } = createToolHarness()
-  ctx.session.create = async (input: any) => ({ id: "review-ses-1", ...input })
-  ctx.session.prompt = async () => ({ text: "looks good to me, ship it" })
-  await taskContractCapability.setup({ ctx, config: { models: {} } as any, state })
-  const contract = tools.get("task_contract")
-  await contract.execute({ op: "create", taskKind: "feature", goal: "Add --json flag", requirements: ["keep default output"] }, { sessionID: "ses-1" })
-  const result: any = await tools.get("request_review").execute({ revision: "rev-a" }, { sessionID: "ses-1" })
-  const parsed = JSON.parse(result.content)
-  assert.equal(parsed.reviewStatus, "unavailable")
-  assert.equal(parsed.reason, "invalid_output")
-  assert.equal(parsed.stage, "review.output")
-  const stored = await state.scan("task-contract-review/")
-  assert.equal(stored.length, 0)
-  const availability = await state.get(reviewAvailabilityKey("ses-1"))
-  assert.equal(availability?.reason, "invalid_output")
-
-  const repeated: any = await tools.get("request_review").execute({ revision: "rev-a" }, { sessionID: "ses-1" })
-  assert.match(repeated.content, /^refused: review already ended invalid_output/)
-})
-
-// --- Negative smoke: tests pass + verification passes, but a required
-// README requirement is still pending -> completion DENIED. ---
 
 test("negative smoke: green tests cannot complete a task with a pending README requirement", async () => {
   const state: any = createMemoryState()
@@ -722,9 +414,9 @@ test("negative smoke: green tests cannot complete a task with a pending README r
 })
 
 // --- Positive smoke: ordinary code completes from requirements + exact-
-// revision verification without mandatory review. ---
+// revision verification. No second LLM judges completion. ---
 
-test("positive smoke: ordinary feature completes without independent review", async () => {
+test("positive smoke: ordinary feature completes from requirements and exact-revision verification", async () => {
   const state: any = createMemoryState()
   const harness = createToolHarness()
   await taskContractCapability.setup({ ctx: harness.ctx, config: { models: {} } as any, state })
@@ -791,7 +483,53 @@ test("positive smoke: ordinary feature completes without independent review", as
     .execute({ taskKind: "feature", currentRevision: "rev-a", evidence: clean, requiredChecks: ["tests", "typecheck"] }, { sessionID: "ses-1" })
   const parsed = JSON.parse(passed.content)
   assert.equal(parsed.ok, true)
-  assert.equal(parsed.review.required, false)
+  assert.equal("review" in parsed, false)
+})
+
+// Removing Review must not create a bypass: a manual `testsPassed: true`
+// claim still cannot replace stored exact-revision Verification.
+test("negative smoke: a green contract with clean docs/version is still denied without exact-revision verification", async () => {
+  const state: any = createMemoryState()
+  const harness = createToolHarness()
+  await taskContractCapability.setup({ ctx: harness.ctx, config: { models: {} } as any, state })
+  const contract = harness.tools.get("task_contract")
+  await contract.execute(
+    { op: "create", taskKind: "feature", goal: "Add --json flag", requirements: ["keep default output", "update tests"] },
+    { sessionID: "ses-unverified" },
+  )
+  for (const id of ["REQ-1", "REQ-2"]) {
+    await contract.execute(
+      { op: "record_evidence", requirementId: id, type: "diff", reference: "src/x.ts", revision: "rev-a" },
+      { sessionID: "ses-unverified" },
+    )
+    await contract.execute({ op: "update", requirementId: id, status: "satisfied" }, { sessionID: "ses-unverified" })
+  }
+  // Deliberately no `verification/rev-a/*` receipts and no
+  // `verification-evidence/*` entries: the caller still claims testsPassed.
+
+  const lHarness = createToolHarness()
+  await taskContractCapability.setup({
+    ctx: lHarness.ctx,
+    config: { documentation: { rules: [] }, versioning: { enabled: false, publicPaths: [] } } as any,
+    state,
+  })
+  const denied: any = await lHarness.tools.get("completion_gate").execute(
+    {
+      taskKind: "feature",
+      currentRevision: "rev-a",
+      evidence: { revision: "rev-a", testsPassed: true, docsStatus: "clean", versionStatus: "not-applicable" },
+      requiredChecks: ["tests", "typecheck"],
+    },
+    { sessionID: "ses-unverified" },
+  )
+  const parsed = JSON.parse(denied.content)
+  assert.equal(parsed.ok, false)
+  assert.equal(parsed.contractClosed, false)
+  assert.match(parsed.reasons.join(" "), /required verification/)
+  assert.match(parsed.reasons.join(" "), /missing receipts/)
+
+  const status: any = await contract.execute({ op: "status" }, { sessionID: "ses-unverified" })
+  assert.equal(JSON.parse(status.content).contract.status, "active")
 })
 
 test("completion gate derives contract policy from taskKind", async () => {
@@ -821,53 +559,11 @@ test("completion gate derives contract policy from taskKind", async () => {
   const nonTrivialJson = JSON.parse(nonTrivial.content)
   assert.equal(nonTrivialJson.ok, false)
   assert.match(nonTrivialJson.reasons.join(" "), /Task Contract required/)
-  assert.doesNotMatch(nonTrivialJson.reasons.join(" "), /independent review required/)
-})
-
-test("review gate derives outcome from blocking findings, not the reported verdict", () => {
-  const contract = makeContract()
-
-  const falseApprove: ReviewRecord = {
-    verdict: "approve",
-    findings: [
-      {
-        requirementId: "REQ-1",
-        observation: "required behavior is missing",
-        evidencePointer: "src/x.ts",
-      },
-    ],
-    round: 1,
-    reviewSessionID: "review-1",
-    revision: "rev-a",
-    at: 1,
-  }
-  const denied = evaluateReviewGate(contract, [falseApprove], "rev-a", true)
-  assert.equal(denied.ok, false)
-  assert.equal(denied.latestVerdict, "reject")
-  assert.equal(denied.blockingFindings, 1)
-
-  const tasteReject: ReviewRecord = {
-    verdict: "reject",
-    findings: [
-      {
-        observation: "I would use another architecture",
-        evidencePointer: "src/x.ts",
-      },
-    ],
-    round: 1,
-    reviewSessionID: "review-2",
-    revision: "rev-a",
-    at: 1,
-  }
-  const advisory = evaluateReviewGate(contract, [tasteReject], "rev-a", true)
-  assert.equal(advisory.ok, true)
-  assert.equal(advisory.latestVerdict, "approve")
-  assert.equal(advisory.blockingFindings, 0)
 })
 
 test("revision-sensitive requirement evidence is refused without a revision", () => {
   const contract = makeContract()
-  for (const type of ["verification", "runtime", "diff", "review"] as const) {
+  for (const type of ["verification", "runtime", "diff"] as const) {
     const result = recordRequirementEvidence(contract, "REQ-1", {
       type,
       reference: "pointer",
@@ -882,61 +578,6 @@ test("revision-sensitive requirement evidence is refused without a revision", ()
     }).ok,
     true,
   )
-})
-
-test("review routing floor is categorical and deterministic", () => {
-  assert.equal(minimumReviewMode("docs-format", 1), "none")
-  assert.equal(minimumReviewMode("feature", 2), "audit")
-  assert.equal(minimumReviewMode("bugfix", 5), "audit")
-  assert.equal(minimumReviewMode("security", 1), "deep")
-  assert.equal(minimumReviewMode("migration", 1), "deep")
-  assert.equal(minimumReviewMode("architecture", 1), "deep")
-})
-
-test("review packet never exposes opaque evidence references", () => {
-  let contract = makeContract()
-  contract = (recordRequirementEvidence(contract, "REQ-1", {
-    type: "verification",
-    reference: "d9aadf0b1f2e3d4c5b6a79800112233445566778899aabbccddeeff001122334",
-    revision: "rev-a",
-  }) as { ok: true; contract: TaskContract }).contract
-  const packet = buildReviewPacket(contract, {
-    revision: "rev-a",
-    reviewMode: "audit",
-    changedPaths: ["src/x.ts"],
-    verificationSummary: "tests passed; receipt/d9aadf0b1f2e3d4c5b6a79800112233445566778899aabbccddeeff001122334",
-  })
-  assert.match(packet, /REVIEW MODE: audit/)
-  assert.match(packet, /verification evidence recorded \(current revision\)/)
-  assert.ok(!packet.includes("d9aadf0b1f2e3d4c5b6a79800112233445566778899aabbccddeeff001122334"))
-  assert.match(packet, /opaque-id-omitted|internal-ref-omitted/)
-  assert.match(packet, /NEVER search for receipt IDs/)
-})
-
-test("task contract review policy is derived from taskKind", () => {
-  const feature = createTaskContract("feature-session", {
-    taskKind: "feature",
-    goal: "feature",
-    requirements: ["ship feature"],
-  })
-  assert.equal(feature.ok, true)
-  assert.equal((feature as any).contract.reviewRequired, false)
-
-  const security = createTaskContract("security-session", {
-    taskKind: "security",
-    goal: "security",
-    requirements: ["prevent bypass"],
-  })
-  assert.equal(security.ok, true)
-  assert.equal((security as any).contract.reviewRequired, true)
-
-  const docs = createTaskContract("docs-session", {
-    taskKind: "docs-format",
-    goal: "docs",
-    requirements: ["format docs"],
-  })
-  assert.equal(docs.ok, true)
-  assert.equal((docs as any).contract.reviewRequired, false)
 })
 
 test("contract cannot close completed without an exact completion-gate seal", async () => {
@@ -1091,70 +732,9 @@ test("a completion seal for an older contract state cannot close a mutated contr
   assert.match(close.content, /stale/)
 })
 
-test("ordinary audit timeout is advisory and never participates in completion", async () => {
+test("completion gate ignores removed review state and closes on contract + verification only", async () => {
   const state: any = createMemoryState()
-  const created = createTaskContract("ses-audit-unavailable", {
-    taskKind: "feature",
-    goal: "ship bounded feature",
-    requirements: ["feature works"],
-  })
-  assert.equal(created.ok, true)
-  let contract = (created as { ok: true; contract: TaskContract }).contract
-  contract = (
-    recordRequirementEvidence(contract, "REQ-1", {
-      type: "diff",
-      reference: "src/x.ts",
-      revision: "rev-a",
-    }) as { ok: true; contract: TaskContract }
-  ).contract
-  contract = (
-    updateRequirementStatus(contract, "REQ-1", "satisfied") as { ok: true; contract: TaskContract }
-  ).contract
-  await state.set("task-contract/ses-audit-unavailable", contract)
-  await state.set(reviewAvailabilityKey("ses-audit-unavailable"), {
-    status: "unavailable",
-    mode: "audit",
-    reason: "deadline_exceeded",
-    stage: "session.wait",
-    revision: "rev-a",
-    reviewSessionID: "review-timeout",
-    elapsedMs: 90_000,
-    contractStateToken: contractStateToken(contract),
-    at: Date.now(),
-  })
-
-  const harness = createToolHarness()
-  await taskContractCapability.setup({
-    ctx: harness.ctx,
-    config: { documentation: { rules: [] }, versioning: { enabled: false, publicPaths: [] } } as any,
-    state,
-  })
-
-  const result: any = await harness.tools.get("completion_gate").execute(
-    {
-      taskKind: "feature",
-      currentRevision: "rev-a",
-      evidence: {
-        revision: "rev-a",
-        testsPassed: true,
-        docsStatus: "clean",
-        versionStatus: "not-applicable",
-      },
-      requiredChecks: [],
-    },
-    { sessionID: "ses-audit-unavailable" },
-  )
-  const parsed = JSON.parse(result.content)
-  assert.equal(parsed.ok, true)
-  assert.equal(parsed.review.required, false)
-  assert.equal(parsed.review.degraded, false)
-  assert.equal(parsed.review.approved, false)
-  assert.equal(parsed.review.unavailable.mode, "audit")
-})
-
-test("completion gate keeps deep review unavailable fail-closed", async () => {
-  const state: any = createMemoryState()
-  const created = createTaskContract("ses-deep-unavailable", {
+  const created = createTaskContract("ses-legacy-review-state", {
     taskKind: "security",
     goal: "harden auth",
     requirements: ["no bypass"],
@@ -1171,17 +751,27 @@ test("completion gate keeps deep review unavailable fail-closed", async () => {
   contract = (
     updateRequirementStatus(contract, "REQ-1", "satisfied") as { ok: true; contract: TaskContract }
   ).contract
-  await state.set("task-contract/ses-deep-unavailable", contract)
-  await state.set(reviewAvailabilityKey("ses-deep-unavailable"), {
+  await state.set("task-contract/ses-legacy-review-state", contract)
+  // Old stored review records are now unused data: they must not be read and
+  // must never block or gate completion.
+  await state.set("task-contract-review/ses-legacy-review-state/1", {
+    verdict: "reject",
+    findings: [],
+    round: 1,
+    reviewSessionID: "legacy-review",
+    revision: "rev-a",
+    at: 1,
+  })
+  await state.set("task-contract-review-availability/ses-legacy-review-state", {
     status: "unavailable",
     mode: "deep",
     reason: "deadline_exceeded",
     stage: "session.wait",
     revision: "rev-a",
-    reviewSessionID: "review-timeout",
+    reviewSessionID: "legacy-review",
     elapsedMs: 180_000,
     contractStateToken: contractStateToken(contract),
-    at: Date.now(),
+    at: 1,
   })
 
   const harness = createToolHarness()
@@ -1203,13 +793,13 @@ test("completion gate keeps deep review unavailable fail-closed", async () => {
       },
       requiredChecks: [],
     },
-    { sessionID: "ses-deep-unavailable" },
+    { sessionID: "ses-legacy-review-state" },
   )
   const parsed = JSON.parse(result.content)
-  assert.equal(parsed.ok, false)
-  assert.equal(parsed.review.degraded, false)
-  assert.equal(parsed.review.unavailable.mode, "deep")
-  assert.match(parsed.reasons.join(" "), /deep review unavailable/)
+  assert.equal(parsed.ok, true)
+  assert.equal(parsed.contractClosed, true)
+  assert.equal("review" in parsed, false)
+  assert.doesNotMatch(parsed.reasons.join(" "), /review/i)
 })
 
 test("contract creation supports 25 requirements with 1:1 REQ-N IDs", () => {
@@ -1283,7 +873,7 @@ test("contract creation rejects 101 requirements with explicit limit error", () 
   }
 })
 
-test("completion simplification: gate derives verification/review state and closes the Task Contract", async () => {
+test("completion simplification: gate derives verification state and closes the Task Contract", async () => {
   const state: any = createMemoryState()
   const contractHarness = createToolHarness()
   await taskContractCapability.setup({ ctx: contractHarness.ctx, config: { models: {} } as any, state })
@@ -1313,10 +903,6 @@ test("completion simplification: gate derives verification/review state and clos
   await state.set("verification-evidence/exec-type", {
     executionId: "exec-type", status: "completed", revision: "rev-a",
   })
-  await state.set("task-contract-review/ses-simple-complete/1", {
-    verdict: "approve", findings: [], round: 1, reviewSessionID: "review-1", revision: "rev-a", at: 3,
-  })
-
   const lifecycleHarness = createToolHarness()
   await taskContractCapability.setup({
     ctx: lifecycleHarness.ctx,

@@ -262,8 +262,7 @@ otherwise the default:
 Model resolution lives in the capability. `src/capabilities/intake/jev-client.ts`
 holds only the OpenRouter Decisions transport (endpoint, fetch and payload
 shape) used by Intake; no provider policy lives in core. Jev is owned
-exclusively by Intake — review routing is deterministic and has no Jev
-dependency.
+exclusively by Intake.
 
 ## Contract verification (2026-09-21)
 

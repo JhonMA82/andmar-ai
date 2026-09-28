@@ -10,16 +10,15 @@ excluded is [SCOPE.md](SCOPE.md). This document is canonical for
 
 ## Current baseline — v0.15.0
 
-The planned eight-step core evolution is **complete**:
+The planned core evolution is **complete**:
 
 ```text
 Intake -> Work Ledger -> work-unit lifecycle -> work-unit checkpoints
--> Completion simplification -> Review simplification
--> development metrics -> Delivery
+-> Completion simplification -> development metrics -> Delivery
 ```
 
 There is no Step 9. See [CAPABILITIES.md](CAPABILITIES.md) for the generated
-id/version/tool inventory (9 capabilities, 15 tools) and
+id/version/tool inventory (9 capabilities, 14 tools) and
 [ANDMAR-AI-CAPABILITIES.md](ANDMAR-AI-CAPABILITIES.md) for behavior. The
 distinctive pieces are:
 
@@ -33,13 +32,11 @@ distinctive pieces are:
 - repository-native Work Ledger with deterministic Work Unit lifecycle and
   two-phase checkpoint gate;
 - evidence-derived completion: `andmar_completion_gate` derives
-  verification/review truth from stored evidence and closes the Task
-  Contract in the same operation;
+  verification truth from stored evidence and closes the Task Contract in the
+  same operation;
 - Task Contract behavioral core: per-session obligation record
-  (`andmar_task_contract`), requirement-gated completion, and proportional
-  deterministic review: ordinary code can use an optional advisory audit,
-  while security/migration/architecture require bounded fresh deep review
-  (`andmar_request_review`, at most one corrected-revision follow-up);
+  (`andmar_task_contract`) and requirement-gated completion, with no
+  independent-review subsystem;
 - bounded development metrics (`andmar_report`), diagnostic only;
 - delivery authorization/readiness (`andmar_delivery`), execution native;
 - Engram as an optional lateral integration outside the capability
@@ -67,9 +64,9 @@ needs its trigger to fire in real use.
 **Trigger:** repeated manual orchestration in ODD or other methodologies.
 
 The session-scoped Task Contract (implemented, see DECISIONS D-016) covers
-per-session obligations, steering, post-compaction recovery and bounded
-review; it is deliberately not a workflow engine and does not by itself
-trigger this candidate.
+per-session obligations, steering and post-compaction recovery; it is
+deliberately not a workflow engine and does not by itself trigger this
+candidate.
 
 First implementation should expose only:
 
@@ -112,7 +109,7 @@ Previous trigger was "completion gate inputs become repeatedly manual". The `ver
 
 ## Implemented: completion simplification
 
-The completion boundary now consumes those stored receipts plus Task Contract requirement evidence and stored review state. Normal callers provide the exact revision, task kind, docs/version status and proportional required checks; they no longer repeat `testsPassed` / `reviewPassed` booleans. A successful `andmar_completion_gate` closes the Task Contract in the same serialized operation. Ledger-backed work uses `completionReady:true` before the gate and `work-ledger-lifecycle.mjs finalize --revision ...` afterward to preserve portable final revision/timestamp without adding another runtime completion subsystem.
+The completion boundary now consumes those stored receipts plus Task Contract requirement evidence. Normal callers provide the exact revision, task kind, docs/version status and proportional required checks; they no longer repeat a `testsPassed` boolean. A successful `andmar_completion_gate` closes the Task Contract in the same serialized operation. Ledger-backed work uses `completionReady:true` before the gate and `work-ledger-lifecycle.mjs finalize --revision ...` afterward to preserve portable final revision/timestamp without adding another runtime completion subsystem.
 
 ## Implemented (pilot): intake request refinement
 

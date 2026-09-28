@@ -1,5 +1,5 @@
 import type { ChangeKind, DocumentationRule, CompletionEvidence } from "./contracts.ts"
-import type { RequirementGateResult, ReviewGateResult } from "./task-contract.ts"
+import type { RequirementGateResult } from "./task-contract.ts"
 import { matchesAny } from "./glob.ts"
 
 export interface DocumentationImpact {
@@ -45,7 +45,6 @@ export function evaluateCompletion(currentRevision: string, evidence: Completion
   const reasons: string[] = []
   if (evidence.revision !== currentRevision) reasons.push("verification evidence is stale for the current revision")
   if (!evidence.testsPassed) reasons.push("tests have not passed")
-  if (evidence.reviewPassed === false) reasons.push("review did not pass")
   if (evidence.docsStatus === "stale") reasons.push("documentation is potentially stale")
   if (evidence.versionStatus === "required") reasons.push("version/changelog update is still required")
   return { ok: reasons.length === 0, reasons }
@@ -61,20 +60,18 @@ export interface VerificationGateStatus {
 
 /**
  * Completion gate V2: exact-revision verification plus Task Contract
- * requirement gate plus independent review gate, then docs/version
- * obligations. Order is fixed:
+ * requirement gate, then docs/version obligations. Order is fixed:
  *
  * ```text
  * 1. revision verification
  * 2. Task Contract gate (pending/blocked/evidence/staleness)
- * 3. required independent review (fresh, current revision, approved)
- * 4. docs/version obligations
- * 5. completion
+ * 3. docs/version obligations
+ * 4. completion
  * ```
  *
- * `contractGate`/`reviewGate` are undefined when no Task Contract exists
- * for the session (trivial tasks): the gate then behaves exactly like
- * `evaluateCompletionWithVerification`.
+ * `contractGate` is undefined when no Task Contract exists for the session
+ * (trivial tasks): the gate then behaves exactly like
+ * `evaluateCompletionWithVerification`. No second LLM judges completion.
  */
 export function evaluateCompletionV2(
   currentRevision: string,
@@ -82,15 +79,11 @@ export function evaluateCompletionV2(
   verification: VerificationGateStatus,
   requiredChecks: readonly string[] = ["tests", "typecheck"],
   contractGate?: RequirementGateResult | undefined,
-  reviewGate?: ReviewGateResult | undefined,
 ): { ok: boolean; reasons: string[] } {
   const base = evaluateCompletionWithVerification(currentRevision, evidence, verification, requiredChecks)
   const reasons = [...base.reasons]
   if (contractGate && !contractGate.ok) {
     for (const reason of contractGate.reasons) reasons.push(`task contract: ${reason}`)
-  }
-  if (reviewGate && !reviewGate.ok) {
-    for (const reason of reviewGate.reasons) reasons.push(`independent review: ${reason}`)
   }
   return { ok: reasons.length === 0, reasons }
 }

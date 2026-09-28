@@ -175,7 +175,10 @@ semantic uses still wait for measured friction.
 
 ## D-017 — Requirement-gated completion
 
-**Decision:** `andmar_completion_gate` enforces, in fixed order: exact-revision verification, Task Contract requirements (no `pending`, no `blocked`, every `satisfied` requirement evidenced and revision-current), required independent review, then docs/version obligations. Without a contract the gate keeps its legacy behavior so trivial tasks stay proportional.
+**Decision:** `andmar_completion_gate` enforces, in fixed order: exact-revision verification, Task Contract requirements (no `pending`, no `blocked`, every `satisfied` requirement evidenced and revision-current), then docs/version obligations. Without a contract the gate keeps its legacy behavior so trivial tasks stay proportional.
+
+> **Updated by D-036.** The independent-review step in that order no longer
+> exists.
 
 **Why:** Tests prove only what they cover. Completion must be backed by evidence for both technical correctness and fulfillment of the explicit user requirements.
 
@@ -185,7 +188,8 @@ semantic uses still wait for measured friction.
 
 ## D-018 — Fresh independent review, max two rounds
 
-> **Superseded in part by D-032.** Fresh-session semantics and the two-record hard cap remain, but ordinary code no longer requires review for completion. The second stored round now represents the single allowed corrected-revision follow-up for required deep review, not a general retry loop.
+> **Superseded by D-032 and removed by D-036.** This entry is historical: the
+> whole independent-review subsystem it describes no longer exists.
 
 **Decision:** Non-trivial code-changing work requires one independent review in a new child session per round (`frontier` profile, prompt-constrained read-only, compact packet, structured `{verdict, findings}` response). Never resume a review session; after a correction the next round is a new session. Findings block only when linked to a requirement/constraint/desired outcome/missing evidence. Invalid reviewer output is reported and consumes no round. Two rejects block the task — no judge-of-judge.
 
@@ -201,17 +205,20 @@ semantic uses still wait for measured friction.
 
 **Why:** Overwriting the compaction summary would destroy context the model still needs; memory machinery would violate state/context/memory separation; autonomous self-modification has no demonstrated safe trigger.
 
-**Consequence:** Continuity is pull-based and documented in the `AndMar` agent policy; `andmar.contract`/`andmar.review` observability stays metadata-only and fail-open.
+**Consequence:** Continuity is pull-based and documented in the `AndMar` agent policy; `andmar.contract` observability stays metadata-only and fail-open.
 
 ## D-020 — Behavioral completion policy is runtime-derived
 
+> **Updated by D-036.** The review requirements, the `requireReview` /
+> `reviewRequired` flags and the blocking-finding derivation no longer exist.
+> Task kind still selects the contract/completion obligations at runtime.
+
 **Decision:** Task kind is stored in the Task Contract and passed explicitly to
-the completion boundary. Contract/review requirements are derived in runtime;
-the model cannot disable them with optional `requireContract`,
-`requireReview`, or `reviewRequired` flags. Review outcome is derived from
-structured blocking findings, revision-sensitive evidence must be revision
-bound, and a contract can close as completed only after an exact-revision
-completion seal bound to the exact Task Contract state evaluated by the gate.
+the completion boundary. Contract requirements are derived in runtime;
+the model cannot disable them with an optional `requireContract` flag.
+Revision-sensitive evidence must be revision bound, and a contract can close
+as completed only after an exact-revision completion seal bound to the exact
+Task Contract state evaluated by the gate.
 
 **Why:** Real-world use showed that prompt-level instructions are not strong
 enough for the properties the harness exists to guarantee. A model omission
@@ -220,8 +227,8 @@ behavior.
 
 **Consequence:** Trivial task kinds retain the proportional escape hatch.
 Non-trivial work fails closed when the Task Contract boundary is missing.
-Only security/migration/architecture fail closed when the required deep-review
-boundary is missing; ordinary code relies on exact-revision Verification.
+No task kind has a second-judge boundary; all of them rely on exact-revision
+Verification plus the requirement gate.
 
 ---
 
@@ -232,13 +239,19 @@ boundary is missing; ordinary code relies on exact-revision Verification.
 > operation natively. There is still no release capability and no release
 > engine.
 
-**Decision:** A new request after a `completed` Task Contract that only operates on the already-approved result (version/changelog metadata, commit, tag, push, publish) runs as `continuation.fastPath=true` with `taskKind=internal`: no new/reopened contract, no `andmar_request_review`, no `andmar_completion_gate` replay. Obvious wording fast-paths deterministically with no Jev; ambiguous wording uses the same single Jev call plus three conditional questions. Fallback never fast-paths. `andmar_request_review` refuses completed contracts.
+> **Updated by D-036.** The `andmar_request_review` references no longer
+> apply; the fast-path itself is unchanged.
 
-**Why:** Repeating contract → verification → review → gate ceremony for pure release/VCS operations wastes frontier review and risks re-litigating approved work, while any new code/product requirement must keep full guarantees.
+**Decision:** A new request after a `completed` Task Contract that only operates on the already-approved result (version/changelog metadata, commit, tag, push, publish) runs as `continuation.fastPath=true` with `taskKind=internal`: no new/reopened contract, no `andmar_completion_gate` replay. Obvious wording fast-paths deterministically with no Jev; ambiguous wording uses the same single Jev call plus three conditional questions. Fallback never fast-paths.
+
+**Why:** Repeating contract → verification → gate ceremony for pure release/VCS operations wastes frontier-model budget and risks re-litigating approved work, while any new code/product requirement must keep full guarantees.
 
 **Consequence:** Intake owns continuation detection; the agent executes only requested operational mutations with proportional checks and leaves the fast-path on any behavior change. No `release` capability yet.
 
 ## D-022 — Independent review audits evidence; it does not duplicate verification
+
+> **Superseded by D-036.** Historical only; the auditor described here no longer
+> exists.
 
 **Decision:** Independent final review is a semantic/evidence audit, not a second verification phase. Verification remains responsible for executing relevant checks and recording exact-revision receipts. The reviewer inspects the diff, relevant implementation/tests, requirements, constraints and evidence sufficiency. It must not rerun broad test/typecheck/build/lint/install/repository-wide verification already represented by current-revision evidence. A reviewer may run only bounded targeted spot-checks when a concrete uncertainty cannot be resolved by inspection/search. Missing, stale or insufficient evidence is returned as a structured `target=missing-evidence` finding rather than recreated by the reviewer.
 
@@ -249,9 +262,7 @@ boundary is missing; ordinary code relies on exact-revision Verification.
 
 ## D-023 — Review depth is routed deterministically; Jev may only escalate
 
-> **Superseded by D-032.** Review keeps the categorical `none | audit | deep`
-> modes, but routing is now fully deterministic and Jev is no longer called by
-> Review. Jev remains an Intake-only decision primitive.
+> **Superseded by D-032 and removed by D-036.** Historical only.
 
 **Historical decision:** Review originally used three categorical modes with a deterministic floor and a Jev escalation from `audit` to `deep` for ordinary code. That extra semantic router is removed by D-032.
 
@@ -261,10 +272,8 @@ boundary is missing; ordinary code relies on exact-revision Verification.
 
 ## D-024 — Review timeout is availability, not a delegation failure
 
-> **Updated by D-032.** The bounded runner and structured availability outcome
-> remain. Ordinary `audit` is now advisory rather than a completion dependency,
-> so the old audit-degrade completion branch is no longer needed. Deep review
-> remains fail-closed.
+> **Superseded by D-032 and removed by D-036.** Historical only; the bounded
+> review runner, its deadlines and the availability marker no longer exist.
 
 **Decision:** Independent Review has its own bounded session runner instead of
 sharing `runChildTask` with delegation. `audit` gets a 90-second wall-clock
@@ -396,7 +405,7 @@ Intake can route requests correctly without lossy summarization, without new wor
 - `record` accepts only the current `HEAD`, validates the trailers and product paths, and writes `Checkpoint: <sha>` to `WORK.md`.
 - `delivery.workUnitCommits` defaults to `manual`; `auto` is explicit authorization only for local Work Unit checkpoints. Remote/release operations remain separate.
 - Reopening a Work Unit clears its current evidence and checkpoint pointers.
-- No review is added per Work Unit checkpoint; integrated final verification and final review/completion remain authoritative.
+- No extra gate is added per Work Unit checkpoint; integrated final verification and the completion gate remain authoritative.
 
 **Why:**
 - A verified coherent Work Unit is a useful recovery boundary, but building Git execution into AndMar would duplicate OpenCode, expand permissions, and create a Delivery subsystem prematurely.
@@ -414,23 +423,26 @@ Intake can route requests correctly without lossy summarization, without new wor
 
 **Decision:**
 - `andmar_completion_gate` keeps the same public tool name but is owned by the `task-contract` capability, which owns the Task Contract state it may close.
-- Normal callers provide the final `currentRevision`, `taskKind`, `docsStatus`, `versionStatus`, and relevant `requiredChecks`; verification and review success are derived from stored AndMar evidence instead of repeated caller booleans.
+- Normal callers provide the final `currentRevision`, `taskKind`, `docsStatus`, `versionStatus`, and relevant `requiredChecks`; verification success is derived from stored AndMar evidence instead of a repeated caller boolean.
 - A successful non-trivial completion gate closes the Task Contract in the same serialized operation and returns `contractClosed:true`; a second `andmar_task_contract(op=close)` call is no longer part of the normal flow.
 - The legacy `CompletionEvidence` object and exact-seal completed-close path remain accepted as compatibility paths, but new agent policy does not depend on them.
 - Ledger-backed work first uses deterministic lifecycle `status` (`completionReady:true`) and, after the gate succeeds, lifecycle `finalize --revision <accepted revision>` seals the portable Ledger with final revision/timestamp. No new completion capability or Work Ledger runtime is introduced.
 
 **Why:**
-- The old sequence repeated facts already present in receipts/reviews (`testsPassed`, `reviewPassed`), then created a completion seal solely so a second tool call could close the same Task Contract.
+- The old sequence repeated facts already present in receipts (`testsPassed`, `reviewPassed`), then created a completion seal solely so a second tool call could close the same Task Contract.
 - Letting `lifecycle` close the contract would violate capability state ownership. Moving only the completion boundary to `task-contract` preserves isolation while leaving documentation/version impact in `lifecycle`.
 - Work Ledger already contains durable unit/evidence state; `completionReady` plus a deterministic finalization command is enough to make portable completion explicit without adding another gate.
 
 **Consequence:**
-- Normal completion becomes `ledger ready -> reconcile/evidence -> integrated verification -> review if required -> completion_gate (also closes contract) -> ledger finalize`.
-- Missing/failed/unverified receipts still fail closed; required review policy and audit/deep unavailability behavior are unchanged.
+- Normal completion becomes `ledger ready -> reconcile/evidence -> integrated verification -> completion_gate (also closes contract) -> ledger finalize`.
+- Missing/failed/unverified receipts still fail closed.
 - Completed Task Contracts continue to drive the existing operational-continuation fast path.
 - D-020's completion-seal close handshake is superseded for the normal flow; its legacy compatibility guard remains available for older callers.
 
 ## D-032 — Review is deterministic, advisory for ordinary work, and required only for high-risk kinds
+
+> **Superseded by D-036.** Historical only. The entire subsystem below was
+> removed; nothing in this entry describes current behavior.
 
 **Decision:** Review is reduced to one deterministic policy table:
 
@@ -508,3 +520,51 @@ The authoritative order is current explicit user instruction, current repository
 **Why:** OpenCode V2 already consumes Engram MCP instructions and native `mem_*` tools successfully. Re-wrapping them would duplicate an existing subsystem and blur the completed core boundary. Work Ledger already owns current portable work state, so memory should retain durable historical knowledge rather than runtime task state.
 
 **Consequence:** The core inventory remains unchanged. Engram can be installed/removed independently. `andmar_status` reports its integration state, and development metrics can detect excessive or failing retrieval without storing query/result content. Deep health and maintenance stay delegated to `engram doctor`, `engram test`, sync, conflict and project-maintenance CLI commands.
+
+---
+
+## D-036 — The independent-review subsystem is removed, not replaced
+
+**Decision:** AndMar has no independent-review subsystem. There is no
+`andmar_request_review` tool, no reviewer child session, no review routing
+table, no review rounds, no review timeout, no review-availability marker, no
+review gate, and no review requirement in completion. Completion is decided
+only by explicit Task Contract obligations plus deterministic
+exact-revision Verification plus docs/version obligations. No second LLM
+judges completion.
+
+Concretely, the removal deletes `src/capabilities/task-contract/review-session.ts`
+and the whole review domain: `ReviewVerdict`/`ReviewMode`/`ReviewFinding`/
+`ReviewResult`/`ReviewRecord`/`ReviewAvailabilityRecord`/`ReviewGateResult`,
+`MAX_REVIEW_ROUNDS`, `REQUIRED_REVIEW_KINDS`, `requiresIndependentReview()`,
+`minimumReviewMode()`, `evaluateReviewGate()`, `validateReviewResult()`,
+`buildReviewPacket()`, `isBlockingFinding()`, `TaskContract.reviewRequired`,
+`CompletionEvidence.reviewPassed`, the `review` requirement-evidence type, the
+`andmar.review` semantic event, the `task-contract-review*` state keys, and the
+Review section of Development Metrics. Contract metrics, summaries and briefs
+now take only the contract.
+
+**Why:** The subsystem had converged on a second, weaker verification engine.
+Its own recorded rationale (D-022, D-024, D-032) already showed reviewers
+spending their budget re-deriving what exact-revision Verification had
+deterministically proven, and its fail-closed unavailability path could only
+block already-verified work. Once Review was made deterministic it duplicated
+the requirement gate; once the requirement gate existed at all, a second LLM
+judge added cost, latency, child-session failure modes and a weaker signal than
+the receipts it was asked to audit. Deleting it also makes the harness's core
+promise legible: one runtime boundary, one deterministic evidence model, one
+set of state keys.
+
+**Consequence:** The `task-contract` capability keeps its identity and loses one
+tool; its public surface changes, so its capability version increments
+(2 → 3). No compatibility layer, stub, flag, adapter, or state migration is
+added: `task-contract-review*` entries written by earlier versions simply
+become unused data that nothing reads or writes. The `ChangeKind` value
+`"review"` is unrelated and stays: it classifies a user-requested
+review-the-code task. Delegation, Work Ledger, Work Units, checkpoints,
+receipts, revision verification and the completion gate are unchanged; removing
+Review does not weaken them, and exact-revision verification still blocks
+unverified completion. Risky work keeps stronger verification as a
+primary-agent discipline ("adversarial final inspection"), not as another
+agent. Reintroducing any second LLM judge requires a new architectural decision
+with fresh evidence.

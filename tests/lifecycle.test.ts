@@ -33,7 +33,6 @@ test("completion evidence is invalidated by revision changes", () => {
   const result = evaluateCompletion("rev-b", {
     revision: "rev-a",
     testsPassed: true,
-    reviewPassed: true,
     docsStatus: "clean",
     versionStatus: "clean",
   })
@@ -45,7 +44,6 @@ test("completion gate cannot formally verify when required verification is missi
   const evidence = {
     revision: "rev-a",
     testsPassed: true,
-    reviewPassed: true,
     docsStatus: "clean" as const,
     versionStatus: "clean" as const,
   }

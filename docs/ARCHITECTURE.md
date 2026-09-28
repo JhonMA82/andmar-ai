@@ -68,7 +68,7 @@ indicate a boundary problem.
 > If a normal feature requires modifying `src/core`, first demonstrate why it
 > cannot live in a capability or a skill.
 
-No allowlist or resolver enforces this yet; it is a review rule, not a gate.
+No allowlist or resolver enforces this yet; it is an architectural rule, not a gate.
 Concretely, ODD, Product Plan, release flows, UI, Herdr, Jev, Lane and
 provider-specific prompts must never land in core.
 
@@ -191,15 +191,14 @@ Verification (`andmar_suggest_checks` → run via native shell
        requirement evidence recorded per Task Contract requirement)
 Lifecycle (`andmar_change_impact` for docs/version obligations)
    ↓
-Independent review (`andmar_request_review`: deterministic `none | audit | deep`
-   ↓     ordinary code: optional advisory audit; security/migration/architecture:
-         required deep review; fresh read/glob/grep-only frontier child,
-         sanitized compact evidence-audit packet, no unchanged-state retry,
-         at most one corrected-revision follow-up for required deep review)
 Completion (`andmar_completion_gate`: exact-revision evidence +
-   requirement gate + required deep review when applicable + clean lifecycle
-   gates + satisfied required verification)
+  requirement gate + clean docs/version obligations + satisfied required
+  verification)
 ```
+
+No second LLM judges completion. The independent-review subsystem was
+removed; completion is decided by explicit Task Contract obligations plus
+deterministic exact-revision evidence.
 
 There is intentionally no generic Workflow engine between these steps: each
 transition is an explicit primitive call by the agent, and the completion gate
@@ -290,7 +289,7 @@ Examples:
 - architecture design;
 - hard debugging;
 - implementation;
-- code review requiring broad reasoning.
+- user-requested code review requiring broad reasoning.
 
 These belong to a capable model, selected through the model policy.
 
@@ -377,7 +376,6 @@ verification evidence (observed execution + revision match)
      +-- tests passed?
      +-- every Task Contract requirement satisfied/blocked/skipped with evidence?
      +-- revision-bound requirement evidence current (not stale)?
-     +-- required deep review approved for the current revision (security/migration/architecture only)?
      +-- docs clean/updated?
      `-- version/changelog clean/updated?
      |
@@ -394,7 +392,7 @@ is invalid, never as completion.
 
 For Ledger-backed work, portable readiness is checked first through
 `work-ledger-lifecycle.mjs status` (`completionReady:true`). The runtime
-completion gate then derives verification and review truth from stored evidence;
+completion gate then derives verification truth from stored evidence;
 callers supply only the final revision, task kind, lifecycle docs/version status,
 and the relevant required checks. A successful gate closes the Task Contract in
 the same operation. The portable Ledger is then finalized with the same accepted
@@ -483,7 +481,7 @@ The intended future shape is:
      |           |                 |             |
      +-----------+--------+--------+-------------+
                          |
-                 task-contract (obligations + review)
+                 task-contract (obligations + completion gate)
                           |
                   optional workflow
                          |

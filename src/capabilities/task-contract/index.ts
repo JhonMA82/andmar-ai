@@ -2,40 +2,23 @@ import type { Capability, ChangeKind, CompletionEvidence, StateStore } from "../
 import { evaluateCompletionV2 } from "../../core/lifecycle.ts"
 import { readVerificationState } from "../../core/verification-state.ts"
 import type { SemanticObservability } from "../../core/observability.ts"
-import { runReview } from "./review-session.ts"
 import {
-  MAX_REVIEW_ROUNDS,
-  buildReviewPacket,
   completionSealKey,
   contractKey,
   contractStateToken,
   contractMetrics,
   createTaskContract,
   evaluateRequirementGate,
-  evaluateReviewGate,
   formatContractBrief,
-  isBlockingFinding,
   isTrivialTask,
-  minimumReviewMode,
   recordRequirementEvidence,
-  requiresIndependentReview,
-  reviewAvailabilityKey,
-  reviewKey,
-  reviewPrefix,
   steerTaskContract,
   updateRequirementStatus,
-  validateReviewResult,
-  validateTaskContract,
   type EvidenceType,
   type RequirementStatus,
-  type ReviewAvailabilityRecord,
-  type ReviewMode,
-  type ReviewRecord,
   type TaskContract,
 } from "../../core/task-contract.ts"
 
-const MAX_PACKET_FIELD_CHARS = 2000
-const MAX_CHANGED_PATHS = 100
 const CHECKS = ["tests", "lint", "typecheck", "build", "custom"] as const
 const DEFAULT_GATE_CHECKS: readonly string[] = ["tests", "typecheck"]
 
@@ -44,65 +27,8 @@ function sessionIDFrom(toolContext: any): string | undefined {
   return typeof id === "string" && id !== "" ? id : undefined
 }
 
-function truncate(value: string, max: number): string {
-  return value.length <= max ? value : `${value.slice(0, max)}\n…[truncated by AndMar AI]`
-}
-
-const REVIEW_SESSION_PERMISSIONS = [
-  { action: "*", resource: "*", effect: "deny" },
-  { action: "read", resource: "*", effect: "allow" },
-  { action: "glob", resource: "*", effect: "allow" },
-  { action: "grep", resource: "*", effect: "allow" },
-] as const
-
-async function restrictReviewerSession(ctx: any, sessionID: string): Promise<boolean> {
-  if (typeof ctx?.permission?.rules !== "function") return false
-  try {
-    await ctx.permission.rules({ sessionID, permissions: REVIEW_SESSION_PERMISSIONS })
-    return true
-  } catch {
-    return false
-  }
-}
-
-function reviewTimeoutMs(mode: ReviewMode): number {
-  return mode === "audit" ? 90_000 : 180_000
-}
-
-function extractJsonObject(text: string): unknown {
-  const trimmed = text.trim()
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/)
-  const candidate = (fenced?.[1] ?? trimmed).trim()
-  const start = candidate.indexOf("{")
-  const end = candidate.lastIndexOf("}")
-  if (start === -1 || end <= start) throw new Error("no JSON object found in reviewer output")
-  return JSON.parse(candidate.slice(start, end + 1))
-}
-
 async function readContract(state: StateStore, sessionID: string): Promise<TaskContract | undefined> {
   return state.get<TaskContract>(contractKey(sessionID))
-}
-
-async function readReviews(state: StateStore, sessionID: string): Promise<ReviewRecord[]> {
-  const entries = await state.scan<ReviewRecord>(reviewPrefix(sessionID))
-  return entries.map((entry) => entry.value).sort((a, b) => a.round - b.round)
-}
-
-function sameReviewState(
-  record: { revision: string; contractStateToken?: string | undefined },
-  revision: string,
-  stateToken: string,
-): boolean {
-  return record.revision === revision &&
-    (record.contractStateToken === undefined || record.contractStateToken === stateToken)
-}
-
-async function storeReviewUnavailable(
-  state: StateStore,
-  sessionID: string,
-  record: ReviewAvailabilityRecord,
-): Promise<void> {
-  await state.set(reviewAvailabilityKey(sessionID), record)
 }
 
 // Contract mutations are read-modify-write over the whole stored contract.
@@ -142,7 +68,7 @@ async function mutateTaskContract(
       return "refused: create requires requirements (explicit user obligations, not internal steps)"
     }
     if (typeof input.taskKind !== "string") {
-      return "refused: create requires taskKind so review policy is runtime-derived, not caller-controlled"
+      return "refused: create requires taskKind so completion obligations and triviality policy are runtime-derived, not caller-controlled"
     }
     const created = createTaskContract(sessionID, {
       taskKind: input.taskKind as ChangeKind,
@@ -158,7 +84,7 @@ async function mutateTaskContract(
     observability?.emit({
       type: "andmar.contract",
       sessionID,
-      payload: contractEventPayload("created", created.contract, []),
+      payload: contractEventPayload("created", created.contract),
     })
     return JSON.stringify({ stored: true, contract: created.contract }, null, 2)
   }
@@ -179,7 +105,7 @@ async function mutateTaskContract(
     observability?.emit({
       type: "andmar.contract",
       sessionID,
-      payload: contractEventPayload("requirement_updated", updated.contract, await readReviews(state, sessionID), {
+      payload: contractEventPayload("requirement_updated", updated.contract, {
         requirementId: input.requirementId,
         toStatus: input.status,
       }),
@@ -199,7 +125,7 @@ async function mutateTaskContract(
     observability?.emit({
       type: "andmar.contract",
       sessionID,
-      payload: contractEventPayload("evidence_recorded", recorded.contract, await readReviews(state, sessionID), {
+      payload: contractEventPayload("evidence_recorded", recorded.contract, {
         requirementId: input.requirementId,
         evidenceType: input.type,
       }),
@@ -218,7 +144,7 @@ async function mutateTaskContract(
     observability?.emit({
       type: "andmar.contract",
       sessionID,
-      payload: contractEventPayload("steered", steered.contract, await readReviews(state, sessionID)),
+      payload: contractEventPayload("steered", steered.contract),
     })
     return JSON.stringify({ stored: true, contract: steered.contract }, null, 2)
   }
@@ -257,7 +183,7 @@ async function mutateTaskContract(
     observability?.emit({
       type: "andmar.contract",
       sessionID,
-      payload: contractEventPayload("closed", closed, await readReviews(state, sessionID)),
+      payload: contractEventPayload("closed", closed),
     })
     return JSON.stringify({ stored: true, contract: closed }, null, 2)
   }
@@ -268,14 +194,12 @@ async function mutateTaskContract(
 function contractEventPayload(
   action: string,
   contract: TaskContract,
-  reviews: ReviewRecord[],
   extra?: Record<string, unknown>,
 ): Record<string, unknown> {
-  const metrics = contractMetrics(contract, reviews)
+  const metrics = contractMetrics(contract)
   return {
     action,
     status: contract.status,
-    reviewRequired: contract.reviewRequired,
     requirementsTotal: metrics.requirementsTotal,
     requirementsSatisfied: metrics.requirementsSatisfied,
     requirementsPending: metrics.requirementsPending,
@@ -288,7 +212,7 @@ interface CompletionGateInput {
   currentRevision: string
   docsStatus?: CompletionEvidence["docsStatus"]
   versionStatus?: CompletionEvidence["versionStatus"]
-  /** Compatibility only. Verification/review booleans are not authoritative. */
+  /** Compatibility only. Verification booleans are not authoritative. */
   evidence?: CompletionEvidence
   requiredChecks?: string[]
   taskKind: ChangeKind
@@ -328,15 +252,6 @@ async function evaluateAndCloseCompletion(
     versionStatus,
   }
   const contract = await readContract(state, sessionID)
-  const reviews = await readReviews(state, sessionID)
-  const reviewAvailability = await state.get<ReviewAvailabilityRecord>(reviewAvailabilityKey(sessionID))
-  const currentReviewAvailability =
-    reviewAvailability !== undefined &&
-    contract !== undefined &&
-    reviewAvailability.revision === input.currentRevision &&
-    reviewAvailability.contractStateToken === contractStateToken(contract)
-      ? reviewAvailability
-      : undefined
 
   const contractRequired = !isTrivialTask(input.taskKind)
   let contractGate: ReturnType<typeof evaluateRequirementGate> | undefined
@@ -349,12 +264,6 @@ async function evaluateAndCloseCompletion(
   } else if (contractRequired) {
     contractReasons.push(`Task Contract required for non-trivial taskKind "${input.taskKind}" but none exists for this session`)
   }
-
-  const reviewRequired = requiresIndependentReview(contract?.taskKind ?? input.taskKind)
-  const reviewGate =
-    contract !== undefined || reviewRequired
-      ? evaluateReviewGate(contract, reviews, input.currentRevision, reviewRequired)
-      : undefined
 
   const combinedContractGate =
     contractGate !== undefined
@@ -376,27 +285,12 @@ async function evaluateAndCloseCompletion(
           }
         : undefined
 
-  let effectiveReviewGate = reviewGate
-  const reviewDegraded = false // compatibility field; optional audit no longer participates in completion.
-  if (reviewGate !== undefined && !reviewGate.ok && currentReviewAvailability !== undefined) {
-    if (currentReviewAvailability.mode === "deep") {
-      effectiveReviewGate = {
-        ...reviewGate,
-        reasons: [
-          ...reviewGate.reasons,
-          `deep review unavailable: ${currentReviewAvailability.reason} during ${currentReviewAvailability.stage}`,
-        ],
-      }
-    }
-  }
-
   const result = evaluateCompletionV2(
     input.currentRevision,
     derivedEvidence,
     verification,
     required,
     combinedContractGate,
-    effectiveReviewGate,
   )
 
   let contractClosed = false
@@ -408,12 +302,11 @@ async function evaluateAndCloseCompletion(
     observability?.emit({
       type: "andmar.contract",
       sessionID,
-      payload: contractEventPayload("completed_by_gate", closedContract, reviews),
+      payload: contractEventPayload("completed_by_gate", closedContract),
     })
   }
 
-  const metrics = contract ? contractMetrics(contract, reviews) : undefined
-  const reviewRejectCount = reviews.filter((review) => review.verdict === "reject").length
+  const metrics = contract ? contractMetrics(contract) : undefined
   observability?.emit({
     type: "andmar.completion",
     sessionID,
@@ -421,7 +314,6 @@ async function evaluateAndCloseCompletion(
       ok: result.ok,
       verificationDerived: true,
       testsPassed: derivedEvidence.testsPassed,
-      reviewPassed: effectiveReviewGate?.ok ?? null,
       docsStatus: derivedEvidence.docsStatus,
       versionStatus: derivedEvidence.versionStatus,
       requiredChecks: [...required],
@@ -436,13 +328,6 @@ async function evaluateAndCloseCompletion(
       requirementsPending: metrics?.requirementsPending ?? 0,
       requirementsBlocked: metrics?.requirementsBlocked ?? 0,
       requirementGatePreventedCompletion: combinedContractGate !== undefined && !combinedContractGate.ok,
-      reviewRequired,
-      reviewRounds: reviews.length,
-      reviewRejectCount,
-      reviewApproved: reviewGate?.ok === true && reviewRequired,
-      reviewDegraded,
-      reviewUnavailable: currentReviewAvailability !== undefined,
-      reviewUnavailableMode: currentReviewAvailability?.mode ?? null,
       contractClosed,
       finalCompletion: result.ok,
     },
@@ -451,28 +336,18 @@ async function evaluateAndCloseCompletion(
   return {
     ...result,
     contractClosed,
-    review: {
-      required: reviewRequired,
-      approved: reviewGate?.ok === true && reviewRequired,
-      degraded: reviewDegraded,
-      unavailable:
-        currentReviewAvailability === undefined
-          ? null
-          : {
-              mode: currentReviewAvailability.mode,
-              reason: currentReviewAvailability.reason,
-              stage: currentReviewAvailability.stage,
-              elapsedMs: currentReviewAvailability.elapsedMs,
-            },
-    },
   }
 }
 
 export const taskContractCapability: Capability = {
   id: "task-contract",
-  version: 2,
-  description: "Persist Task Contract obligations, independent review, and the evidence-derived completion boundary.",
-  async setup({ ctx, config, state, observability }) {
+  // 3: the independent-review subsystem was removed, so the persisted
+  // contract shape dropped `reviewRequired` and the `task-contract-review*`
+  // key families disappeared. Old stored contracts are read as-is; the extra
+  // legacy field is simply ignored, and no migration is needed.
+  version: 3,
+  description: "Persist Task Contract obligations and enforce the evidence-derived completion boundary.",
+  async setup({ ctx, state, observability }) {
     const registration = await ctx.tool.transform((editor: any) => {
       editor.namespace({ name: "andmar", description: "AndMar AI harness primitives" })
       editor.add({
@@ -495,7 +370,7 @@ export const taskContractCapability: Capability = {
             requirementId: { type: "string" },
             status: { type: "string", enum: ["pending", "satisfied", "blocked", "skipped"] },
             reason: { type: "string" },
-            type: { type: "string", enum: ["verification", "runtime", "diff", "review", "user-decision", "external"] },
+            type: { type: "string", enum: ["verification", "runtime", "diff", "user-decision", "external"] },
             reference: { type: "string" },
             revision: { type: "string" },
             addRequirements: { type: "array", items: { type: "string" } },
@@ -514,16 +389,13 @@ export const taskContractCapability: Capability = {
           if (op === "status") {
             const contract = await readContract(state, sessionID)
             if (!contract) return { content: JSON.stringify({ active: false }, null, 2) }
-            const reviews = await readReviews(state, sessionID)
             return {
               content: JSON.stringify(
                 {
                   active: true,
-                  brief: formatContractBrief(contract, reviews),
+                  brief: formatContractBrief(contract),
                   contract,
-                  metrics: contractMetrics(contract, reviews),
-                  reviewRounds: reviews.length,
-                  latestReview: reviews.at(-1) ?? null,
+                  metrics: contractMetrics(contract),
                 },
                 null,
                 2,
@@ -540,7 +412,7 @@ export const taskContractCapability: Capability = {
       editor.add({
         name: "completion_gate",
         description:
-          "Accept completion only when stored evidence for the exact current revision is green, Task Contract requirements are fulfilled, required independent review is satisfied, and docs/version obligations are clean. Verification/review success is derived from AndMar state instead of caller booleans. On success, the Task Contract is closed in this same operation. Legacy evidence input remains accepted for compatibility. Pass requiredChecks: [] only for tasks that genuinely require no checks.",
+          "Accept completion only when stored evidence for the exact current revision is green, Task Contract requirements are fulfilled, and docs/version obligations are clean. Verification success is derived from AndMar state instead of caller booleans. On success, the Task Contract is closed in this same operation. Legacy evidence input remains accepted for compatibility. Pass requiredChecks: [] only for tasks that genuinely require no checks.",
         input: {
           type: "object",
           properties: {
@@ -552,7 +424,6 @@ export const taskContractCapability: Capability = {
               properties: {
                 revision: { type: "string", minLength: 1 },
                 testsPassed: { type: "boolean" },
-                reviewPassed: { type: "boolean" },
                 docsStatus: { type: "string", enum: ["clean", "updated", "stale", "not-applicable"] },
                 versionStatus: { type: "string", enum: ["clean", "updated", "required", "not-applicable"] },
               },
@@ -578,366 +449,6 @@ export const taskContractCapability: Capability = {
               null,
               2,
             ),
-          }
-        },
-      })
-
-      editor.add({
-        name: "request_review",
-        description:
-          "Request one bounded independent review attempt in a fresh child session (frontier profile, read-only evidence auditor, compact packet from the active Task Contract). Routing is deterministic: ordinary code uses optional advisory audit; security/migration/architecture require deep review. Verification must already have run for this revision. Timeout or invalid output is terminal for the same revision + Task Contract state and must not be retried automatically. Required deep review permits at most one corrected-revision follow-up.",
-        input: {
-          type: "object",
-          properties: {
-            revision: { type: "string", minLength: 1, maxLength: 200 },
-            changedPaths: { type: "array", items: { type: "string" } },
-            verificationSummary: { type: "string" },
-            knownLimitations: { type: "string" },
-          },
-          required: ["revision"],
-          additionalProperties: false,
-        },
-        options: { namespace: "andmar", codemode: true },
-        execute: async (
-          input: { revision: string; changedPaths?: string[]; verificationSummary?: string; knownLimitations?: string },
-          toolContext: any,
-        ) => {
-          const sessionID = sessionIDFrom(toolContext)
-          if (!sessionID) return { content: "refused: cannot determine the current session ID" }
-          if (input.revision.trim() === "") return { content: "refused: revision must be a non-empty string" }
-
-          const contract = await readContract(state, sessionID)
-          if (!contract) return { content: "refused: no active Task Contract for this session; create one first" }
-          if (contract.status === "completed") {
-            return {
-              content:
-                "refused: this Task Contract is already completed. Do not re-review completed work for an operational continuation; create a new active contract only if the user introduced new code/product requirements.",
-            };
-          }
-          await state.remove(completionSealKey(sessionID))
-          const contractErrors = validateTaskContract(contract)
-          if (contractErrors.length > 0) {
-            return { content: `refused: stored contract is invalid: ${contractErrors.join("; ")}` }
-          }
-          const reviews = await readReviews(state, sessionID)
-          const stateToken = contractStateToken(contract)
-          const previousAvailability = await state.get<ReviewAvailabilityRecord>(reviewAvailabilityKey(sessionID))
-          if (
-            previousAvailability !== undefined &&
-            sameReviewState(previousAvailability, input.revision, stateToken)
-          ) {
-            observability?.emit({
-              type: "andmar.review",
-              sessionID,
-              payload: {
-                action: "denied",
-                reason: "terminal_attempt_same_state",
-                mode: previousAvailability.mode,
-                unavailableReason: previousAvailability.reason,
-              },
-            })
-            return {
-              content:
-                `refused: review already ended ${previousAvailability.reason} for this exact revision and Task Contract state. ` +
-                "Do not retry unchanged work; continue according to completion policy or change the implementation/contract first.",
-            }
-          }
-          if (previousAvailability !== undefined) {
-            await state.remove(reviewAvailabilityKey(sessionID))
-          }
-
-          const latestReview = reviews.at(-1)
-          if (latestReview !== undefined && sameReviewState(latestReview, input.revision, stateToken)) {
-            return {
-              content:
-                `refused: this exact revision and Task Contract state already has stored review round ${latestReview.round} ` +
-                `(${latestReview.verdict}). Do not review unchanged work again.`,
-            }
-          }
-          if (reviews.length >= MAX_REVIEW_ROUNDS) {
-            const latest = reviews.at(-1)!
-            observability?.emit({
-              type: "andmar.review",
-              sessionID,
-              payload: { action: "denied", reason: "rounds_exhausted", rounds: reviews.length, verdict: latest.verdict },
-            })
-            return {
-              content: `blocked: review rounds exhausted (${MAX_REVIEW_ROUNDS} rounds recorded, latest verdict=${latest.verdict}). The task is blocked; do not request another review.`,
-            }
-          }
-
-          const changedPaths = (input.changedPaths ?? []).slice(0, MAX_CHANGED_PATHS)
-          const mode = minimumReviewMode(contract.taskKind, changedPaths.length)
-          if (mode === "audit" && reviews.length >= 1) {
-            observability?.emit({
-              type: "andmar.review",
-              sessionID,
-              payload: { action: "denied", reason: "advisory_audit_consumed", rounds: reviews.length },
-            })
-            return {
-              content:
-                "refused: the one bounded advisory audit for this task has already been consumed. " +
-                "Do not create an audit loop; Verification remains the primary guarantee.",
-            }
-          }
-          observability?.emit({
-            type: "andmar.review",
-            sessionID,
-            payload: {
-              action: "routed",
-              mode,
-              source: "deterministic",
-              required: contract.reviewRequired,
-            },
-          })
-          if (mode === "none") {
-            return {
-              content: JSON.stringify(
-                { stored: false, skipped: true, mode: "none", reason: "deterministic review bypass" },
-                null,
-                2,
-              ),
-            }
-          }
-          const packet = buildReviewPacket(contract, {
-            revision: input.revision,
-            reviewMode: mode,
-            changedPaths,
-            verificationSummary: input.verificationSummary
-              ? truncate(input.verificationSummary, MAX_PACKET_FIELD_CHARS)
-              : undefined,
-            knownLimitations: input.knownLimitations
-              ? truncate(input.knownLimitations, MAX_PACKET_FIELD_CHARS)
-              : undefined,
-          })
-
-          const round = reviews.length + 1
-          const model = config.models.frontier
-          const parent = await ctx.session.get({ sessionID }).catch(() => undefined)
-          const selectedModel = model ?? parent?.model
-          const child = await ctx.session.create({
-            parentID: sessionID,
-            title: `AndMar ${mode} review round ${round}`,
-            ...(selectedModel ? { model: selectedModel } : {}),
-            metadata: { andmar: { profile: "frontier", role: "review", round } },
-          })
-          if (reviews.some((review) => review.reviewSessionID === child.id)) {
-            return { content: "refused: review session reuse detected; do not retry unchanged review state" }
-          }
-
-          const permissionsApplied = await restrictReviewerSession(ctx, child.id)
-          const startedAt = Date.now()
-          try {
-            const run = await runReview(ctx.session, child.id, packet, reviewTimeoutMs(mode))
-            if (run.status === "unavailable") {
-              const unavailable: ReviewAvailabilityRecord = {
-                status: "unavailable",
-                mode,
-                reason: run.reason,
-                stage: run.stage,
-                revision: input.revision,
-                reviewSessionID: child.id,
-                elapsedMs: run.elapsedMs,
-                contractStateToken: stateToken,
-                at: Date.now(),
-              }
-              await storeReviewUnavailable(state, sessionID, unavailable)
-              observability?.emit({
-                type: "andmar.review",
-                sessionID,
-                payload: {
-                  action: "timeout",
-                  round,
-                  stored: false,
-                  roundConsumed: false,
-                  mode,
-                  reason: run.reason,
-                  stage: run.stage,
-                  durationMs: run.elapsedMs,
-                },
-              })
-              return {
-                content: JSON.stringify(
-                  {
-                    stored: false,
-                    roundConsumed: false,
-                    reviewStatus: "unavailable",
-                    mode,
-                    reason: run.reason,
-                    stage: run.stage,
-                    elapsedMs: run.elapsedMs,
-                    completionPolicy: contract.reviewRequired ? "review-required" : "advisory",
-                  },
-                  null,
-                  2,
-                ),
-              }
-            }
-            const text = run.text
-            if (text === undefined) {
-              const unavailable: ReviewAvailabilityRecord = {
-                status: "unavailable",
-                mode,
-                reason: "invalid_output",
-                stage: "review.output",
-                revision: input.revision,
-                reviewSessionID: child.id,
-                elapsedMs: Date.now() - startedAt,
-                contractStateToken: stateToken,
-                at: Date.now(),
-              }
-              await storeReviewUnavailable(state, sessionID, unavailable)
-              observability?.emit({
-                type: "andmar.review",
-                sessionID,
-                payload: { action: "invalid_output", round, stored: false, category: "no-text" },
-              })
-              return {
-                content: JSON.stringify(
-                  {
-                    stored: false,
-                    roundConsumed: false,
-                    reviewStatus: "unavailable",
-                    mode,
-                    reason: "invalid_output",
-                    stage: "review.output",
-                    completionPolicy: contract.reviewRequired ? "review-required" : "advisory",
-                    detail: "reviewer produced no final text response",
-                  },
-                  null,
-                  2,
-                ),
-              }
-            }
-            const bounded = truncate(text, 8000)
-            let parsed: unknown
-            try {
-              parsed = extractJsonObject(bounded)
-            } catch {
-              const unavailable: ReviewAvailabilityRecord = {
-                status: "unavailable",
-                mode,
-                reason: "invalid_output",
-                stage: "review.output",
-                revision: input.revision,
-                reviewSessionID: child.id,
-                elapsedMs: Date.now() - startedAt,
-                contractStateToken: stateToken,
-                at: Date.now(),
-              }
-              await storeReviewUnavailable(state, sessionID, unavailable)
-              observability?.emit({
-                type: "andmar.review",
-                sessionID,
-                payload: { action: "invalid_output", round, stored: false },
-              })
-              return {
-                content: JSON.stringify(
-                  {
-                    stored: false,
-                    roundConsumed: false,
-                    reviewStatus: "unavailable",
-                    mode,
-                    reason: "invalid_output",
-                    stage: "review.output",
-                    completionPolicy: contract.reviewRequired ? "review-required" : "advisory",
-                    detail: "no parseable JSON {verdict, findings} found",
-                  },
-                  null,
-                  2,
-                ),
-              }
-            }
-            const validated = validateReviewResult(parsed)
-            if (!validated.ok) {
-              const unavailable: ReviewAvailabilityRecord = {
-                status: "unavailable",
-                mode,
-                reason: "invalid_output",
-                stage: "review.output",
-                revision: input.revision,
-                reviewSessionID: child.id,
-                elapsedMs: Date.now() - startedAt,
-                contractStateToken: stateToken,
-                at: Date.now(),
-              }
-              await storeReviewUnavailable(state, sessionID, unavailable)
-              observability?.emit({
-                type: "andmar.review",
-                sessionID,
-                payload: { action: "invalid_output", round, stored: false },
-              })
-              return {
-                content: JSON.stringify(
-                  {
-                    stored: false,
-                    roundConsumed: false,
-                    reviewStatus: "unavailable",
-                    mode,
-                    reason: "invalid_output",
-                    stage: "review.output",
-                    completionPolicy: contract.reviewRequired ? "review-required" : "advisory",
-                    detail: validated.error,
-                  },
-                  null,
-                  2,
-                ),
-              }
-            }
-            const blocking = validated.result.findings.filter((finding) => isBlockingFinding(contract, finding)).length
-            const effectiveVerdict = blocking > 0 ? "reject" : "approve"
-            const record: ReviewRecord = {
-              ...validated.result,
-              verdict: effectiveVerdict,
-              round,
-              reviewSessionID: child.id,
-              revision: input.revision,
-              contractStateToken: stateToken,
-              at: Date.now(),
-            }
-            await state.set(reviewKey(sessionID, round), record)
-            const gate = evaluateReviewGate(contract, [...reviews, record], input.revision, contract.reviewRequired)
-            observability?.emit({
-              type: "andmar.review",
-              sessionID,
-              payload: {
-                action: "completed",
-                round,
-                mode,
-                routingSource: "deterministic",
-                permissionsApplied,
-                verdict: record.verdict,
-                reportedVerdict: validated.result.verdict,
-                findings: record.findings.length,
-                blockingFindings: blocking,
-                reviewRequired: contract.reviewRequired,
-                gateOk: gate.ok,
-                durationMs: Date.now() - startedAt,
-              },
-            })
-            return {
-              content: JSON.stringify(
-                {
-                  stored: true,
-                  round,
-                  mode,
-                  routingSource: "deterministic",
-                  permissionsApplied,
-                  reviewSessionID: child.id,
-                  result: { ...validated.result, verdict: effectiveVerdict },
-                  reportedVerdict: validated.result.verdict,
-                },
-                null,
-                2,
-              ),
-            }
-          } catch (error) {
-            observability?.emit({
-              type: "andmar.review",
-              sessionID,
-              payload: { action: "failed", round, stored: false, durationMs: Date.now() - startedAt },
-            })
-            throw error
           }
         },
       })

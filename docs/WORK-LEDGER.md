@@ -458,7 +458,7 @@ Checkpoint: <full commit sha>
 
 The validator accepts `Checkpoint: none` or a Git commit hash only. A non-done Work Unit cannot retain a checkpoint, and the same checkpoint SHA cannot be assigned to multiple Work Units. Reopening a done Work Unit clears both its current `Evidence` and `Checkpoint` pointers because both are stale for the reopened outcome.
 
-Checkpoint commits are deliberately per coherent Work Unit: behavior, directly associated tests, and directly associated local documentation may travel together. Do not combine unrelated cleanup or another Work Unit. No independent review is required per checkpoint; final integrated verification and normal final review/completion policy still apply.
+Checkpoint commits are deliberately per coherent Work Unit: behavior, directly associated tests, and directly associated local documentation may travel together. Do not combine unrelated cleanup or another Work Unit. A checkpoint never replaces final integrated verification and the normal completion gate.
 
 ### 7.7 User steering
 
@@ -477,8 +477,8 @@ Work Ledger does **not** create a second completion gate. Completion now uses on
 1. Run lifecycle `status`; for a Ledger-backed task it must report `completionReady:true`. This is the portable-work readiness check: every Work Unit is `[x]`, evidence pointers are structurally valid, and no pending/active/blocked unit remains.
 2. Reconcile Task Contract requirements with Ledger obligations 1:1 and record exact-revision requirement evidence with the existing Task Contract primitive.
 3. Run integrated verification and `andmar_verify_revision` for the final working-state revision.
-4. Resolve docs/version obligations and run final review when runtime policy requires it.
-5. Call `andmar_completion_gate` with `currentRevision`, `taskKind`, `docsStatus`, `versionStatus`, and the relevant `requiredChecks`. The gate derives verification and review truth from stored AndMar evidence; normal callers do not repeat `testsPassed`/`reviewPassed` booleans.
+4. Resolve docs/version obligations.
+5. Call `andmar_completion_gate` with `currentRevision`, `taskKind`, `docsStatus`, `versionStatus`, and the relevant `requiredChecks`. The gate derives verification truth from stored AndMar evidence; normal callers do not repeat a `testsPassed` boolean.
 6. If the gate returns `ok:true`, it closes the non-trivial Task Contract in the same operation. There is no second `task_contract(op=close)` call in the normal flow.
 7. Finalize the portable Ledger:
 

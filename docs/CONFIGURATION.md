@@ -147,7 +147,7 @@ The active value is exposed by `andmar_status` so the agent does not need hidden
 - **Default:** `true`.
 - **Purpose:** enable the local bounded aggregate consumed by `andmar_report`.
 - **Scope:** development diagnostics only; it never gates completion.
-- **Privacy:** numeric/enum metadata only. No prompts, code, commands, tool output or reviewer output are stored.
+- **Privacy:** numeric/enum metadata only. No prompts, code, commands or tool output are stored.
 
 ```jsonc
 {
@@ -167,7 +167,7 @@ This setting is independent from external semantic observability. Disabling `AND
 - **Purpose:** optional endpoint compatible with
   `opencodev2-observability`'s `POST /events`.
 - **Scope:** semantic AndMar events only: intake, routing, delegation, verification,
-  completion, contract, review, delivery and bounded runtime errors.
+  completion, contract, delivery and bounded runtime errors.
 - **Failure behavior:** 1 s timeout, no retries, maximum 8 concurrent sends;
   failures are dropped and never affect AndMar execution.
 - **Privacy:** sends structured metadata only. It never sends prompts, task
@@ -188,8 +188,8 @@ ANDMAR_OBSERVABILITY_ENABLED=1
 
 The `intake` capability reads its own keys so model/timeout resolution stays
 capability-local: `src/capabilities/intake/jev-client.ts` holds only the
-Decisions transport (endpoint and payload shape) and no provider policy. Review
-no longer uses Jev. These keys are **not** part of the validated
+Decisions transport (endpoint and payload shape) and no provider policy. These
+keys are **not** part of the validated
 `HarnessConfig`: unknown or malformed values fall back to defaults instead of
 failing plugin setup. See [INTAKE.md](INTAKE.md) for the full pilot contract.
 
@@ -246,24 +246,13 @@ ANDMAR_INTAKE_TRACE=1
 ANDMAR_INTAKE_TRACE_CONTENT=1
 ```
 
-## Review routing
+## Removed review settings
 
-Review routing has **no environment configuration and no Jev call**.
-`andmar_request_review` uses the deterministic core table documented in D-032:
-
-```text
-trivial/docs/internal/review -> none
-feature/bugfix/refactor/debug -> optional advisory audit
-security/migration/architecture -> required deep review
-```
-
-The reviewer model remains the configured `frontier` profile or the parent
-session model. The bounded review-session deadlines remain fixed core policy
-(90 s `audit`, 180 s `deep`); they are not provider/router configuration.
-
-Legacy `ANDMAR_REVIEW_MODEL` and `ANDMAR_REVIEW_TIMEOUT_MS` values are ignored
-because Review no longer performs semantic routing. Jev configuration applies
-to Intake only.
+The independent-review subsystem was removed, so it has **no configuration at
+all** — no routing table, no reviewer model, no deadline, no Jev call. There is
+nothing to enable and no legacy variable to migrate: `ANDMAR_REVIEW_MODEL` and
+`ANDMAR_REVIEW_TIMEOUT_MS` are not read by any current code path. Jev
+configuration applies to Intake only. See [DECISIONS.md](DECISIONS.md).
 
 
 ## Engram integration

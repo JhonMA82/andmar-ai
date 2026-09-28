@@ -63,7 +63,7 @@ test("AndMar agent does not summarize requests before intake", () => {
 
 test("AndMar agent works through a Task Contract and separates tests from completion", () => {
   assert.match(agent, /andmar_task_contract\b/)
-  assert.match(agent, /andmar_request_review\b/)
+  assert.doesNotMatch(agent, /andmar_request_review\b/)
   assert.match(agent, /Passing tests prove only what those tests cover/i)
   assert.match(agent, /not only against the implementation plan you created yourself/i)
   assert.match(agent, /Compaction does not end the task/i)
@@ -74,13 +74,10 @@ test("AndMar agent reports change, verification, requirements and limitations on
   assert.match(agent, /what changed, how it was verified/i)
   assert.match(agent, /which requirements were met|requirements.*met/i)
   assert.match(agent, /which real limitations remain|limitations remain/i)
-  assert.match(agent, /one directed correction/i)
-  assert.match(agent, /there is no third review loop/i)
 })
 
 test("AndMar agent handles post-completion operational continuations proportionally", () => {
   assert.match(agent, /continuation\.fastPath=true/)
-  assert.match(agent, /Do not call `andmar_request_review`/)
   assert.match(agent, /Do not call `andmar_completion_gate` again/)
   assert.match(agent, /proportional checks/i)
 })
@@ -179,19 +176,29 @@ test("AndMar agent uses exact-revision Work Unit checkpoints without taking over
 
 test("AndMar agent uses the simplified completion flow without a second close ceremony", () => {
   assert.match(agent, /completionReady:true/i)
-  assert.match(agent, /Do \*\*not\*\* pass manual `testsPassed` or `reviewPassed` claims/i)
+  assert.match(agent, /Do \*\*not\*\* pass a manual `testsPassed` claim/i)
   assert.match(agent, /contractClosed:true/i)
   assert.match(agent, /do not call `andmar_task_contract\(op=close\)` afterward/i)
   assert.match(agent, /work-ledger-lifecycle\.mjs finalize .*--revision <currentRevision>/i)
 })
 
-test("AndMar agent uses simplified deterministic review policy", () => {
-  assert.match(agent, /Verification is the primary completion guarantee/i)
-  assert.match(agent, /independent review is \*\*not required\*\*/i)
-  assert.match(agent, /security.*migration.*architecture.*deep.*required/i)
-  assert.match(agent, /never calls Jev/i)
-  assert.match(agent, /terminal for the exact revision \+ Task Contract state/i)
-  assert.match(agent, /Advisory audit findings do not block completion/i)
+test("AndMar agent completes through contract obligations, exact-revision verification and docs/version only", () => {
+  assert.match(agent, /The gate enforces, in order: exact-revision verification, Task Contract requirements[\s\S]*?then docs\/version obligations\./)
+  assert.match(agent, /No second LLM judges completion\./)
+  assert.doesNotMatch(agent, /andmar_request_review\b/)
+  assert.doesNotMatch(agent, /reviewPassed/);
+  assert.doesNotMatch(agent, /\bdeep review\b|\badvisory audit\b|reviewer session|review rounds/);
+  // Risky work keeps stronger primary-agent verification discipline.
+  assert.match(agent, /adversarial final inspection/i)
+  assert.match(agent, /This is your own verification discipline, not another agent\./)
+  assert.match(agent, /installed API\/type shape/i)
+  assert.match(agent, /authoritative\/current sources/i)
+  assert.match(agent, /migration notes\/changelog/i)
+  assert.match(agent, /real runtime or integration boundary/i)
+})
+
+test("AndMar agent definition of done is contract + verification + gate, without extra ceremony", () => {
+  assert.match(agent, /user goal \/ Work Ledger[\s\S]*Task Contract obligations[\s\S]*exact working-state revision[\s\S]*record receipts[\s\S]*verify revision[\s\S]*record requirement evidence[\s\S]*change-impact docs\/version[\s\S]*completion gate[\s\S]*finalize Work Ledger/)
 })
 
 

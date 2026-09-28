@@ -10,7 +10,7 @@ AndMar owns deterministic development guarantees. Engram owns persistent histori
 OpenCode V2
    |
    +-- AndMar core
-   |    Intake -> Work Ledger -> Verification -> Review -> Completion -> Delivery
+   |    Intake -> Work Ledger -> Verification -> Completion -> Delivery
    |
    +-- Engram MCP
         persistent advisory memory

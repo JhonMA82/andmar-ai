@@ -146,17 +146,16 @@ automáticamente invalidada.
 `andmar_verify_revision` es el paso previo natural de `andmar_completion_gate`
 (de la capability `task-contract`). La verificación dice "los checks pasaron"; el
 completion gate lee esos receipts/evidence para la revisión exacta y además exige
-el Task Contract, la revisión independiente requerida y las obligaciones de
-documentación/versionado. Ese encadenamiento
+el Task Contract y las obligaciones de documentación/versionado. Ese encadenamiento
 completo es canónico en [ARCHITECTURE.md](ARCHITECTURE.md) §7 y no se repite
 aquí.
 
 Lo que sí es específico de esta capability:
 
 - el gate **no** acepta un booleano manual como fuente de verdad para
-  verification/review: en el flujo normal el caller no envía `testsPassed` ni
-  `reviewPassed`; el gate deriva ambos desde el estado AndMar de la misma
-  revisión. El viejo objeto `evidence` se conserva solo por compatibilidad;
+  verification: en el flujo normal el caller no envía `testsPassed`; el gate lo
+  deriva desde el estado AndMar de la misma revisión. El viejo objeto
+  `evidence` se conserva solo por compatibilidad;
 - para tareas que genuinamente no requieren checks, el gate acepta
   `requiredChecks: []` explícito;
 - pasar los tests demuestra solo lo que esos tests cubren; no demuestra que la
@@ -173,12 +172,10 @@ Lo que sí es específico de esta capability:
 
 ## Métricas del harness
 
-Los eventos `andmar.completion` (y los nuevos `andmar.contract` /
-`andmar.review`) llevan las métricas de uso real: `requirementsTotal`,
-`requirementsSatisfied`, `requirementsPending` (en el intento de
-completado), `verificationPreventedCompletion`,
-`requirementGatePreventedCompletion`, `reviewRejectCount`, `reviewRounds`
-y `finalCompletion`. `completionAttempts` no es un contador propio: es el
+Los eventos `andmar.completion` y `andmar.contract` llevan las métricas de uso
+real: `requirementsTotal`, `requirementsSatisfied`, `requirementsPending` (en
+el intento de completado), `verificationPreventedCompletion`,
+`requirementGatePreventedCompletion` y `finalCompletion`. `completionAttempts` no es un contador propio: es el
 número de eventos `andmar.completion` de la sesión (cada intento emite
 uno), lo que evita crear estado extra para algo derivable del stream.
 Observability sigue siendo best-effort y fail-open: nunca es prerequisite

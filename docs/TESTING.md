@@ -8,14 +8,14 @@ system-level explanation is [OVERVIEW.md](OVERVIEW.md); the architecture is
 **Historical base snapshot (0.7.x era):** `JhonMA82/andmar-ai` main at commit `2f50effef624570b6e686d71caa6d430f77a467f`, plus the intake pilot, the `AndMar` primary agent, and the verification-evidence changes documented in the changelog. Current behavior is described by [SCOPE.md](SCOPE.md) and the generated [CAPABILITIES.md](CAPABILITIES.md).
 
 The core evolution (Intake → Work Ledger → lifecycle → checkpoints →
-Completion → Review → development metrics → Delivery) is complete at
-`v0.15.0`; real use should now drive measured-friction improvements, bug
-fixes and simplifications rather than a new capability.
+Completion → development metrics → Delivery) is complete at `v0.15.0`; real
+use should now drive measured-friction improvements, bug fixes and
+simplifications rather than a new capability.
 
-At the `v0.15.0` consolidation revision, `bun run check` runs **258**
-deterministic tests (architecture check + typecheck + suite). Treat that
-number as revision-bound: the current value is whatever `bun run check`
-prints in your checkout.
+`bun run check` runs the architecture check, typecheck and the pure
+deterministic suite. Treat any test count as revision-bound: the current
+value is whatever `bun run check` prints in your checkout (234 tests on the
+`v0.15.0` branch after the independent-review subsystem was removed).
 
 ## Install the development build
 
@@ -68,12 +68,12 @@ orchestration record.
 
 The session-scoped Task Contract (`andmar_task_contract`) now covers the
 active-task part for the current session: goal, requirements, constraints,
-blockers and review rounds survive restarts via plugin storage, and
+blockers and requirement evidence survive restarts via plugin storage, and
 `status` re-projects them compactly after compaction. Work Ledger recovery
 covers the portable side: `WORK.md` is read before restarting from scratch,
-and the deterministic lifecycle helper restores unit state. What is still deliberately missing is cross-session takeover:
-`andmar_resume` intentionally enforces parent-session ownership for delegated
-child sessions, and review sessions are never resumed at all. A brand-new
+and the deterministic lifecycle helper restores unit state. What is still
+deliberately missing is cross-session takeover: `andmar_resume` intentionally
+enforces parent-session ownership for delegated child sessions. A brand-new
 parent session therefore must not silently take ownership of an old child.
 
 If restart/session continuity becomes a repeated real-world friction, that is evidence for the first minimal `workflow` capability:
@@ -113,8 +113,8 @@ OpenCode plain + same model  vs  AndMar + same model
 
 Plan: 10–20 real tasks (mix of trivial, feature, bugfix, migration).
 Measure per task: requirements missed, false completion, verification
-omissions, review catches, iterations, whole-task success, duration, and
-token/cost when observable. Process is fixed: evidence → human analysis →
+omissions, iterations, whole-task success, duration, and token/cost when
+observable. Process is fixed: evidence → human analysis →
 proposed change → human approval → implementation. Results never mutate
 the harness automatically (see D-019).
 
@@ -127,26 +127,24 @@ real CLI smoke, verify through the harness.
 
 ```text
 smoke 1 (default free model): contract created with 7 requirements, all
-  preserved; receipts + verify ok; gate DENIED (pending REQ-7, review
-  missing); 7 reviewer attempts returned no parseable verdict; agent
+  preserved; receipts + verify ok; gate DENIED (pending REQ-7); agent
   reported honestly "not formally complete" instead of a false done —
   the negative path (green tests ≠ completion) proven in real runtime.
 
-smoke 2 (same model, after tolerant verdict parsing): gate still denied;
-  reviewer produced reasoning/tool calls but no final text; contract
-  correctly refused an illegal satisfied->blocked transition; honest
-  blocked report again. Root cause found: session.prompt returns the
-  queued inbox record, not the child's answer (see OPENCODE-V2.md).
+smoke 2 (same model): contract correctly refused an illegal
+  satisfied->blocked transition; honest blocked report again.
 
 smoke 4 (pinned stronger model, after runChildTask fix): full positive
   path — contract created (6 explicit requirements), evidence recorded
-  sequentially, receipts + verify ok, ONE fresh reviewer session returned
-  {"verdict":"approve"} (stored), completion gate ok:true and closed the contract in the same call, final report 6/6 requirements with honest limitations.
+  sequentially, receipts + verify ok, completion gate ok:true and closed the
+  contract in the same call, final report 6/6 requirements with honest
+  limitations.
 ```
 
-
-Reviewer verdict quality depends on the model behind the `frontier`
-profile; without a mapping the reviewer inherits the parent model.
+This record predates the removal of the independent-review subsystem. The
+negative and positive paths it established (green tests ≠ completion;
+evidence + gate closes the contract atomically) are the current contract;
+see [DECISIONS.md](DECISIONS.md).
 
 ## Real API typecheck vs offline check
 

@@ -105,7 +105,6 @@ export interface WorkerRecord {
 export interface CompletionEvidence {
   revision: string
   testsPassed: boolean
-  reviewPassed?: boolean
   docsStatus: "clean" | "updated" | "stale" | "not-applicable"
   versionStatus: "clean" | "updated" | "required" | "not-applicable"
 }

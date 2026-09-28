@@ -103,22 +103,17 @@ ctx.session.context({ sessionID })       // SessionMessageInfo[]
 `session.prompt` does NOT return the child's answer — it returns the queued
 user prompt (`SessionInboxUser`). To obtain a child's response the pattern
 is `prompt -> wait -> context`. Delegation uses the generic
-`src/core/session.ts` (`runChildTask`); final review uses the narrower
-`src/capabilities/task-contract/review-session.ts` (`runReview`) so review has
-its own short
-wall-clock budget and structured unavailable result without changing worker
-delegation semantics. Before v0.5.x both capabilities serialized the
-prompt result object instead of the child's actual answer; real smoke
-(2026-09-22) exposed this — the reviewer had answered, but the answer was
+`src/core/session.ts` (`runChildTask`). Before v0.5.x the harness serialized
+the prompt result object instead of the child's actual answer; real smoke
+(2026-09-22) exposed this — the child had answered, but the answer was
 unread through the wrong shape.
 
 OpenCode V2 child sessions inherit the permission rules in effect at
 creation. AndMar AI relies on that native behavior instead of constructing
-a parallel permission model. Since 0.7.0, review children additionally get
-explicit session-scoped rules through `ctx.permission.rules` when the host
-exposes it (deny `*`, allow only `read`/`glob`/`grep`), and the review result
-surfaces `permissionsApplied`; when the host lacks that API the reviewer
-stays prompt-restricted only.
+a parallel permission model. Earlier versions also created reviewer children
+with explicit session-scoped rules through `ctx.permission.rules`; that
+reviewer no longer exists, so AndMar creates child sessions only for
+Delegation.
 
 Verified 2026-09-22 against the same types (`SessionCreateInput`): the
 typed shape exposes `id/title/agent/model/location/metadata/permissions`
@@ -128,14 +123,6 @@ which real-world testing exercises) because `ctx` is untyped at the
 capability boundary; if a future typed client rejects it, both
 capabilities must move together. Do not invent a parallel
 session/permission layer around this gap.
-
-### Review permissions are host-capability dependent
-
-The base `SessionCreateInput.permissions` vocabulary is not used as a guessed
-parallel permission model. When the host exposes `ctx.permission.rules`,
-AndMar applies deny-all plus `read`/`glob`/`grep` to the fresh review session.
-Older hosts fall back to packet-enforced read-only behavior and surface
-`permissionsApplied=false`; that fallback is explicitly weaker.
 
 ### Compaction: pull, don't hijack
 

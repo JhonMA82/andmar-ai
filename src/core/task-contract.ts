@@ -15,30 +15,15 @@ export type RequirementStatus = "pending" | "satisfied" | "blocked" | "skipped"
 
 export type ContractStatus = "active" | "blocked" | "completed"
 
-export type EvidenceType = "verification" | "runtime" | "diff" | "review" | "user-decision" | "external"
-
-export type ReviewVerdict = "approve" | "reject"
-export type ReviewMode = "none" | "audit" | "deep"
+export type EvidenceType = "verification" | "runtime" | "diff" | "user-decision" | "external"
 
 export const EVIDENCE_TYPES: readonly EvidenceType[] = [
   "verification",
   "runtime",
   "diff",
-  "review",
   "user-decision",
   "external",
 ]
-
-/**
- * Hard cap on stored review rounds per task.
- *
- * Review simplification keeps exactly one correction opportunity for work
- * that really requires deep independent review: initial review + one review
- * after a corrected revision. Unavailable/invalid attempts are not rounds and
- * are terminal for the exact revision + contract state instead of being
- * retried in a loop.
- */
-export const MAX_REVIEW_ROUNDS = 2
 
 export const MAX_REQUIREMENTS = 100
 export const MAX_CONSTRAINTS = 20
@@ -76,36 +61,9 @@ export interface TaskContract {
   verificationSurface?: string | undefined
   requirements: Requirement[]
   constraints: Constraint[]
-  /** True only for high-risk kinds that require deep independent review. */
-  reviewRequired: boolean
   status: ContractStatus
   createdAt: number
   updatedAt: number
-}
-
-export type ReviewFindingTarget = "desired-outcome" | "missing-evidence"
-
-export interface ReviewFinding {
-  requirementId?: string | undefined
-  constraintId?: string | undefined
-  target?: ReviewFindingTarget | undefined
-  observation: string
-  evidencePointer: string
-}
-
-export interface ReviewResult {
-  verdict: ReviewVerdict
-  findings: ReviewFinding[]
-  notes?: string[] | undefined
-}
-
-export interface ReviewRecord extends ReviewResult {
-  round: number
-  reviewSessionID: string
-  revision: string
-  /** Binds new review records to the exact obligations they audited. */
-  contractStateToken?: string | undefined
-  at: number
 }
 
 // ---------------------------------------------------------------------------
@@ -115,30 +73,6 @@ export interface ReviewRecord extends ReviewResult {
 
 export function contractKey(sessionID: string): string {
   return `task-contract/${sessionID}`
-}
-
-export function reviewKey(sessionID: string, round: number): string {
-  return `task-contract-review/${sessionID}/${round}`
-}
-
-export function reviewPrefix(sessionID: string): string {
-  return `task-contract-review/${sessionID}/`
-}
-
-export interface ReviewAvailabilityRecord {
-  status: "unavailable"
-  mode: ReviewMode
-  reason: "deadline_exceeded" | "invalid_output"
-  stage: "session.prompt" | "session.wait" | "session.context" | "review.output"
-  revision: string
-  reviewSessionID: string
-  elapsedMs: number
-  contractStateToken: string
-  at: number
-}
-
-export function reviewAvailabilityKey(sessionID: string): string {
-  return `task-contract-review-availability/${sessionID}`
 }
 
 export interface CompletionSeal {
@@ -172,7 +106,7 @@ export function contractStateToken(contract: TaskContract): string {
 }
 
 // ---------------------------------------------------------------------------
-// Trivial-task policy (no mandatory contract/reviewer ceremony).
+// Trivial-task policy (no mandatory contract ceremony).
 // ---------------------------------------------------------------------------
 
 const TRIVIAL_KINDS = new Set(["trivial-ui", "docs-format", "known-test", "internal"])
@@ -182,39 +116,6 @@ export function isTrivialTask(kind: string | undefined, scopeFiles?: number | un
   if (!TRIVIAL_KINDS.has(kind)) return false
   if (scopeFiles !== undefined && scopeFiles > 3) return false
   return true
-}
-
-const ORDINARY_CODE_KINDS = new Set([
-  "feature",
-  "bugfix",
-  "refactor",
-  "debug",
-])
-
-const REQUIRED_REVIEW_KINDS = new Set([
-  "architecture",
-  "security",
-  "migration",
-])
-
-/** Only high-risk task kinds require independent review for completion. */
-export function requiresIndependentReview(kind: string | undefined): boolean {
-  if (kind === undefined) return true
-  return REQUIRED_REVIEW_KINDS.has(kind)
-}
-
-/**
- * Deterministic review mode. Review routing intentionally has no LLM/Jev
- * dependency: ordinary code may request one bounded advisory audit, while
- * security/migration/architecture require deep review. This is deliberately
- * categorical, not a score.
- */
-export function minimumReviewMode(kind: string | undefined, scopeFiles?: number): ReviewMode {
-  if (kind === undefined) return "deep"
-  if (isTrivialTask(kind, scopeFiles) || kind === "review" || kind === "internal") return "none"
-  if (REQUIRED_REVIEW_KINDS.has(kind)) return "deep"
-  if (ORDINARY_CODE_KINDS.has(kind)) return "audit"
-  return "none"
 }
 
 // ---------------------------------------------------------------------------
@@ -292,7 +193,6 @@ export function createTaskContract(
       ...(verificationSurface === undefined ? {} : { verificationSurface }),
       requirements,
       constraints,
-      reviewRequired: requiresIndependentReview(input.taskKind),
       status: "active",
       createdAt: now,
       updatedAt: now,
@@ -305,9 +205,6 @@ export function validateTaskContract(contract: TaskContract): string[] {
   if (!contract || typeof contract !== "object") return ["contract must be an object"]
   if (typeof contract.taskKind !== "string" || contract.taskKind.trim() === "") errors.push("taskKind must be non-empty")
   if (typeof contract.goal !== "string" || contract.goal.trim() === "") errors.push("goal must be non-empty")
-  if (contract.reviewRequired !== requiresIndependentReview(contract.taskKind)) {
-    errors.push("reviewRequired must be derived from taskKind")
-  }
   if (!Array.isArray(contract.requirements) || contract.requirements.length === 0) {
     errors.push("requirements must be non-empty")
   }
@@ -444,7 +341,6 @@ const REVISION_BOUND_EVIDENCE_TYPES = new Set<EvidenceType>([
   "verification",
   "runtime",
   "diff",
-  "review",
 ])
 
 export interface RecordEvidenceInput {
@@ -552,187 +448,6 @@ export function evaluateRequirementGate(contract: TaskContract, currentRevision:
 }
 
 // ---------------------------------------------------------------------------
-// Review validation and gate.
-// ---------------------------------------------------------------------------
-
-/**
- * Normalize a reviewer verdict tolerantly: models commonly emit
- * "APPROVE", "Approved.", "rejected", etc. The stored verdict is always
- * the canonical lowercase enum; anything else is invalid.
- */
-export function normalizeVerdict(value: unknown): ReviewVerdict | undefined {
-  if (typeof value !== "string") return undefined
-  const v = value.trim().toLowerCase().replace(/\.$/, "")
-  if (v === "approve" || v === "approved" || v === "approval") return "approve"
-  if (v === "reject" || v === "rejected" || v === "rejection") return "reject"
-  return undefined
-}
-
-export function validateReviewResult(input: unknown): { ok: true; result: ReviewResult } | { ok: false; error: string } {
-  if (!input || typeof input !== "object" || Array.isArray(input)) {
-    return { ok: false, error: "review result must be a JSON object" }
-  }
-  const record = input as Record<string, unknown>
-  const verdict = normalizeVerdict(record.verdict)
-  if (!verdict) {
-    return { ok: false, error: 'review verdict must be "approve" or "reject"' }
-  }
-  if (!Array.isArray(record.findings)) return { ok: false, error: "review findings must be an array" }
-  const findings: ReviewFinding[] = []
-  for (const [index, raw] of record.findings.entries()) {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-      return { ok: false, error: `findings[${index}] must be an object` }
-    }
-    const finding = raw as Record<string, unknown>
-    if (typeof finding.observation !== "string" || finding.observation.trim() === "") {
-      return { ok: false, error: `findings[${index}].observation must be a non-empty string` }
-    }
-    if (typeof finding.evidencePointer !== "string" || finding.evidencePointer.trim() === "") {
-      return { ok: false, error: `findings[${index}].evidencePointer must be a non-empty string` }
-    }
-    const target = finding.target
-    if (
-      target !== undefined &&
-      target !== "desired-outcome" &&
-      target !== "missing-evidence"
-    ) {
-      return {
-        ok: false,
-        error: `findings[${index}].target must be "desired-outcome" or "missing-evidence" when provided`,
-      }
-    }
-    findings.push({
-      ...(typeof finding.requirementId === "string" && finding.requirementId !== "" ? { requirementId: finding.requirementId } : {}),
-      ...(typeof finding.constraintId === "string" && finding.constraintId !== "" ? { constraintId: finding.constraintId } : {}),
-      ...(target === undefined ? {} : { target: target as ReviewFindingTarget }),
-      observation: finding.observation.trim(),
-      evidencePointer: finding.evidencePointer.trim(),
-    })
-  }
-  let notes: string[] | undefined
-  if (record.notes !== undefined) {
-    if (!Array.isArray(record.notes) || record.notes.some((note) => typeof note !== "string")) {
-      return { ok: false, error: "review notes must be an array of strings" }
-    }
-    notes = (record.notes as string[]).map((note) => note.trim()).filter((note) => note !== "")
-  }
-  return {
-    ok: true,
-    result: { verdict, findings, ...(notes === undefined ? {} : { notes }) },
-  }
-}
-
-/**
- * A finding only blocks when it is linked to a real requirement,
- * constraint, or a missing-evidence pointer. Taste and scope expansion
- * never block (reviewer discipline; reported here for transparency).
- */
-export function isBlockingFinding(contract: TaskContract, finding: ReviewFinding): boolean {
-  if (finding.requirementId !== undefined) {
-    if (contract.requirements.some((req) => req.id === finding.requirementId)) return true
-  }
-  if (finding.constraintId !== undefined) {
-    if (contract.constraints.some((con) => con.id === finding.constraintId)) return true
-  }
-  if (finding.target === "desired-outcome") return contract.desiredOutcome !== undefined
-  if (finding.target === "missing-evidence") return true
-  return false
-}
-
-function effectiveReviewVerdict(
-  contract: TaskContract | undefined,
-  review: ReviewRecord,
-): ReviewVerdict {
-  if (!contract) return review.verdict
-  return review.findings.some((finding) => isBlockingFinding(contract, finding))
-    ? "reject"
-    : "approve"
-}
-
-export interface ReviewGateResult {
-  ok: boolean
-  required: boolean
-  rounds: number
-  latestVerdict?: ReviewVerdict | undefined
-  latestRevision?: string | undefined
-  rejectCount: number
-  blockingFindings: number
-  exhausted: boolean
-  reasons: string[]
-}
-
-export function evaluateReviewGate(
-  contract: TaskContract | undefined,
-  reviews: readonly ReviewRecord[],
-  currentRevision: string,
-  required: boolean,
-): ReviewGateResult {
-  const sorted = [...reviews].sort((a, b) => a.round - b.round)
-  const latest = sorted.at(-1)
-  const latestVerdict = latest === undefined ? undefined : effectiveReviewVerdict(contract, latest)
-  const rejectCount = sorted.filter((review) => effectiveReviewVerdict(contract, review) === "reject").length
-  const blockingFindings =
-    contract && latest
-      ? latest.findings.filter((finding) => isBlockingFinding(contract, finding)).length
-      : 0
-  const exhausted = sorted.length >= MAX_REVIEW_ROUNDS && latestVerdict === "reject"
-
-  if (!required) {
-    return {
-      ok: true,
-      required: false,
-      rounds: sorted.length,
-      ...(latest === undefined
-        ? {}
-        : { latestVerdict, latestRevision: latest.revision }),
-      rejectCount,
-      blockingFindings,
-      exhausted: false,
-      reasons: [],
-    }
-  }
-
-  const reasons: string[] = []
-  if (latest === undefined) {
-    reasons.push("independent review required but no review recorded")
-  } else {
-    if (latest.revision !== currentRevision) {
-      reasons.push(
-        `latest review (round ${latest.round}) targets revision "${latest.revision}", not the current revision "${currentRevision}"`,
-      )
-    }
-    if (
-      contract !== undefined &&
-      latest.contractStateToken !== undefined &&
-      latest.contractStateToken !== contractStateToken(contract)
-    ) {
-      reasons.push(`latest review (round ${latest.round}) targets an older Task Contract state`)
-    }
-    if (latestVerdict === "reject") {
-      reasons.push(
-        `latest review (round ${latest.round}) has ${blockingFindings} blocking finding(s) tied to the Task Contract`,
-      )
-    }
-    if (exhausted) {
-      reasons.push(`review rounds exhausted (${MAX_REVIEW_ROUNDS} blocking reviews): task is blocked`)
-    }
-  }
-
-  return {
-    ok: reasons.length === 0,
-    required: true,
-    rounds: sorted.length,
-    ...(latest === undefined
-      ? {}
-      : { latestVerdict, latestRevision: latest.revision }),
-    rejectCount,
-    blockingFindings,
-    exhausted,
-    reasons,
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Metrics and compact projection (compaction continuity without transcript).
 // ---------------------------------------------------------------------------
 
@@ -742,19 +457,15 @@ export interface ContractMetrics {
   requirementsPending: number
   requirementsBlocked: number
   requirementsSkipped: number
-  reviewRounds: number
-  reviewRejectCount: number
 }
 
-export function contractMetrics(contract: TaskContract, reviews: readonly ReviewRecord[] = []): ContractMetrics {
+export function contractMetrics(contract: TaskContract): ContractMetrics {
   return {
     requirementsTotal: contract.requirements.length,
     requirementsSatisfied: contract.requirements.filter((req) => req.status === "satisfied").length,
     requirementsPending: contract.requirements.filter((req) => req.status === "pending").length,
     requirementsBlocked: contract.requirements.filter((req) => req.status === "blocked").length,
     requirementsSkipped: contract.requirements.filter((req) => req.status === "skipped").length,
-    reviewRounds: reviews.length,
-    reviewRejectCount: reviews.filter((review) => review.verdict === "reject").length,
   }
 }
 
@@ -762,20 +473,18 @@ export interface ContractSummary {
   goal: string
   desiredOutcome?: string | undefined
   status: ContractStatus
-  reviewRequired: boolean
   metrics: ContractMetrics
   pending: Array<{ id: string; text: string }>
   blocked: Array<{ id: string; text: string; reason?: string | undefined }>
   constraints: Constraint[]
 }
 
-export function summarizeContract(contract: TaskContract, reviews: readonly ReviewRecord[] = []): ContractSummary {
+export function summarizeContract(contract: TaskContract): ContractSummary {
   return {
     goal: contract.goal,
     ...(contract.desiredOutcome === undefined ? {} : { desiredOutcome: contract.desiredOutcome }),
     status: contract.status,
-    reviewRequired: contract.reviewRequired,
-    metrics: contractMetrics(contract, reviews),
+    metrics: contractMetrics(contract),
     pending: contract.requirements
       .filter((req) => req.status === "pending")
       .map((req) => ({ id: req.id, text: req.text })),
@@ -787,8 +496,8 @@ export function summarizeContract(contract: TaskContract, reviews: readonly Revi
 }
 
 /** Compact reinjection text: goal, pending, constraints, blockers. No transcript. */
-export function formatContractBrief(contract: TaskContract, reviews: readonly ReviewRecord[] = []): string {
-  const summary = summarizeContract(contract, reviews)
+export function formatContractBrief(contract: TaskContract): string {
+  const summary = summarizeContract(contract)
   const lines = [
     `Goal: ${summary.goal}`,
     `Status: ${summary.status} (satisfied ${summary.metrics.requirementsSatisfied}/${summary.metrics.requirementsTotal})`,
@@ -799,88 +508,5 @@ export function formatContractBrief(contract: TaskContract, reviews: readonly Re
     lines.push(`- ${req.id} blocked: ${req.text}${req.reason ? ` (reason: ${req.reason})` : ""}`)
   }
   for (const con of summary.constraints) lines.push(`- ${con.id} constraint: ${con.text}`)
-  if (reviews.length > 0) {
-    const latest = [...reviews].sort((a, b) => a.round - b.round).at(-1)!
-    lines.push(`Review: round ${latest.round}/${MAX_REVIEW_ROUNDS} verdict=${latest.verdict} revision=${latest.revision}`)
-  }
-  return lines.join("\n")
-}
-
-// ---------------------------------------------------------------------------
-// Review packet: compact context for a fresh reviewer session. No transcript,
-// no internal reasoning, no full logs, no repository dump.
-// ---------------------------------------------------------------------------
-
-export interface ReviewPacketInput {
-  revision: string
-  reviewMode?: ReviewMode | undefined
-  changedPaths?: string[] | undefined
-  verificationSummary?: string | undefined
-  knownLimitations?: string | undefined
-}
-
-function sanitizeReviewerText(value: string): string {
-  return value
-    .replace(/\b[a-f0-9]{32,64}\b/gi, "[opaque-id-omitted]")
-    .replace(/\b(?:receipt|execution|verification)[/:][^\s,;]+/gi, "[internal-ref-omitted]")
-}
-
-function reviewerEvidence(entry: EvidenceRef, revision: string): string {
-  const binding = entry.revision === undefined ? "recorded" : entry.revision === revision ? "current revision" : "stale revision"
-  // Receipt keys / execution IDs are provenance for AndMar, not semantic evidence for an LLM.
-  if (entry.type === "user-decision") return "user-decision (" + binding + "): " + sanitizeReviewerText(entry.reference).slice(0, 240)
-  return entry.type + " evidence recorded (" + binding + ")"
-}
-
-export function buildReviewPacket(contract: TaskContract, input: ReviewPacketInput): string {
-  const reviewMode = input.reviewMode ?? "audit"
-  const lines = [
-    "REVIEW MODE: " + reviewMode,
-    "You are an independent final evidence auditor. You are read-only. Inspect code, diff and repository context only; never edit or apply fixes.",
-    "",
-    "Your job is semantic completeness and evidence sufficiency, not verification execution.",
-    "The parent session already executed verification. Evidence identifiers/storage keys are intentionally omitted: NEVER search for receipt IDs, execution IDs, hashes, state-store keys, or similarly opaque identifiers.",
-    "Do NOT use shell, curl, package managers, test runners, builds, typechecks, lints, installs, dependency restores, web requests, filesystem-wide scans, or repository-wide verification. Use read/glob/grep-style inspection only.",
-    reviewMode === "audit"
-      ? "AUDIT scope: stay bounded to changed paths plus directly referenced dependencies needed to decide a concrete requirement."
-      : "DEEP scope: inspect broader semantic dependencies and contracts when needed, but still do not recreate verification or execute the project.",
-    "If evidence is missing, stale, too narrow, or otherwise insufficient, report target=missing-evidence and stop. Do not obtain the missing evidence yourself.",
-    "Compare: (1) original goal against final behavior; (2) requirements against implementation; (3) constraints against the diff; (4) claims against verification evidence; (5) external contracts against implementation; (6) tests against what they actually prove.",
-    "Look specifically for: explicit requirements missed; constraints violated; unsupported completion claims; stale or deprecated upstream API use; mock-only verification represented as runtime proof; missing observable-surface verification; scope drift; incomplete error or failure behavior when explicitly required.",
-    "Do not invent new requirements. Do not reject for architecture taste. Do not expand scope. A finding blocks only when it is linked to a real requirementId/constraintId below, or target=desired-outcome/missing-evidence.",
-    "",
-    `Original goal: ${contract.goal}`,
-  ]
-  if (contract.desiredOutcome) lines.push(`Desired outcome: ${contract.desiredOutcome}`)
-  if (contract.verificationSurface) {
-    lines.push(`Verification surface: verify at ${contract.verificationSurface}, the closest observable surface that matters to the user.`)
-  }
-  lines.push("", "Requirements:")
-  for (const req of contract.requirements) {
-    const evidence =
-      req.evidence.length === 0 ? "no evidence" : req.evidence.map((entry) => reviewerEvidence(entry, input.revision)).join(", ")
-    lines.push(`- ${req.id} [${req.status}] ${req.text} (evidence: ${evidence})${req.reason ? ` reason: ${req.reason}` : ""}`)
-  }
-  lines.push("Constraints:")
-  if (contract.constraints.length === 0) lines.push("- none")
-  for (const con of contract.constraints) lines.push(`- ${con.id}: ${con.text}`)
-  lines.push(`Revision under review: ${input.revision}`)
-  if (input.changedPaths && input.changedPaths.length > 0) {
-    lines.push(`Changed paths: ${input.changedPaths.join(", ")}`)
-  }
-  if (input.verificationSummary) {
-    lines.push(`Existing exact-revision verification summary: ${sanitizeReviewerText(input.verificationSummary)}`)
-  } else {
-    lines.push(
-      "Existing exact-revision verification summary: not supplied. Do not compensate by running broad verification; report target=missing-evidence if the missing summary materially prevents approval.",
-    )
-  }
-  if (input.knownLimitations) lines.push(`Known limitations: ${input.knownLimitations}`)
-  lines.push(
-    "",
-    "Respond with ONLY one JSON object, no prose before or after, exactly this shape:",
-    '{"verdict": "approve" | "reject", "findings": [{"requirementId"?: "REQ-n", "constraintId"?: "CON-n", "target"?: "desired-outcome" | "missing-evidence", "observation": "...", "evidencePointer": "..."}], "notes"?: ["..."]}',
-    'The verdict value must be exactly the lowercase string "approve" or "reject".',
-  )
   return lines.join("\n")
 }

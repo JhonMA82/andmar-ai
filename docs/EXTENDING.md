@@ -67,7 +67,7 @@ Examples that belong in core:
 
 Examples that do not belong in core:
 
-- a security review prompt;
+- a security-specific inspection prompt;
 - ODD steps;
 - a specific documentation mapping;
 - provider-specific model names;

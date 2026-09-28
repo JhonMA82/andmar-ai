@@ -61,11 +61,6 @@ test("development metrics classify interventions, friction and value without con
     payload: { action: "verify_revision", revision: "rev-a", requiredChecks: ["tests"], ok: false, unverifiedCount: 1 },
   }, 3)
   metrics = applyDevelopmentEvent(metrics, {
-    type: "andmar.review",
-    sessionID: "ses-1",
-    payload: { action: "timeout" },
-  }, 4)
-  metrics = applyDevelopmentEvent(metrics, {
     type: "andmar.runtime",
     sessionID: "ses-1",
     payload: { action: "engram_memory_call", operation: "mem_search", status: "completed", crossProject: true },
@@ -80,10 +75,9 @@ test("development metrics classify interventions, friction and value without con
   assert.equal(metrics.tasksCompleted, 1)
   assert.equal(metrics.interventions, 3)
   assert.equal(metrics.usefulInterventions, 3)
-  assert.equal(metrics.frictions, 2)
+  assert.equal(metrics.frictions, 1)
   assert.equal(metrics.verification.staleEvidenceDetections, 2)
   assert.equal(metrics.verification.duplicateVerification, 1)
-  assert.equal(metrics.review.timeouts, 1)
   assert.equal(metrics.memory.calls, 1)
   assert.equal(metrics.memory.searches, 1)
   assert.equal(metrics.memory.crossProjectCalls, 1)
@@ -151,9 +145,9 @@ test("andmar_report aggregates semantic events and ledger snapshot", async () =>
       payload: { action: "decision", mode: "direct", needsRefinement: false, productDecisionMissing: false, source: "deterministic" },
     })
     observability.emit({
-      type: "andmar.review",
+      type: "andmar.runtime",
       sessionID: "ses-1",
-      payload: { action: "denied", reason: "terminal_attempt_same_state" },
+      payload: { action: "capability_error" },
     })
 
     const report = tools.get("report")
@@ -163,7 +157,8 @@ test("andmar_report aggregates semantic events and ledger snapshot", async () =>
     assert.equal(parsed.enabled, true)
     assert.equal(parsed.totals.tasksObserved, 1)
     assert.equal(parsed.totals.frictions, 1)
-    assert.equal(parsed.breakdown.review.unnecessaryRetriesPrevented, 1)
+    assert.equal(parsed.breakdown.runtime.capabilityErrors, 1)
+    assert.equal("review" in parsed.breakdown, false)
     assert.equal(parsed.rates.harnessFrictionRate, 1)
     assert.deepEqual(parsed.coverage.notYetMeasured.length, 3)
   } finally {

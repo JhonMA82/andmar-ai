@@ -12,7 +12,7 @@ Runtime capabilities already emit metadata-only semantic events. `development-me
 development-metrics/v1/aggregate
 ```
 
-It does not store prompts, requirement text, code, commands, tool output, reviewer text, or chain-of-thought. External observability may be disabled independently; local metrics still work.
+It does not store prompts, requirement text, code, commands, tool output, or chain-of-thought. External observability may be disabled independently; local metrics still work.
 
 For recovery/rework, `andmar_report` reads only the known portable path:
 
@@ -30,9 +30,13 @@ It does not scan the repository generally and does not write metric files into t
 - **Rework Rate** = Work Unit `done -> active` transitions / Work Unit `active -> done` transitions.
 - **Checkpoint Coverage** = checkpoint events / Work Unit completion transitions.
 
-Useful interventions include preventing invalid verification evidence, blocking completion with missing/stale proof, detecting stale verification, rejecting a materially incomplete review, and stopping an unchanged-state review retry loop.
+Useful interventions include preventing invalid verification evidence, blocking completion with missing/stale proof, and detecting stale verification.
 
-Friction currently includes duplicate exact-revision verification, reviewer timeout/invalid output, repeated review attempts AndMar must refuse, delegation failure, and failed AndMar tool execution observed by OpenCode.
+Friction currently includes duplicate exact-revision verification, delegation failure, and failed AndMar tool execution observed by OpenCode.
+
+There is no review section: the independent-review subsystem was removed, so
+`review.rejections`, `review.timeouts`, `review.invalidOutputs` and
+`review.unnecessaryRetriesPrevented` no longer exist.
 
 ## Recovery
 

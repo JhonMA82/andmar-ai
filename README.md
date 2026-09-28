@@ -11,10 +11,10 @@ platform.
 The name is a compound of **Andrea + Mario**; it is deliberately broader than
 "AndMar Harness", because the harness is the first product.
 
-> Baseline: **v0.15.0** — the planned eight-step core evolution (Intake →
-> Work Ledger → work-unit lifecycle → checkpoints → Completion → Review →
-> development metrics → Delivery) is **complete**. Further additions need
-> measured friction, not a new phase.
+> Baseline: **v0.15.0** — the planned core evolution (Intake → Work Ledger →
+> work-unit lifecycle → checkpoints → Completion → development metrics →
+> Delivery) is **complete**. Further additions need measured friction, not a new
+> phase.
 
 ## The problem it solves
 
@@ -26,7 +26,7 @@ the code that changed and everything that should have changed with it:
 - version and changelog obligations are reported, then dropped;
 - verification is claimed for work done before the last edit;
 - the user's real requirements disappear during execution;
-- review is skipped, or run without proportion to risk;
+- completion is claimed from a model opinion instead of current evidence;
 - delegation loses ownership or quietly raises authority.
 
 AndMar makes those specific failures structurally hard instead of merely
@@ -88,9 +88,8 @@ verify exact revision
   ↓
 docs / version obligations
   ↓
-proportional review (advisory for ordinary code, required deep for
-  ↓                 security / migration / architecture)
-completion        (only when the repository is consistent)
+completion        (only when the repository is consistent; no second LLM
+  ↓                 judges completion)
   ↓
 delivery          (only when explicitly requested, one named operation)
 ```
@@ -190,7 +189,7 @@ bun run check
 
 Runs manifest generation, the architecture check, typecheck and the pure
 deterministic test suite (routing, intake, Work Ledger lifecycle and
-checkpoints, verification receipts, exact-revision completion, review,
+checkpoints, verification receipts, exact-revision completion, delegation,
 delivery, development metrics, Engram integration). The deterministic core is
 plain TypeScript with no framework dependency.
 

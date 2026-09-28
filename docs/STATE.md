@@ -21,8 +21,7 @@ AndMar AI uses OpenCode V2 plugin storage for operational facts. This state is d
 | `verification/<revision>/<check>` | `verification` | `verification`, `task-contract` (read-only via `core/verification-state`) | a new revision starts with no receipts; old receipts are never reused; unbounded, no pruning yet |
 | `intake-trace/<timestamp>-<rand>` | `intake` | `andmar_intake_trace` queries | max 20 entries, oldest pruned first |
 | `task-contract/<sessionID>` | `task-contract` | `task-contract` | one active contract per session; `active` → `completed`/`blocked`; unbounded, no pruning yet |
-| `task-contract-review/<sessionID>/<round>` | `task-contract` | `task-contract` | max 2 stored rounds; ordinary audit is optional/advisory, required deep review may use round 2 only after a corrected revision; unbounded, no pruning yet |
-| `task-contract-review-availability/<sessionID>` | `task-contract` | `task-contract` | one exact revision + contract-state terminal attempt marker for timeout/invalid output; stale markers are cleared when state changes; unbounded, no pruning yet |
+| `task-contract-completion/<sessionID>` | `task-contract` | `task-contract` | one completion seal (`revision`, `taskKind`, `contractStateToken`, `at`) written by the close path; removed when a contract is mutated and when completion succeeds |
 | `development-metrics/v1/aggregate` | `development-metrics` | `andmar_report` | one bounded metadata-only aggregate; overwritten as counters advance; disabled by `developmentMetrics.enabled=false` |
 | *(none)* | `delivery` | — | Delivery is stateless; it reads current session user intent + Task Contract readiness and stores no authorization copy |
 
@@ -74,37 +73,26 @@ when `ANDMAR_INTAKE_TRACE_CONTENT=1`. Never stores `OPENROUTER_API_KEY`.
 The active Task Contract for one parent session: `goal`, optional
 `desiredOutcome`/`verificationSurface`, `requirements` (`REQ-N` with
 `pending`/`satisfied`/`blocked`/`skipped`, evidence pointers, reasons),
-`constraints` (`CON-N`), `reviewRequired`, and `status`
+`constraints` (`CON-N`), and `status`
 (`active`/`blocked`/`completed`). Steering appends requirements/constraints
 with the next deterministic numbers and never removes. Stores no
 transcripts, chain-of-thought, prompts, or source code — only obligations
 and evidence pointers.
 
-### `task-contract-review/<sessionID>/<round>`
+`task-contract-review*` keys written by earlier versions are no longer owned,
+read, or written by any capability. They simply remain as unused data; no
+migration exists.
 
-One independent review record per round (`round`, fresh `reviewSessionID`,
-`revision`, `contractStateToken`, `verdict`, linked `findings`, `notes`). At
-most two rounds are stored. Ordinary feature/bugfix/refactor/debug review is
-optional and advisory. Security/migration/architecture require deep review;
-after one blocking result, a corrected new revision may consume the single
-remaining round. Review sessions are never resumed. A second review of the
-same exact revision + contract state is refused. Invalid reviewer output is
-never stored and consumes no round.
+### `task-contract-completion/<sessionID>`
+
+One completion seal (`revision`, `taskKind`, `contractStateToken`, `at`)
+written by the close path. It is removed whenever the contract is created,
+steered, updated, or re-verified, so a stale seal can never close a mutated
+contract.
 
 ### `development-metrics/v1/aggregate`
 
-One bounded local aggregate of semantic-event counters used by `andmar_report`. It contains timestamps and numeric counters only (tasks observed/completed, interventions, useful interventions, friction categories and the last verification identity used solely for consecutive duplicate detection). It never stores prompts, requirement text, code, commands, tool output or reviewer output. Work Ledger rework/checkpoint metrics are read from `.andmar/work/*/WORK.md` at report time and are not mirrored into plugin state.
-
-### `task-contract-review-availability/<sessionID>`
-
-One terminal review-attempt marker written when a bounded review attempt
-exceeds its deadline **or** produces invalid final output (`status:
-"unavailable"`, `mode`, `reason: deadline_exceeded | invalid_output`, `stage`,
-`revision`, `reviewSessionID`, `elapsedMs`, `contractStateToken`, `at`). It is
-bound to the exact revision and Task Contract state token. A repeated request
-against the same state is refused; changing revision or contract state makes
-the old marker stale and it is cleared before a new attempt. Stores no
-transcripts, prompts or source code.
+One bounded local aggregate of semantic-event counters used by `andmar_report`. It contains timestamps and numeric counters only (tasks observed/completed, interventions, useful interventions, friction categories and the last verification identity used solely for consecutive duplicate detection). It never stores prompts, requirement text, code, commands or tool output. Work Ledger rework/checkpoint metrics are read from `.andmar/work/*/WORK.md` at report time and are not mirrored into plugin state.
 
 ## Worker record
 

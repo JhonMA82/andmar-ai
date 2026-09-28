@@ -27,7 +27,7 @@ failures:
 - version/changelog obligations are reported and then ignored;
 - verification is claimed for work that happened before the last edit;
 - the user's actual requirements quietly disappear during execution;
-- review is either skipped or run without proportion to risk;
+- completion is claimed from a model opinion instead of current evidence;
 - delegation loses ownership or quietly raises authority.
 
 AndMar exists to make those specific things impossible-by-construction instead
@@ -97,10 +97,8 @@ verification      (andmar_suggest_checks -> run -> andmar_record_receipt
    ↓                -> andmar_verify_revision, all bound to the exact revision)
 lifecycle         (andmar_change_impact: documentation and version obligations)
    ↓
-independent review (andmar_request_review: deterministic none | audit | deep)
-   ↓                ordinary code: optional advisory audit; security/migration/architecture: required deep
 completion        (andmar_completion_gate)
-   ↓
+   ↓                exact-revision verification + requirement gate + docs/version
 delivery          (andmar_delivery: only when the user explicitly requests one
                     named operation; OpenCode executes it natively)
 ```
@@ -114,7 +112,6 @@ delivery          (andmar_delivery: only when the user explicitly requests one
 | routing | when no routing or delegation decision is actually needed |
 | delegation | normal work stays in the primary session with native tools |
 | verification | `requiredChecks: []` only for tasks that genuinely require no checks; otherwise receipts must exist for the exact current revision |
-| independent review | skipped by default for ordinary feature/bugfix/refactor/debug work; optional advisory `audit` only when explicitly useful; required `deep` for security/migration/architecture |
 | completion gate | never skipped for non-trivial work; it is the only composition point |
 
 There is intentionally no workflow engine, scheduler or orchestration board
@@ -160,18 +157,12 @@ Request: **"Add a new option to the CLI."**
       change_impact classifies none | patch | minor | major; it detects
       the obligation and never bumps, tags or publishes anything
 
-9. review, if it applies
-      deterministic routing only: ordinary code does not require review;
-      an optional advisory audit may inspect a concrete semantic uncertainty;
-      security/migration/architecture require one fresh deep review, with at
-      most one corrected-revision follow-up after a blocking result
-
-10. completion
+9. completion
       Work Ledger status must first report completionReady for ledger-backed
-      work; the gate then derives verification/review state from stored
-      evidence, accepts only when requirements and docs/version obligations
-      are current for the same revision, and closes the Task Contract itself.
-      The agent then finalizes the portable Ledger with that accepted revision.
+      work; the gate then derives verification state from stored evidence,
+      accepts only when requirements and docs/version obligations are current
+      for the same revision, and closes the Task Contract itself. The agent
+      then finalizes the portable Ledger with that accepted revision.
 ```
 
 Outside the normal task path, `andmar_report` can inspect bounded local

@@ -22,7 +22,6 @@ export interface DevelopmentMetricsState {
     verification: number
     completion: number
     contract: number
-    review: number
     runtime: number
   }
   intake: {
@@ -37,12 +36,6 @@ export interface DevelopmentMetricsState {
     blockedRevisions: number
     staleEvidenceDetections: number
     duplicateVerification: number
-  }
-  review: {
-    rejections: number
-    timeouts: number
-    invalidOutputs: number
-    unnecessaryRetriesPrevented: number
   }
   completion: {
     blocked: number
@@ -74,10 +67,9 @@ function emptyMetrics(now = Date.now()): DevelopmentMetricsState {
     interventions: 0,
     usefulInterventions: 0,
     frictions: 0,
-    activity: { intake: 0, routing: 0, delegation: 0, verification: 0, completion: 0, contract: 0, review: 0, runtime: 0 },
+    activity: { intake: 0, routing: 0, delegation: 0, verification: 0, completion: 0, contract: 0, runtime: 0 },
     intake: { enrich: 0, structure: 0, refinements: 0, productDecisionsMissing: 0, fallbacks: 0 },
     verification: { invalidEvidencePrevented: 0, blockedRevisions: 0, staleEvidenceDetections: 0, duplicateVerification: 0 },
-    review: { rejections: 0, timeouts: 0, invalidOutputs: 0, unnecessaryRetriesPrevented: 0 },
     completion: { blocked: 0, completed: 0 },
     runtime: { capabilityErrors: 0, delegationFailures: 0 },
     memory: { calls: 0, context: 0, searches: 0, reads: 0, saves: 0, crossProjectCalls: 0, failures: 0 },
@@ -115,7 +107,6 @@ export function applyDevelopmentEvent(
         activity: { ...base.activity, ...(current.activity ?? {}) },
         intake: { ...base.intake, ...(current.intake ?? {}) },
         verification: { ...base.verification, ...(current.verification ?? {}) },
-        review: { ...base.review, ...(current.review ?? {}) },
         completion: { ...base.completion, ...(current.completion ?? {}) },
         runtime: { ...base.runtime, ...(current.runtime ?? {}) },
         memory: { ...base.memory, ...(current.memory ?? {}) },
@@ -157,30 +148,6 @@ export function applyDevelopmentEvent(
       if (!bool(payload.ok)) {
         next.verification.blockedRevisions += 1
         if (number(payload.unverifiedCount) > 0) next.verification.staleEvidenceDetections += 1
-        intervention(next, true)
-      }
-    }
-  }
-
-  if (event.type === "andmar.review") {
-    const action = string(payload.action)
-    if (action === "completed" && (payload.verdict === "reject" || number(payload.blockingFindings) > 0)) {
-      next.review.rejections += 1
-      intervention(next, true)
-    }
-    if (action === "timeout") {
-      next.review.timeouts += 1
-      next.frictions += 1
-    }
-    if (action === "invalid_output") {
-      next.review.invalidOutputs += 1
-      next.frictions += 1
-    }
-    if (action === "denied") {
-      const reason = string(payload.reason)
-      if (["terminal_attempt_same_state", "rounds_exhausted", "advisory_audit_consumed"].includes(reason)) {
-        next.review.unnecessaryRetriesPrevented += 1
-        next.frictions += 1
         intervention(next, true)
       }
     }
@@ -361,7 +328,6 @@ export const developmentMetricsCapability: Capability = {
               breakdown: {
                 intake: metrics.intake,
                 verification: metrics.verification,
-                review: metrics.review,
                 completion: metrics.completion,
                 runtime: metrics.runtime,
                 memory: metrics.memory,
@@ -382,7 +348,6 @@ export const developmentMetricsCapability: Capability = {
                   "useful interventions/interventions",
                   "reopened/completed work-unit transitions",
                   "checkpoint/completed work-unit transitions",
-                  "review timeout/invalid-output/retry-loop prevention",
                   "invalid verification evidence prevention",
                   "Engram memory call volume/failures/cross-project usage (metadata only)",
                 ],
