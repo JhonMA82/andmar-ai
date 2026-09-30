@@ -11,7 +11,7 @@ platform.
 The name is a compound of **Andrea + Mario**; it is deliberately broader than
 "AndMar Harness", because the harness is the first product.
 
-> Baseline: **v0.15.2** — the planned core evolution (Intake → Work Ledger →
+> Baseline: **v0.16.0** — the planned core evolution (Intake → Work Ledger →
 > work-unit lifecycle → checkpoints → Completion → development metrics →
 > Delivery) is **complete**. Further additions need measured friction, not a new
 > phase.
