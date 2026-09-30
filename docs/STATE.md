@@ -126,6 +126,16 @@ restated here. In short: a capability owns the keys it writes, foreign keys are
 read-only through documented helpers, and transcripts, semantic memory, secrets
 and full tool inputs/outputs never go into these keys.
 
+### Lifecycle Work Ledger projection
+
+`lifecycle` adds no `ctx.storage` keys. A setup-local session-to-work binding,
+in-flight call-to-WU attribution, transient dirty-file hashes, activity and a
+compact last-observed verification summary are dropped at cleanup/restart.
+Optional WU file metadata and discovered work are written only to repository
+`WORK.md` through the existing lifecycle helper. Its projection is computed
+on demand; RPC/event consumers cannot write it back or decide execution.
+See [WORK-LEDGER.md](WORK-LEDGER.md) for persistence, restart and coverage rules.
+
 ## Retention debt (no runtime change)
 
 The benchmark audit confirms `journal/`, `verification/` and

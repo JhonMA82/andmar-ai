@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-import { readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, resolve, sep } from "node:path";
+import { readFile, rename, writeFile, mkdir, rm, realpath } from "node:fs/promises";
+import { dirname, resolve, sep, relative, isAbsolute } from "node:path";
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { globMatch } from "../src/core/glob.mjs";
 import { validateWorkLedger } from "./validate-work-ledger.mjs";
 
 const UNIT_LINE_RE = /^(\s*[-*]\s+\[)([ ~x!])(\]\s+)((?:WU-|W)\d+)(.*)$/i;
@@ -21,10 +22,10 @@ function parseArgs(argv) {
   const options = {};
   for (let i = 0; i < rest.length; i += 1) {
     const token = rest[i];
-    if (token === "--reason" || token === "--evidence" || token === "--next" || token === "--revision") {
+    if (token === "--reason" || token === "--evidence" || token === "--next" || token === "--revision" || token === "--discovery" || token === "--files") {
       const value = rest[i + 1];
       if (!value || value.startsWith("--")) throw new Error(`${token} requires a value`);
-      options[token.slice(2)] = value;
+      options[token.slice(2)] = ["--discovery", "--files"].includes(token) ? JSON.parse(value) : value;
       i += 1;
     } else {
       throw new Error(`Unknown option: ${token}`);
@@ -216,13 +217,122 @@ async function atomicWrite(workPath, content) {
   await rename(tempPath, workPath);
 }
 
+function workspaceForLedger(targetDir) {
+  return resolve(targetDir, "../../..");
+}
+
+function parseFileField(value) {
+  if (!value) return [];
+  const parsed = JSON.parse(value);
+  if (!Array.isArray(parsed) || parsed.some((file) => typeof file !== "string")) throw new Error("File fields must be JSON arrays of paths");
+  return parsed;
+}
+
+export function normalizeFiles(files, workspace) {
+  if (!Array.isArray(files) || files.some((file) => typeof file !== "string" || !file.trim() || /[\r\n\0]/.test(file))) throw new Error("Invalid file paths");
+  const root = realpathSync(workspace);
+  return [...new Set(files.map((file) => {
+    // Windows absolute paths cannot be interpreted as local relative paths.
+    if (/^[A-Za-z]:|^\\\\/.test(file)) throw new Error(`Outside workspace: ${file}`);
+    const target = resolve(workspace, file.replaceAll("\\", "/"));
+    const rel = relative(resolve(workspace), target);
+    if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel) || !rel) throw new Error(`Outside workspace: ${file}`);
+    // Check existing ancestors too: new files under escaping symlinks are outside.
+    let ancestor = target;
+    while (true) {
+      try {
+        const actual = realpathSync(ancestor);
+        const physical = relative(root, actual);
+        if (physical === ".." || physical.startsWith(`..${sep}`) || isAbsolute(physical)) throw new Error(`Outside workspace: ${file}`);
+        break;
+      } catch (error) {
+        if (error.code !== "ENOENT" && error.code !== "ENOTDIR") throw error;
+        const parent = dirname(ancestor);
+        if (parent === ancestor) throw error;
+        ancestor = parent;
+      }
+    }
+    return rel.split(sep).join("/");
+  }))].sort();
+}
+
+export function scopeDrift(touched, expected) {
+  // Reuse AndMar's canonical glob primitive; directories are scope areas.
+  const covered = (file, pattern) => {
+    if (!/[?*]/.test(pattern)) return file === pattern || file.startsWith(`${pattern.replace(/\/$/, "")}/`);
+    return globMatch(pattern, file);
+  };
+  // Missing scope is explicitly unassessed, never an implicit deny-all ACL.
+  return expected.length ? touched.filter((file) => !expected.some((pattern) => covered(file, pattern))) : [];
+}
+
+function projectUnits(lines, workspace) {
+  return parseWorkUnits(lines).map((unit) => {
+    const expectedFiles = normalizeFiles(parseFileField(getUnitField(lines, unit.id, "Expected Files")), workspace);
+    const touchedFiles = normalizeFiles(parseFileField(getUnitField(lines, unit.id, "Touched Files")), workspace);
+    return { id: unit.id, title: unit.titleSuffix.replace(/^\s*[—:-]\s*/, ""), state: stateName(unit.state), expectedFiles, touchedFiles, drift: scopeDrift(touchedFiles, expectedFiles), scopeKnown: expectedFiles.length > 0, blockedReason: getUnitField(lines, unit.id, "Blocker") ?? null };
+  });
+}
+
+export function classifyDiscovery(input) {
+  if (!input || !["low", "medium", "high", "critical"].includes(input.risk)) throw new Error("Discovery requires an explicit risk");
+  for (const key of ["withinGoal", "materialScope", "humanDecision", "hardToReverse", "contradictsContract", "changesObligation"]) {
+    if (typeof input[key] !== "boolean") throw new Error(`Discovery requires explicit ${key}`);
+  }
+  for (const key of ["title", "reason"]) {
+    if (typeof input[key] !== "string" || !input[key].trim() || /[\r\n\0]/.test(input[key]) || input[key].length > 500) throw new Error(`Discovery requires a single-line ${key} (max 500)`);
+  }
+  const reasons = [];
+  if (input.risk !== "low") reasons.push(`risk:${input.risk}`);
+  if (!input.withinGoal) reasons.push("outside-goal");
+  for (const key of ["materialScope", "humanDecision", "hardToReverse", "contradictsContract", "changesObligation"]) if (input[key]) reasons.push(key);
+  return { checkpointRequired: reasons.length > 0, reasons, continue: reasons.length === 0 };
+}
+
+async function saveValidated(target, workPath, lines, original) {
+  await atomicWrite(workPath, lines.join("\n").replace(/\n+$/g, "\n"));
+  const after = await validateWorkLedger(target);
+  if (after.invocationError || !after.valid) {
+    await atomicWrite(workPath, original);
+    throw new Error(`Lifecycle mutation rolled back because ledger became invalid: ${after.invocationError ? after.error : after.errors.join("; ")}`);
+  }
+  return after;
+}
+
+// Cross-process lock shared with native lifecycle/checkpoint CLI calls. A crash
+// leaves a lock: refuse with a diagnostic rather than silently stealing it.
+export async function withLedgerLock(targetDir, operation) {
+  const resolved = resolve(targetDir);
+  const root = workspaceForLedger(resolved);
+  const physical = await realpath(resolved);
+  if (physical !== resolve(await realpath(root), ".andmar/work", resolved.split(sep).at(-1))) throw new Error("Ledger path must not escape through symlinks");
+  const lock = resolve(resolved, ".andmar-write-lock");
+  const deadline = Date.now() + 5000;
+  while (true) {
+    try { await mkdir(lock); break; }
+    catch (error) {
+      if (error.code !== "EEXIST") throw error;
+      if (Date.now() >= deadline) throw new Error(`Ledger write lock busy: ${lock}; after confirming no writer is active, remove the stale lock`);
+      await new Promise((done) => setTimeout(done, 10));
+    }
+  }
+  try { return await operation(); }
+  finally { await rm(lock, { recursive: true }); }
+}
+
 export async function runWorkUnitLifecycle(command, targetDir, unitArg, options = {}) {
+  if (command === "status") return mutateWorkUnitLifecycle(command, targetDir, unitArg, options);
+  return withLedgerLock(targetDir, () => mutateWorkUnitLifecycle(command, targetDir, unitArg, options));
+}
+
+async function mutateWorkUnitLifecycle(command, targetDir, unitArg, options = {}) {
   const resolvedTarget = resolve(targetDir);
   const ledgerMarker = `${sep}.andmar${sep}work${sep}`;
   if (!resolvedTarget.includes(ledgerMarker)) {
     throw new Error(`Work-unit lifecycle may only mutate .andmar/work/<work-id>: ${resolvedTarget}`);
   }
 
+  if (options.checkpointUser !== undefined && (typeof options.checkpointUser !== "string" || !options.checkpointUser || /[\r\n\0]/.test(options.checkpointUser) || options.checkpointUser.length > 200)) throw new Error("Invalid checkpoint user message ID");
   const validation = await validateOrThrow(resolvedTarget);
   const workPath = resolve(resolvedTarget, "WORK.md");
   const original = await readFile(workPath, "utf8");
@@ -230,13 +340,13 @@ export async function runWorkUnitLifecycle(command, targetDir, unitArg, options 
   const unitsBefore = parseWorkUnits(lines);
 
   const summary = () => {
-    const units = parseWorkUnits(lines).map((unit) => ({ id: unit.id, state: stateName(unit.state) }));
+    const units = projectUnits(lines, workspaceForLedger(resolvedTarget));
     const active = units.find((unit) => unit.state === "active")?.id ?? null;
     const blocked = units.filter((unit) => unit.state === "blocked").map((unit) => unit.id);
     const pending = units.filter((unit) => unit.state === "pending").map((unit) => unit.id);
     const done = units.filter((unit) => unit.state === "done").map((unit) => unit.id);
     const completionReady = validation.status === "active" && units.length > 0 && done.length === units.length;
-    return { workId: validation.workId, status: validation.status, mode: validation.mode, completionReady, active, pending, blocked, done, units };
+    return { workId: validation.workId, title: lines.find((line) => /^# /.test(line))?.slice(2) ?? validation.workId, status: validation.status, mode: validation.mode, completionReady, active, pending, blocked, done, units, checkpointRequired: validation.status === "blocked", checkpointUser: blocked.length ? getUnitField(lines, blocked[0], "Checkpoint User") ?? null : null, blockedReason: units.find((unit) => unit.state === "blocked")?.blockedReason ?? null };
   };
 
   if (command === "status") return { changed: false, ...summary() };
@@ -281,6 +391,35 @@ export async function runWorkUnitLifecycle(command, targetDir, unitArg, options 
     };
   }
 
+  if (validation.status === "blocked" && !["resume", "touch"].includes(command)) {
+    throw new Error("Work is blocked; resolve the checkpoint with resume before continuing");
+  }
+
+  if (command === "amend") {
+    const discovery = options.discovery;
+    const decision = classifyDiscovery(discovery);
+    const active = unitsBefore.find((unit) => unit.state === "~");
+    if (!active) throw new Error("amend requires an active Work Unit");
+    const requirements = getUnitField(lines, active.id, "Requirements")?.match(/REQ-\d+(?:\.\d+)?/gi) ?? [];
+    if (!requirements.length) throw new Error("amend requires existing requirement references; do not invent obligations");
+    const id = `WU-${Math.max(...unitsBefore.map((unit) => Number(unit.id.slice(3)))) + 1}`;
+    const expected = normalizeFiles(discovery.expectedFiles ?? [], workspaceForLedger(resolvedTarget));
+    const section = findSection(lines, "Work Units");
+    const block = [`- [ ] ${id} — ${discovery.title}`, `  - Requirements: ${requirements.join(", ")}`, `  - Discovery: ${discovery.reason}`];
+    if (expected.length) block.push(`  - Expected Files: ${JSON.stringify(expected)}`);
+    lines.splice(section.end, 0, ...block, "");
+    appendLifecycleEvent(lines, `${id}: discovered under ${active.id}; ${decision.checkpointRequired ? "checkpoint required" : "continue"}`);
+    if (decision.checkpointRequired) {
+      setUnitState(lines, active.id, "blocked");
+      setUnitField(lines, active.id, "Blocker", decision.reasons.join(", "));
+      if (options.checkpointUser) setUnitField(lines, active.id, "Checkpoint User", options.checkpointUser);
+      setLedgerStatus(lines, "blocked");
+      setNext(lines, `${active.id} — checkpoint required; resolve exception before execution`);
+    }
+    await saveValidated(resolvedTarget, workPath, lines, original);
+    return { changed: true, workId: validation.workId, unit: id, ...decision };
+  }
+
   const unitId = normalizeUnitId(unitArg);
   if (!unitId) throw new Error(`A valid Work Unit id is required for ${command}`);
   const target = unitsBefore.find((unit) => unit.id === unitId);
@@ -288,7 +427,19 @@ export async function runWorkUnitLifecycle(command, targetDir, unitArg, options 
   const current = stateName(target.state);
   const activeOther = unitsBefore.find((unit) => unit.state === "~" && unit.id !== unitId);
 
-  if (command === "activate") {
+  if (command === "touch") {
+    // The hook captures the WU at execute.before; a concurrent completion must
+    // not move these touches onto the next unit. Done/blocked units may receive
+    // already-in-flight observations, but no new work is authorized here.
+    if (current === "pending") throw new Error("touch requires a started Work Unit");
+    const files = normalizeFiles(options.files ?? [], workspaceForLedger(resolvedTarget)).filter((file) => !file.startsWith(".andmar/work/"));
+    const previous = parseFileField(getUnitField(lines, unitId, "Touched Files"));
+    const touched = [...new Set([...previous, ...files])].sort();
+    const recordUser = current === "blocked" && options.checkpointUser && !getUnitField(lines, unitId, "Checkpoint User");
+    if (JSON.stringify(touched) === JSON.stringify(previous) && !recordUser) return { changed: false, ...summary() };
+    if (recordUser) setUnitField(lines, unitId, "Checkpoint User", options.checkpointUser);
+    setUnitField(lines, unitId, "Touched Files", JSON.stringify(touched));
+  } else if (command === "activate") {
     if (current !== "pending") throw new Error(`activate requires pending Work Unit; ${unitId} is ${current}`);
     if (activeOther) throw new Error(`Cannot activate ${unitId}; ${activeOther.id} is already active`);
     setUnitState(lines, unitId, "active");
@@ -326,6 +477,7 @@ export async function runWorkUnitLifecycle(command, targetDir, unitArg, options 
     if (activeOther) throw new Error(`Cannot resume ${unitId}; ${activeOther.id} is already active`);
     setUnitState(lines, unitId, "active");
     setUnitField(lines, unitId, "Blocker", null);
+    setUnitField(lines, unitId, "Checkpoint User", null);
     setLedgerStatus(lines, "active");
     setNext(lines, `${unitId} — resumed outcome`);
     appendLifecycleEvent(lines, `${unitId}: blocked → active — ${options.reason.trim()}`);
@@ -347,14 +499,7 @@ export async function runWorkUnitLifecycle(command, targetDir, unitArg, options 
     throw new Error(`Unknown command: ${command}`);
   }
 
-  const updated = `${lines.join("\n").replace(/\n+$/g, "\n")}`;
-  await atomicWrite(workPath, updated);
-  const after = await validateWorkLedger(resolvedTarget);
-  if (after.invocationError || !after.valid) {
-    await atomicWrite(workPath, original);
-    const detail = after.invocationError ? after.error : after.errors.join("; ");
-    throw new Error(`Lifecycle mutation rolled back because ledger became invalid: ${detail}`);
-  }
+  const after = await saveValidated(resolvedTarget, workPath, lines, original);
 
   const finalContent = await readFile(workPath, "utf8");
   lines = finalContent.replace(/\r\n/g, "\n").split("\n");
@@ -394,7 +539,7 @@ if (isDirectInvocation()) {
   if (!args.command || !args.targetDir) {
     console.error(JSON.stringify({
       ok: false,
-      error: "Usage: node work-ledger-lifecycle.mjs <status|activate|complete|block|resume|reopen|finalize> <ledger-dir> [WU-N] [--evidence EV-N,...] [--reason text] [--next WU-N] [--revision REV]",
+      error: "Usage: node work-ledger-lifecycle.mjs <status|activate|complete|block|resume|reopen|finalize|amend|touch> <ledger-dir> [WU-N] [--evidence EV-N,...] [--reason text] [--next WU-N] [--revision REV]",
     }, null, 2));
     process.exit(2);
   }

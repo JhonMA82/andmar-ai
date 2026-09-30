@@ -2,6 +2,23 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
+## [Unreleased]
+
+### Added
+
+- Lifecycle v4: optional per-WU expected/touched files, native observation,
+  derived drift, necessary-work amendments and exception-only blocking.
+- Read-only Work Ledger projection and optional native RPC notifications;
+  existing Verification events are reused. No TUI, Review or new dependency.
+
+### Hardened
+
+- Native lifecycle and checkpoint helpers serialize Ledger writes; unknown WU
+  states and escaping file scopes are rejected. Existing Ledger formats,
+  completion authorities and Intake trivial fast path are preserved.
+- CLI and runtime share the existing glob primitive, including zero-segment
+  `**/` matching.
+
 ## [0.15.2] - 2026-09-30
 
 ### Added

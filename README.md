@@ -153,7 +153,7 @@ value.
 
 ## Tools
 
-Namespace `andmar`, registered by 9 capabilities (15 tools). The generated,
+Namespace `andmar`, registered by 9 capabilities (17 tools). The generated,
 authoritative id/version/tool inventory is
 [docs/CAPABILITIES.md](docs/CAPABILITIES.md); it is intentionally not
 duplicated here so this README cannot drift from it. Per-capability behavior

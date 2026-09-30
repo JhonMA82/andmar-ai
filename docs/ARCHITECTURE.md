@@ -189,7 +189,8 @@ Verification (`andmar_suggest_checks` → run via native shell
    ↓     → `andmar_record_receipt` bound to observed execution
      → `andmar_verify_revision` for the exact revision;
        requirement evidence recorded per Task Contract requirement)
-Lifecycle (`andmar_change_impact` for docs/version obligations)
+Lifecycle (`andmar_change_impact` for docs/version obligations;
+   ↓     `andmar_work_status` / `andmar_work_amend` / `andmar_work_resume` bind Work Units)
    ↓
 Completion (`andmar_completion_gate`: exact-revision evidence +
   requirement gate + clean docs/version obligations + satisfied required
@@ -519,3 +520,21 @@ An integration:
   rule, no new tool namespace.
 
 The first concrete integration is `src/integrations/engram/`. Engram owns persistent memory and native MCP tools; AndMar owns only the boundary described in [ENGRAM.md](ENGRAM.md). The presence of `integrations/` does not create a generic Integration framework; extract one only after another real integration demonstrates shared semantics.
+
+
+### Portable execution observation
+
+Lifecycle owns small scope diagnostics alongside its existing Work Ledger
+helper, rather than introducing a Plan entity or another capability. Native
+hooks observe edits and transient VCS dirty-file hashes for bound Ledger work;
+metadata is recorded in the existing WU. Existing helpers still own WU
+transitions, Task Contract still owns obligations, Verification still owns
+exact-revision evidence and Completion still owns closure. There is no Review
+or second LLM evaluation. The shared glob primitive is plain ESM so installed
+native CLI helpers and TypeScript capabilities use the same rules without a
+loader or new dependency.
+
+A derived read-only native RPC projection prepares future presentation.
+Activity is ephemeral, work is repository-native, and RPC availability is
+advisory. Intake is the sole entry classifier and trivial unbound work skips
+tracking. Exact behavior and limits live in [WORK-LEDGER.md](WORK-LEDGER.md).

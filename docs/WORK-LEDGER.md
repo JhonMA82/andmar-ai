@@ -499,3 +499,122 @@ Every durable assertion in the Work Ledger must be traceable to:
 - an explicitly available upstream source.
 
 Do not record untraceable assertions such as *"per earlier discussion"* without an accessible source.
+
+
+## Deterministic execution tracking (lifecycle v4)
+
+Intake still chooses `direct`, `enrich` or `structure`. Only an existing
+Ledger selected by that flow is bound with `andmar_work_status({workId})`.
+This tool never initializes a Ledger or creates a Task Contract. On restart,
+read the repository Ledger and bind it again; there is no hidden durable
+session mapping and no Ledger copy in `ctx.storage`.
+
+The existing markers and lifecycle helper remain authoritative: pending `[ ]`,
+active `[~]`, done `[x]`, blocked `[!]`; resume/reopen require reasons, completion
+requires declared evidence, and completed Ledgers remain immutable. A blocked
+Ledger cannot activate another WU, append more work or advance completion.
+
+A WU may have these additive, optional metadata fields:
+
+```markdown
+- [~] WU-2 — Add validation
+  - Requirements: REQ-1
+  - Expected Files: ["src/forms/**", "tests/**/*.test.ts"]
+  - Touched Files: ["src/forms/login.ts", "tests/login.test.ts"]
+```
+
+Paths are relative to the workspace. Exact files, directory areas and the
+shared `*`, `**`, `?` glob primitive are supported; `**/` includes zero directory
+segments. Path traversal, foreign absolute paths and escaping symlinks are
+rejected. Missing expected scope yields `scopeKnown:false`, not a deny-all ACL.
+`.andmar/work/**` is excluded from product touches, as it is from the revision
+fingerprint. Existing Ledgers without these fields continue to work.
+
+The native `execute.before` hook captures the active WU; successful native
+write/edit/patch output is read structurally (`resource`, `files[].file`,
+`applied[].resource`) in `execute.after`. Paths are deduplicated and stored in
+that WU, even if another native call has since advanced it. A repeated touch
+does not rewrite the Ledger. Model text and tool content are never parsed as
+edit evidence. A successful edit with unsupported output produces a visible
+`trackingError` instead of claiming complete coverage or retrying the edit.
+
+For native shell tools, VCS `status().data` supplies dirty paths. Before/after
+transient SHA-256 hashes distinguish same-sized edits to already-dirty files,
+new/deleted paths and no-op checks. Hashes, commands and content are not stored.
+The observation is bounded to 500 dirty product paths / 16 MiB per snapshot;
+unavailable VCS or an exceeded bound is a visible coverage gap. Partial shell
+side effects are reconciled even on failure. VCS-unreported/ignored files and
+changes concurrently made by another process cannot be reliably attributed;
+use native VCS/diff evidence to reconcile them before WU completion. This is
+scope diagnostics, never another receipt or completion authority.
+
+`drift = touchedFiles - expectedFiles` is derived on read. A new related file
+is recorded and execution continues. If it is necessary inside the existing
+objective, record why and update the appropriate Ledger scope through native
+tools. A material discovery follows the exception policy below. No filesystem
+access is denied simply because its path was absent from expected scope.
+
+### Necessary discoveries and exception checkpoints
+
+Call `andmar_work_amend` only for necessary discovered work. It takes `title`,
+`reason`, optional `expectedFiles`, explicit `risk` and boolean facts:
+`withinGoal`, `materialScope`, `humanDecision`, `hardToReverse`,
+`contradictsContract`, `changesObligation`. Facts come from the current request,
+repository and Task Contract; the rule evaluates those facts, not an AI judge.
+Invalid/missing facts fail validation. Only low-risk, inside-goal discoveries
+with every exception flag false automatically append a pending WU and continue.
+It inherits the active WU's existing requirement references and never creates,
+removes or changes accepted requirements. New IDs follow the existing maximum.
+
+Any exception appends the proposed WU as pending, blocks the active WU with
+its reasons, and marks the Ledger blocked. Execution stops; native reading
+and questions remain available. The user decides the actual exception, not
+whether to approve every step. `andmar_work_resume({reason})` requires a new
+user message after the observed checkpoint; the primary agent must interpret
+that response and only resume when it resolves the exception. After resolution,
+apply any authorized obligation change to the durable Ledger and Task Contract
+before product execution. A new message by itself is not approval. An observed checkpoint stores only its native user-message ID (`Checkpoint User`)
+with the blocked WU, so restart does not require asking again after an already
+received response. For legacy/unobserved checkpoints with no ID, binding
+establishes a fresh baseline. In both cases the primary agent must confirm the
+response resolves the exception before explicit resume.
+If the user declines newly proposed scope, remove only that unaccepted pending
+discovery through native Ledger editing and retain all accepted requirements.
+Existing native CLI resume remains a recovery operation requiring an explicit
+reason; it is not an automatic approval mechanism.
+
+There is no checkpoint after ordinary WU completion. Verification continues to
+block unproven Completion; locally recoverable check failures may be corrected
+inside the objective. An unresolved failure or blocker uses existing `block`
+and human intervention only when a real decision is needed. Checkpoint Git
+commits retain their existing prepare/native-commit/record authorization policy;
+they are distinct from human exception checkpoints.
+
+The CLI helper also accepts `amend --discovery '<JSON object>'` and
+`touch WU-N --files '<JSON array>'` for native-tool reconciliation. The runtime
+and native lifecycle/checkpoint helpers share a bounded directory write lock
+and atomic `WORK.md` replacement to prevent lost updates. A stale lock fails
+with an actionable diagnostic; confirm no writer is running before removing
+`.andmar-write-lock`. It is operational metadata, not a second Ledger.
+
+### Derived presentation surface
+
+`andmar_work_status` returns `workId`, `title`, `status`, `activeWorkUnit`,
+`completedUnits`, `totalUnits`, `currentActivity`, `expectedFiles`, `touchedFiles`,
+`drift`, `scopeKnown`, `lastVerification`, `blockedReason`, `checkpointRequired`,
+`trackingError`, and compact units. Persistent fields are read from `WORK.md`;
+activity and the last observed verification summary are transient. Existing
+`andmar.verification` events supply that summary, never another check.
+
+The optional native `andmar.work` RPC port exposes only `get({sessionID})` and
+`changed({sessionID, workId, reason})`. It cannot amend, resume, verify or complete
+work. Semantic work actions reuse AndMar's existing observability bus; activity
+updates go only to the optional presentation transport and verification is
+forwarded from its existing event rather than emitted a second time. No event
+history, prompts, reasoning, source code or complete tool outputs are persisted.
+There is no TUI dependency; a future presentation may use native slots. RPC
+registration/event delivery failure cannot stop normal execution.
+
+Unbound trivial requests perform no Ledger IO, VCS calls, scope tracking,
+checkpoint or projection creation. Completed bindings also stop tracking new
+native work; they do not turn a later trivial edit into a structured task.

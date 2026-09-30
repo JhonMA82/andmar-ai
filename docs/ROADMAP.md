@@ -18,7 +18,7 @@ Intake -> Work Ledger -> work-unit lifecycle -> work-unit checkpoints
 ```
 
 There is no Step 9. See [CAPABILITIES.md](CAPABILITIES.md) for the generated
-id/version/tool inventory (9 capabilities, 14 tools) and
+id/version/tool inventory (9 capabilities, 17 tools) and
 [ANDMAR-AI-CAPABILITIES.md](ANDMAR-AI-CAPABILITIES.md) for behavior. The
 distinctive pieces are:
 

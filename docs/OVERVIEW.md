@@ -95,7 +95,9 @@ execution         (native OpenCode tools)
    ↓                the child never gains authority the parent lacked
 verification      (andmar_suggest_checks -> run -> andmar_record_receipt
    ↓                -> andmar_verify_revision, all bound to the exact revision)
-lifecycle         (andmar_change_impact: documentation and version obligations)
+lifecycle         (andmar_change_impact: documentation and version obligations;
+   ↓                andmar_work_status / andmar_work_amend / andmar_work_resume
+   ↓                for portable Work Unit tracking)
    ↓
 completion        (andmar_completion_gate)
    ↓                exact-revision verification + requirement gate + docs/version

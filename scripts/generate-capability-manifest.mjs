@@ -30,7 +30,9 @@ for (const name of entries) {
   const id = source.match(/^\s*id:\s*"([^"]+)"/m)?.[1] ?? name
   const version = source.match(/^\s*version:\s*(\d+)/m)?.[1] ?? "?"
   const description = source.match(/^\s*description:\s*"([^"]+)"/m)?.[1] ?? ""
-  const tools = [...source.matchAll(/editor\.add\(\{\s*name:\s*"([^"]+)"/g)].map((match) => `andmar_${match[1]}`)
+  const localFiles = (await readdir(new URL(`../src/capabilities/${name}/`, import.meta.url))).filter((file) => file.endsWith(".ts") && file !== "index.ts");
+  const allSources = [source, ...await Promise.all(localFiles.map((file) => readFile(new URL(`../src/capabilities/${name}/${file}`, import.meta.url), "utf8")))].join("\n");
+  const tools = [...allSources.matchAll(/editor\.add\(\{\s*name:\s*"([^"]+)"/g)].map((match) => `andmar_${match[1]}`)
   rows.push({ id, version, description, tools })
 }
 
@@ -39,7 +41,7 @@ const index = `# Capabilities Index
 
 <!-- GENERATED FILE. Run \`bun run generate\`. Do not edit manually. -->
 
-Objective index derived from \`src/capabilities/*/index.ts\`.
+Objective index derived from capability declarations and local tool registrations.
 For purpose, boundaries, state ownership and failure behavior see the canonical
 [capabilities guide](ANDMAR-AI-CAPABILITIES.md) and the
 [capability contract](CAPABILITY-CONTRACT.md).

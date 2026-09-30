@@ -1,12 +1,15 @@
 import type { Capability, ChangeKind } from "../../core/contracts.ts"
 import { analyzeDocumentationImpact, inferVersionImpact } from "../../core/lifecycle.ts"
+import { setupWorkTracking } from "./work.ts"
 import { matchesAny } from "../../core/glob.ts"
 
 export const lifecycleCapability: Capability = {
   id: "lifecycle",
-  version: 3,
-  description: "Deterministic documentation and version impact detection.",
-  async setup({ ctx, config }) {
+  version: 4,
+  description: "Deterministic documentation/version impact and portable Work Unit tracking.",
+  async setup(runtime) {
+    const { ctx, config } = runtime
+    const disposeWork = await setupWorkTracking(runtime)
     const registration = await ctx.tool.transform((editor: any) => {
       editor.namespace({ name: "andmar", description: "AndMar AI harness primitives" })
       editor.add({
@@ -36,7 +39,7 @@ export const lifecycleCapability: Capability = {
         },
       })
     })
-    return registration?.dispose ? () => void registration.dispose() : undefined
+    return () => { disposeWork(); if (registration?.dispose) void registration.dispose() }
   },
 }
 
