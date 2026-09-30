@@ -2,6 +2,16 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
+## [Unreleased]
+
+### Added
+
+- Add opt-in lateral `bench/` task/runner/collector/comparator infrastructure with
+  eight pinned fixtures, native OpenCode V2 usage, independent success checks,
+  separate reported/estimated cost, historical cohorts and deterministic tests.
+- Document reference-source decisions, measurement gaps and safe retention debt.
+  No runtime capability, routing, completion or development-report behavior changes.
+
 ## [0.15.1] - 2026-09-28
 
 ### Changed

@@ -102,7 +102,7 @@ The `AndMar` primary agent should:
 
 A green self-authored mock is evidence about the mock, not proof of an external runtime integration.
 
-## Behavioral benchmark (next step, before any new capability)
+## Behavioral benchmark (before any new capability)
 
 With the Task Contract core implemented, the next capability is frozen
 until a small benchmark compares harness value on real tasks:
@@ -111,10 +111,13 @@ until a small benchmark compares harness value on real tasks:
 OpenCode plain + same model  vs  AndMar + same model
 ```
 
-Plan: 10–20 real tasks (mix of trivial, feature, bugfix, migration).
-Measure per task: requirements missed, false completion, verification
-omissions, iterations, whole-task success, duration, and token/cost when
-observable. Process is fixed: evidence → human analysis →
+The opt-in lateral implementation, eight initial fixtures, native usage collection,
+fairness checks and historical comparison instructions are now canonical in
+[bench/README.md](../bench/README.md). `bun run check` includes deterministic
+benchmark tests and a mock CLI E2E; real LLM runs remain explicit/manual.
+
+Expand the initial fixtures to 10–20 real tasks (mix of trivial, feature, bugfix,
+migration) before drawing broad conclusions. Process is fixed: evidence → human analysis →
 proposed change → human approval → implementation. Results never mutate
 the harness automatically (see D-019).
 

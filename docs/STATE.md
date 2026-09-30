@@ -125,3 +125,27 @@ defined once in [CAPABILITY-CONTRACT.md](CAPABILITY-CONTRACT.md) §3 and are not
 restated here. In short: a capability owns the keys it writes, foreign keys are
 read-only through documented helpers, and transcripts, semantic memory, secrets
 and full tool inputs/outputs never go into these keys.
+
+## Retention debt (no runtime change)
+
+The benchmark audit confirms `journal/`, `verification/` and
+`verification-evidence/` are unbounded. Intake already retains at most 20 traces;
+development metrics are one bounded aggregate. No benchmark cleanup changes
+runtime state or deletes evidence.
+
+A future explicit maintenance operation can use maximum age 30 days and maximum
+10,000 entries per unbounded family, pruning the oldest eligible entries first
+(timestamp then key as deterministic tie-breaker). These are proposed defaults,
+not active configuration. Bounds apply only to eligible closed/unreferenced state:
+protect every active/blocked Task Contract and worker, all revisions and execution
+IDs referenced by requirements, receipts, completion seals, or portable Work Ledger
+evidence/checkpoints. Preserve an entire protected receipt/evidence chain.
+
+Implement a dry-run inventory before deletion, resolving references through the
+existing owner contracts and scanning storage with its native pagination. If any
+reference cannot be resolved, state inventory is incomplete, a Ledger cannot be
+read, or OpenCode can still mutate a protected session, fail closed and retain the
+affected records. Never enforce a hard cap by deleting protected evidence; report
+remaining over-budget state instead. Coordinating references and active sessions
+crosses several state owners, so implementation is deferred rather than forcing
+a core migration into the lateral benchmark.

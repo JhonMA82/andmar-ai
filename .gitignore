@@ -60,3 +60,7 @@ desktop.ini
 .engineering/
 .harness/
 backlog/
+
+# Manual benchmark runs may contain private source/session exports.
+bench/results/*
+!bench/results/.gitkeep

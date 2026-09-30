@@ -4,6 +4,11 @@
 
 Development metrics are **diagnostics**, not a workflow phase and never a completion gate. The public surface is `andmar_report`.
 
+The lateral [efficiency benchmark](../bench/README.md) complements these metrics
+with native OpenCode tokens/cost/steps/tools and independent task verification.
+It reuses the existing Ledger reader and any naturally emitted `andmar_report`
+payload; it neither replaces this aggregate nor adds a diagnostic model prompt.
+
 ## Architecture
 
 Runtime capabilities already emit metadata-only semantic events. `development-metrics` subscribes to that existing bus and stores one bounded aggregate in plugin state:

@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "id": "integration-cli-json",
+  "category": "integration",
+  "repository": "fixture",
+  "baseRevision": "sha256:ef7d756dc408cce56b0311bda5530c9e2ba9081d6068055c4719c15ff6fad1f1",
+  "initialFiles": {
+    "package.json": "{\n  \"name\": \"benchmark-fixture\",\n  \"version\": \"1.0.0\",\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n",
+    ".gitignore": "node_modules/\n",
+    "README.md": "# Tiny utilities\n\nRun tests with `node --test`.\n",
+    "src/ui.js": "export const buttonLabel = \"Send\";\nexport const heading = \"Welcome\";\n",
+    "src/math.js": "export function add(a, b) { return a - b; }\nexport function clamp(value, min, max) { return Math.min(min, Math.max(max, value)); }\n",
+    "src/list.js": "export function unique(values) { const result = []; for (const value of values) { if (!result.includes(value)) result.push(value); } return result; }\n",
+    "src/format.js": "export function format(value) { return String(value); }\n",
+    "cli.js": "import { format } from \"./src/format.js\";\nconsole.log(format(process.argv[2] ?? \"hello\"));\n",
+    "tests/smoke.test.js": "import { test } from \"node:test\";\nimport { strict as assert } from \"node:assert\";\nimport { unique } from \"../src/list.js\";\ntest(\"stable unique\", () => assert.deepEqual(unique([2,1,2]), [2,1]));\n"
+  },
+  "prompt": "Add --json to cli.js by integrating a new formatJson(value) export in src/format.js. node cli.js hello must still print hello. node cli.js --json hello must print JSON {\"value\":\"hello\"}, with no extra stdout. Add tests/cli.test.js and document --json in README.md. Preserve the default format export and all other files; run tests.",
+  "setup": [],
+  "timeoutMs": 300000,
+  "allowedFiles": [
+    "cli.js",
+    "src/format.js",
+    "tests/cli.test.js",
+    "README.md"
+  ],
+  "forbiddenFiles": [
+    "package.json",
+    "tests/smoke.test.js"
+  ],
+  "verification": {
+    "commands": [
+      {
+        "id": "module",
+        "argv": [
+          "node",
+          "--input-type=module",
+          "-e",
+          "import {strict as assert} from \"node:assert\"; import {format,formatJson} from \"./src/format.js\"; assert.equal(format(\"x\"),\"x\"); assert.deepEqual(JSON.parse(formatJson(\"x\")),{value:\"x\"});"
+        ],
+        "timeoutMs": 10000
+      },
+      {
+        "id": "cli",
+        "argv": [
+          "node",
+          "--input-type=module",
+          "-e",
+          "import {strict as assert} from \"node:assert\"; import {execFileSync} from \"node:child_process\"; assert.equal(execFileSync(process.execPath,[\"cli.js\",\"hello\"],{encoding:\"utf8\"}).trim(),\"hello\"); assert.deepEqual(JSON.parse(execFileSync(process.execPath,[\"cli.js\",\"--json\",\"hello\"],{encoding:\"utf8\"})),{value:\"hello\"});"
+        ],
+        "timeoutMs": 10000
+      },
+      {
+        "id": "docs",
+        "argv": [
+          "node",
+          "--input-type=module",
+          "-e",
+          "import {strict as assert} from \"node:assert\"; import {readFileSync} from \"node:fs\"; assert.ok(readFileSync(\"README.md\",\"utf8\").includes(\"--json\"));"
+        ],
+        "timeoutMs": 10000
+      },
+      {
+        "id": "regression",
+        "argv": [
+          "node",
+          "--input-type=module",
+          "-e",
+          "import {strict as assert} from \"node:assert\"; import {execFileSync} from \"node:child_process\"; const out=execFileSync(process.execPath,[\"--test\",\"--test-reporter=tap\",\"tests/cli.test.js\"],{encoding:\"utf8\"}); assert.match(out,/^# pass [1-9][0-9]*$/m); assert.match(out,/^# fail 0$/m);"
+        ],
+        "timeoutMs": 10000
+      },
+      {
+        "id": "existing-tests",
+        "argv": [
+          "node",
+          "--test",
+          "tests/smoke.test.js"
+        ],
+        "timeoutMs": 10000
+      }
+    ],
+    "expectedFiles": [
+      "tests/cli.test.js"
+    ]
+  },
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "checks": [
+        "module"
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "checks": [
+        "cli"
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "checks": [
+        "docs"
+      ]
+    },
+    {
+      "id": "REQ-4",
+      "checks": [
+        "regression"
+      ]
+    },
+    {
+      "id": "REQ-5",
+      "checks": [
+        "existing-tests"
+      ]
+    }
+  ],
+  "successCriterion": "all-checks-and-scope"
+}

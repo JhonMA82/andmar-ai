@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "id": "refactor-unique",
+  "category": "refactor",
+  "repository": "fixture",
+  "baseRevision": "sha256:ef7d756dc408cce56b0311bda5530c9e2ba9081d6068055c4719c15ff6fad1f1",
+  "initialFiles": {
+    "package.json": "{\n  \"name\": \"benchmark-fixture\",\n  \"version\": \"1.0.0\",\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n",
+    ".gitignore": "node_modules/\n",
+    "README.md": "# Tiny utilities\n\nRun tests with `node --test`.\n",
+    "src/ui.js": "export const buttonLabel = \"Send\";\nexport const heading = \"Welcome\";\n",
+    "src/math.js": "export function add(a, b) { return a - b; }\nexport function clamp(value, min, max) { return Math.min(min, Math.max(max, value)); }\n",
+    "src/list.js": "export function unique(values) { const result = []; for (const value of values) { if (!result.includes(value)) result.push(value); } return result; }\n",
+    "src/format.js": "export function format(value) { return String(value); }\n",
+    "cli.js": "import { format } from \"./src/format.js\";\nconsole.log(format(process.argv[2] ?? \"hello\"));\n",
+    "tests/smoke.test.js": "import { test } from \"node:test\";\nimport { strict as assert } from \"node:assert\";\nimport { unique } from \"../src/list.js\";\ntest(\"stable unique\", () => assert.deepEqual(unique([2,1,2]), [2,1]));\n"
+  },
+  "prompt": "Refactor unique(values) in src/list.js to use Set while preserving insertion order, equality semantics and the input array. Preserve every other file. Run existing tests.",
+  "setup": [],
+  "timeoutMs": 300000,
+  "allowedFiles": [
+    "src/list.js"
+  ],
+  "forbiddenFiles": [
+    "package.json",
+    "tests/smoke.test.js"
+  ],
+  "verification": {
+    "commands": [
+      {
+        "id": "behavior",
+        "argv": [
+          "node",
+          "--input-type=module",
+          "-e",
+          "import {strict as assert} from \"node:assert\"; import {unique} from \"./src/list.js\"; const a=[2,1,2,NaN,NaN]; assert.deepEqual(unique(a),[2,1,NaN]); assert.deepEqual(a,[2,1,2,NaN,NaN]); const o={}; assert.deepEqual(unique([o,o,{}]).length,2);"
+        ],
+        "timeoutMs": 10000
+      },
+      {
+        "id": "set-used",
+        "argv": [
+          "node",
+          "--input-type=module",
+          "-e",
+          "import {strict as assert} from \"node:assert\"; import {readFileSync} from \"node:fs\"; assert.match(readFileSync(\"src/list.js\",\"utf8\"),/new\\s+Set\\s*\\(/);"
+        ],
+        "timeoutMs": 10000
+      },
+      {
+        "id": "existing-tests",
+        "argv": [
+          "node",
+          "--test",
+          "tests/smoke.test.js"
+        ],
+        "timeoutMs": 10000
+      }
+    ],
+    "expectedFiles": []
+  },
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "checks": [
+        "behavior"
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "checks": [
+        "set-used"
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "checks": [
+        "existing-tests"
+      ]
+    }
+  ],
+  "successCriterion": "all-checks-and-scope"
+}
