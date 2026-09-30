@@ -79,5 +79,8 @@
       ]
     }
   ],
-  "successCriterion": "all-checks-and-scope"
+  "successCriterion": "all-checks-and-scope",
+  "dependencyFingerprint": [
+    "package.json"
+  ]
 }

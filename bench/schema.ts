@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto"
+import { isAbsolute, win32 } from "node:path"
 
 export type Measured = number | null
 export type Mode = "build" | "andmar"
@@ -10,6 +11,7 @@ export interface Task {
   repository: string
   baseRevision: string
   initialFiles?: Record<string, string>
+  dependencyFingerprint?: string[]
   prompt: string
   setup: Check[]
   timeoutMs: number
@@ -75,8 +77,8 @@ export function numberOrNull(value: unknown): Measured {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null
 }
 function metric(value: unknown): boolean { return value === null || numberOrNull(value) !== null }
-function paths(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every(p => text(p) && !p.startsWith("/") && !p.includes("\\") && !p.includes("\0") && !p.split("/").includes("..") && p !== ".git" && !p.startsWith(".git/"))
+export function paths(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(p => text(p) && !isAbsolute(p) && !win32.isAbsolute(p) && !p.includes("\\") && !p.includes("\0") && !p.split("/").includes("..") && p !== ".git" && !p.startsWith(".git/"))
 }
 function checks(value: unknown): value is Check[] {
   return Array.isArray(value) && value.every(c => record(c) && typeof c.id === "string" && /^[a-z0-9-]+$/.test(c.id) && Array.isArray(c.argv) && c.argv.length > 0 && c.argv.every(text) && Number.isInteger(c.timeoutMs) && c.timeoutMs > 0)
@@ -89,6 +91,7 @@ export function validateTask(value: unknown): Task {
   assert(Number.isInteger(value.timeoutMs) && value.timeoutMs > 0, "Invalid timeout")
   assert(checks(value.setup) && record(value.verification) && checks(value.verification.commands), "Invalid checks")
   assert(paths(value.allowedFiles) && paths(value.forbiddenFiles) && paths(value.verification.expectedFiles), "Unsafe file paths")
+  assert(value.dependencyFingerprint === undefined || paths(value.dependencyFingerprint), "Unsafe dependencyFingerprint paths")
   const ids = value.verification.commands.map((c: Check) => c.id)
   assert(ids.length > 0 && new Set(ids).size === ids.length, "Checks must be nonempty and unique")
   assert(Array.isArray(value.requirements) && value.requirements.length > 0 && value.requirements.every(r => record(r) && text(r.id) && Array.isArray(r.checks) && r.checks.length > 0 && r.checks.every((id: string) => ids.includes(id))), "Requirements need objective checks")

@@ -1,12 +1,12 @@
 import { readFile, writeFile, mkdir, mkdtemp, rm, cp, symlink, lstat, readlink, readdir, realpath } from "node:fs/promises"
 import { tmpdir, cpus, totalmem, release } from "node:os"
-import { join, resolve, relative } from "node:path"
+import { join, resolve, relative, isAbsolute, sep } from "node:path"
 import { pathToFileURL } from "node:url"
-import { execFileSync } from "node:child_process"
+import { execFileSync, spawnSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { performance } from "node:perf_hooks"
-import { assert, hash, record, stableJson, validateTask, validateResult, emptyUsage, type Task, type Result, type Mode } from "./schema.ts"
-import { parseStats, collectTranscripts, estimateCost, validatePricing, type Pricing } from "./collect.ts"
+import { assert, paths, hash, record, stableJson, validateTask, validateResult, emptyUsage, type Task, type Result, type Mode } from "./schema.ts"
+import { parseStats, collectTranscripts, estimateCost, validatePricing, assertPricingMatches, type Pricing } from "./collect.ts"
 import { execute } from "./process.ts"
 import { buildArgs } from "./adapters/build.ts"
 import { andmarArgs } from "./adapters/andmar.ts"
@@ -37,25 +37,46 @@ export async function snapshot(root: string): Promise<Record<string, string>> {
   }
   return state
 }
-async function dependencySnapshot(root: string): Promise<string> {
-  const entries: Record<string, string> = {}
-  const walk = async (directory: string): Promise<void> => {
-    let names
-    try { names = await readdir(join(root, directory), { withFileTypes: true }) }
-    catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return; throw e }
-    for (const entry of names.sort((a, b) => a.name.localeCompare(b.name))) {
-      const file = join(directory, entry.name)
-      if (entry.isDirectory()) await walk(file)
-      else if (entry.isSymbolicLink()) {
-        const target = await realpath(join(root, file))
-        assert(!relative(join(root, "node_modules"), target).startsWith(".."), "External dependency symlink cannot be fingerprinted reproducibly")
-        entries[file] = `link:${await readlink(join(root, file))}`
-      }
-      else entries[file] = hash((await readFile(join(root, file))).toString("base64"))
+/** Only declared paths participate; timestamps and absolute locations do not. */
+export async function dependencySnapshot(root: string, declared: string[] = []): Promise<string> {
+  assert(paths(declared), "Unsafe dependencyFingerprint paths")
+  const entries: Record<string, unknown> = Object.create(null)
+  if (declared.length === 0) return hash(entries)
+  const workspace = await realpath(root)
+  const fingerprint = async (file: string, ancestors: Set<string>): Promise<unknown> => {
+    const actual = await realpath(file)
+    const rel = relative(workspace, actual)
+    assert(rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel), `Dependency symlink escapes workspace: ${relative(root, file)}`)
+    assert(!ancestors.has(actual), `Dependency symlink cycle: ${relative(root, file)}`)
+    const stat = await lstat(file)
+    const mode = stat.mode & 0o777
+    if (stat.isSymbolicLink()) {
+      return { type: "symlink", mode, target: await readlink(file), resolved: await fingerprint(actual, ancestors) }
     }
+    if (stat.isFile()) return { type: "file", mode, contentHash: hash((await readFile(file)).toString("base64")) }
+    assert(stat.isDirectory(), `Unsupported dependency file type: ${relative(root, file)}`)
+    const next = new Set([...ancestors, actual])
+    const children: Record<string, unknown> = Object.create(null)
+    for (const name of (await readdir(file)).sort()) children[name] = await fingerprint(join(file, name), next)
+    return { type: "directory", mode, children }
   }
-  await walk("node_modules")
+  for (const file of [...new Set(declared)].sort()) {
+    try { entries[file] = await fingerprint(resolve(root, file), new Set()) }
+    catch (e) { throw new Error(`dependencyFingerprint ${JSON.stringify(file)}: ${(e as Error).message}`) }
+  }
   return hash(entries)
+}
+/** Full audit patch, without staging or changing the workspace's Git index. */
+export function productDiff(workspace: string, baseHead: string): Buffer {
+  const output = [execFileSync("git", ["diff", "--binary", "--no-ext-diff", "--no-textconv", baseHead, "--", ".", ":(exclude).andmar/work/**"], { cwd: workspace, maxBuffer: 32 * 1024 * 1024 })]
+  const untracked = execFileSync("git", ["ls-files", "-z", "--others", "--exclude-standard"], { cwd: workspace, encoding: "utf8" }).split("\0").filter(Boolean).sort()
+  for (const file of untracked.filter(f => !f.startsWith(".andmar/work/"))) {
+    const diff = spawnSync("git", ["diff", "--no-index", "--binary", "--no-ext-diff", "--no-textconv", "--", "/dev/null", file], { cwd: workspace, maxBuffer: 32 * 1024 * 1024 })
+    if (diff.error) throw diff.error
+    assert(diff.status === 0 || diff.status === 1, `Untracked diff failed: ${file}: ${diff.stderr.toString()}`)
+    output.push(diff.stdout)
+  }
+  return Buffer.concat(output)
 }
 async function readJson(file: string): Promise<any> { return JSON.parse(await readFile(file, "utf8")) }
 export interface RunOptions {
@@ -138,7 +159,7 @@ async function runMeasured(task: Task, mode: Mode, options: RunOptions, runId: s
   const before = await snapshot(workspace)
   const beforeLedger = await readLedgerMetrics(workspace)
   const baseHead = git(workspace, ["rev-parse", "HEAD"])
-  const dependencyStateHash = await dependencySnapshot(workspace)
+  const dependencyStateHash = await dependencySnapshot(workspace, task.dependencyFingerprint)
   const packageInfo = await readJson(join(options.harnessRoot, "package.json"))
   const harnessFiles = await snapshot(options.harnessRoot)
   const harness = mode === "andmar" ? { version: packageInfo.version, revision: git(options.harnessRoot, ["rev-parse", "HEAD"]), sourceHash: hash(Object.fromEntries(Object.entries(harnessFiles).filter(([f]) => /^(src\/|assets\/|scripts\/|index\.ts$|package\.json$|bun\.lock)/.test(f)))) } : null
@@ -184,7 +205,7 @@ async function runMeasured(task: Task, mode: Mode, options: RunOptions, runId: s
   const durationMs = Math.round(performance.now() - started)
   const finishedAt = new Date().toISOString()
   await writeFile(join(artifacts, "file-state.json"), stableJson({ before, after, baseHead, finalHead: git(workspace, ["rev-parse", "HEAD"]) }))
-  await writeFile(join(artifacts, "product.diff"), execFileSync("git", ["diff", "--binary", baseHead, "--", ".", ":(exclude).andmar/work/**"], { cwd: workspace, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 }))
+  await writeFile(join(artifacts, "product.diff"), productDiff(workspace, baseHead))
   // Preserve final files (including new/untracked files) for inspection; no secrets/config/database copies.
   await cp(workspace, join(artifacts, "final-workspace"), { recursive: true, filter: path => ![".git", "node_modules"].includes(path.split(/[\\/]/).at(-1)!) })
   const warnings: string[] = []
@@ -240,7 +261,7 @@ async function runMeasured(task: Task, mode: Mode, options: RunOptions, runId: s
   const result: Result = {
     schemaVersion: 1, runId, pairId: options.pairId, repetition: options.repetition, taskId: task.id, mode, harness,
     startedAt, finishedAt, durationMs, agentDurationMs: processResult.durationMs, verificationDurationMs,
-    provider: ref.providerID, model: ref.id, variant: ref.variant ?? null,
+    provider: ref.providerID, model: ref.id, variant: options.model.includes("#") ? ref.variant : null,
     conditions, comparable: issues.length === 0, comparabilityIssues: [...new Set(issues)].sort(),
     ...usage, measurement: { source: "opencode-stats-v2/isolated-db", warnings, auxiliaryUsage: "unmeasured", pricing: options.pricing },
     exitStatus: processResult.exitStatus, timedOut: processResult.timedOut, error: processResult.error,
@@ -266,13 +287,16 @@ export async function runTask(task: Task, mode: Mode, options: RunOptions): Prom
   const runId = `${task.id}-${mode}-${randomUUID()}`
   const startedAt = new Date().toISOString()
   const start = performance.now()
-  try { return await runMeasured(task, mode, options, runId) }
+  try {
+    assertPricingMatches(options.pricing, { provider: ref.providerID, model: ref.id, variant: options.model.includes("#") ? ref.variant : null })
+    return await runMeasured(task, mode, options, runId)
+  }
   catch (e) {
     const result: Result = {
       schemaVersion: 1, runId, pairId: options.pairId, repetition: options.repetition, taskId: task.id, mode,
       harness: mode === "andmar" ? { version: "unmeasured", revision: "unmeasured", sourceHash: "unmeasured" } : null,
       startedAt, finishedAt: new Date().toISOString(), durationMs: Math.round(performance.now() - start), agentDurationMs: 0, verificationDurationMs: 0,
-      model: ref.id, provider: ref.providerID, variant: ref.variant ?? null, conditions: { taskHash: hash(task), model: options.model },
+      model: ref.id, provider: ref.providerID, variant: options.model.includes("#") ? ref.variant : null, conditions: { taskHash: hash(task), model: options.model },
       comparable: false, comparabilityIssues: ["Infrastructure failure; execution equivalence was not established"],
       ...emptyUsage(), measurement: { source: "unmeasured", warnings: ["Incomplete run; inspect artifacts"], auxiliaryUsage: "unmeasured", pricing: options.pricing },
       exitStatus: null, timedOut: false, error: (e as Error).message,
@@ -306,7 +330,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     const ref = modelRef(model)
     const commonConfig = validateCommonConfig(option("--config") ? await readJson(resolve(option("--config")!)) : {})
     const pricing = option("--pricing") ? validatePricing(await readJson(resolve(option("--pricing")!))) : null
-    assert(!pricing || pricing.provider === ref.providerID && pricing.model === ref.id, "Pricing must match exact selected model")
+    assertPricingMatches(pricing, { provider: ref.providerID, model: ref.id, variant: model.includes("#") ? ref.variant : null })
     const repeat = Number(option("--repeat", "1"))
     assert(Number.isInteger(repeat) && repeat >= 1 && repeat <= 100, "Invalid repeat count")
     const environment = benchmarkEnvironment(process.env)

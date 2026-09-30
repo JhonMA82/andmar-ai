@@ -53,9 +53,9 @@ Existing tests cannot be changed to manufacture passing verification.
 
 Each run starts a fresh clone/fixture at the same workspace path, a fresh private
 OpenCode server, config, cache and database. Setup must leave Git state clean.
-The runner fingerprints the initial files, installed dependency contents, common
+The runner fingerprints the initial files, explicitly declared dependency paths, common
 config, environment (hash only), OS/architecture, Node and OpenCode versions,
-model, prices, benchmark code, machine/OS capacity and timeout. Any difference causes comparison to fail. External dependency symlinks are rejected. There is no
+model, prices, benchmark code, machine/OS capacity and timeout. Any difference causes comparison to fail. Dependency symlinks escaping the workspace are rejected. There is no
 ambient project OpenCode configuration; repositories with `.opencode`,
 `opencode.json(c)` or `.env` are rejected instead of silently rewritten.
 
@@ -63,6 +63,31 @@ For a production task, use a sanitized pinned repository with locked dependency
 setup. Tasks and verification are trusted executable code, just like project
 tests. Fixtures are isolated directories, not an OS security sandbox. Review a
 task before running it with provider credentials.
+
+Each task may declare an optional `dependencyFingerprint` list. It is explicit,
+not autodetected by ecosystem. Examples:
+
+```json
+"dependencyFingerprint": ["package.json", "bun.lock"]
+```
+
+```json
+"dependencyFingerprint": ["pyproject.toml", "uv.lock"]
+```
+
+```json
+"dependencyFingerprint": ["Cargo.toml", "Cargo.lock"]
+```
+
+Files contribute their content and permission mode; directories contribute an
+ordered recursive tree. Symlinks contribute their target and resolved contents
+inside the workspace. Absolute paths, `..`, NUL, external symlinks and cycles
+are rejected. A missing declared path fails preparation and makes the run an
+infrastructure failure, excluded from comparisons. Without this list (or with
+an empty list), `conditions.dependencyStateHash` is `hash({})`. No automatic
+scan of `node_modules`, `.venv`, `target` or `vendor` occurs; declare such a
+directory only if its contents need fingerprinting. The initial fixtures declare
+only `package.json` and require no installed project dependencies.
 
 `--config FILE` supplies identical JSON provider settings, permissions, shell,
 snapshots, formatter, lsp, media, compaction, tool_output, watcher or websearch
@@ -91,6 +116,11 @@ each run directory alongside the task, hashes, diff and final files. These can
 contain private source/prompts; generated results are ignored by Git. Store a
 reviewed cohort under a deliberate historical directory or your own artifact
 storage; keeping a version label alone is insufficient.
+
+`product.diff` includes modified, deleted and new/untracked product files, with
+Git binary patches where supported. Work Ledger files under `.andmar/work/**`
+are excluded. Generating it does not stage files or alter the workspace's Git
+state; `snapshot()` remains the source for changed-file detection.
 
 ## What is measured
 
@@ -127,7 +157,7 @@ written by the benchmark.
 
 Zero native cost stays zero, including free/subscription billing. It is
 provider-accounted cost, not a verified invoice. Estimated API-equivalent cost
-is a separate optional field. `--pricing FILE` requires explicit exact-model
+is a separate optional field. `--pricing FILE` requires explicit exact-model/variant
 USD rates, a source and date; there are no heuristic model-name price tables:
 
 ```json
@@ -135,6 +165,7 @@ USD rates, a source and date; there are no heuristic model-name price tables:
   "schemaVersion": 1,
   "provider": "provider",
   "model": "model",
+  "variant": "variant",
   "currency": "USD",
   "asOf": "YYYY-MM-DD",
   "source": "provider pricing URL and applicable billing assumptions",
@@ -151,6 +182,11 @@ USD rates, a source and date; there are no heuristic model-name price tables:
 The zero rates above are placeholders, not a price recommendation. Supply real
 rates, accounting for whether reasoning is billed separately. Unsupported tiered
 pricing or missing channels must remain unmeasured rather than falsely precise.
+Pricing must match the selected provider, model and variant exactly. Use an
+explicit `"variant": null` when running `provider/model` without a variant.
+There is no inferred shared pricing across variants. A mismatch aborts before
+model usage and no cost is estimated. The estimate never replaces native
+reported cost, including reported zero or an unknown reported cost.
 
 For prose completion assessment, preserve the original result and make a separate
 annotated cohort with explicit assessor/evidence:

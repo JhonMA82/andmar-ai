@@ -4,6 +4,7 @@ export interface Pricing {
   schemaVersion: 1
   provider: string
   model: string
+  variant: string | null
   currency: "USD"
   asOf: string
   source: string
@@ -12,8 +13,15 @@ export interface Pricing {
 export function validatePricing(p: unknown): Pricing {
   assert(record(p) && p.schemaVersion === 1 && p.currency === "USD", "Invalid pricing schema")
   assert(["provider", "model", "source", "asOf"].every(k => typeof p[k] === "string" && p[k].length > 0), "Pricing needs provenance and exact model")
+  assert(p.variant === null || typeof p.variant === "string" && p.variant.trim().length > 0, "Pricing needs an explicit variant (string or null)")
   assert(record(p.perMillion) && ["input", "output", "reasoning", "cacheRead", "cacheWrite"].every(k => numberOrNull(p.perMillion[k]) !== null), "Missing token rates")
   return p as Pricing
+}
+export function assertPricingMatches(pricing: Pricing | null, selected: { provider: string; model: string; variant: string | null }): void {
+  if (!pricing) return
+  validatePricing(pricing)
+  assert(pricing.provider === selected.provider && pricing.model === selected.model && pricing.variant === selected.variant,
+    `Pricing must match exact provider/model/variant: selected ${selected.provider}/${selected.model} variant=${JSON.stringify(selected.variant)}, pricing ${pricing.provider}/${pricing.model} variant=${JSON.stringify(pricing.variant)}`)
 }
 export function estimateCost(usage: Usage, pricing: Pricing | null): Measured {
   if (!pricing) return null
