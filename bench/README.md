@@ -10,6 +10,37 @@ Requires Bun, Node >=22.13 (built-in read-only SQLite diagnostics), Git, install
 The native CLI/JSON contract was checked against **2.0.20** without model calls.
 Use a POSIX environment (Linux/macOS/WSL) for process-tree timeout cancellation.
 
+For the simplest start, configure once from the AndMar checkout:
+
+```bash
+bun install --frozen-lockfile
+bun run bench:configure
+bun run bench --execute
+```
+
+The setup asks for the exact `provider/model#variant` and an optional API key
+with hidden input. It makes no model calls. Settings are saved in the Git-ignored
+`bench/local.json` with permissions `0600`; a supplied key is stored there in
+plain text. For OpenRouter, pressing Enter can use `OPENROUTER_API_KEY` during
+setup; subsequent runs use the saved provider setting and keep JEV on its
+deterministic fallback. Other providers can use their normal environment
+variables when no key is saved. Stored OpenCode OAuth/subscription logins are
+still not inherited. Run setup again to change the model or key.
+
+`bun run bench --execute` runs the button fixture once in each mode. The runner
+prints the comparison command with that run's result directory. For another task:
+
+```bash
+bun run bench --execute --task bench/tasks/bugfix/bugfix-add.json
+```
+
+`--model` and `--config` override the saved model and common provider settings,
+respectively. Pricing remains opt-in via `--pricing` and must match the exact
+selected model/variant. Without `--execute`, a run still refuses to call a model.
+Settings affect only this benchmark; normal AndMar configuration is unchanged.
+
+The explicit command form remains available:
+
 ```bash
 bun install --frozen-lockfile
 bun run check

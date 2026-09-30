@@ -1,6 +1,6 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { readFile, writeFile, mkdtemp, rm, chmod, glob, mkdir, symlink } from "node:fs/promises"
+import { readFile, writeFile, mkdtemp, rm, chmod, glob, mkdir, symlink, stat } from "node:fs/promises"
 import { join, resolve } from "node:path"
 import { execFileSync } from "node:child_process"
 import { tmpdir } from "node:os"
@@ -11,6 +11,7 @@ import { runTask, benchmarkEnvironment, validateCommonConfig, matchesFile, depen
 import { execute } from "../bench/process.ts"
 import { annotate } from "../bench/annotate.ts"
 import { readHarnessState } from "../bench/state.ts"
+import { loadSettings, saveSettings, validateSettings } from "../bench/settings.ts"
 
 const root = resolve(import.meta.dirname, "..")
 const taskFile = join(root, "bench/tasks/trivial/trivial-button-text.json")
@@ -18,6 +19,35 @@ const nativeStats = {
   sessions: 1, subagents: 0, steps: 2, tokens: { input: 100, output: 20, reasoning: 5, cache: { read: 50, write: 10 } }, cost: 0,
   tools: { mode: "detail", totals: { calls: 2, succeeded: 1, failed: 1, unfinished: 0 }, usage: [{ name: "bash", calls: 1, durationP50: 10 }, { name: "andmar_route", calls: 1, durationP50: 30 }] }, models: [{ model: { providerID: "provider", id: "model", variant: "low" } }],
 }
+test("local benchmark settings preserve exact model/config and save credentials privately", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bench-settings-"))
+  const file = join(dir, "local.json")
+  try {
+    assert.equal(await loadSettings(file), null)
+    const settings = { schemaVersion: 1 as const, model: "openrouter/model#low", commonConfig: { provider: { openrouter: { settings: { apiKey: "fixture-not-a-real-key" } } } } }
+    await saveSettings(settings, file)
+    assert.deepEqual(await loadSettings(file), settings)
+    assert.equal((await stat(file)).mode & 0o777, 0o600)
+    await chmod(file, 0o644)
+    await saveSettings({ ...settings, model: "openrouter/model#high" }, file)
+    assert.equal((await stat(file)).mode & 0o777, 0o600)
+    assert.equal((await loadSettings(file))!.model, "openrouter/model#high")
+    assert.throws(() => validateSettings({ ...settings, schemaVersion: 2 }), /schema/)
+    assert.throws(() => validateSettings({ ...settings, model: "model" }), /exact provider/)
+    assert.throws(() => validateSettings({ ...settings, commonConfig: [] }), /commonConfig/)
+    assert.equal(execFileSync("git", ["check-ignore", "bench/local.json"], { cwd: root, encoding: "utf8" }).trim(), "bench/local.json")
+  } finally { await rm(dir, { recursive: true, force: true }) }
+})
+test("saved settings never bypass explicit LLM opt-in", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bench-settings-optin-"))
+  try {
+    await mkdir(join(dir, "bench"))
+    await saveSettings({ schemaVersion: 1, model: "provider/model#low", commonConfig: {} }, join(dir, "bench/local.json"))
+    const run = await execute([process.execPath, "--experimental-strip-types", join(root, "bench/runner.ts")], dir, process.env, 5000, join(dir, "out"), join(dir, "err"))
+    assert.equal(run.exitStatus, 1)
+    assert.match(await readFile(join(dir, "err"), "utf8"), /LLM runs are opt-in/)
+  } finally { await rm(dir, { recursive: true, force: true }) }
+})
 function result(mode: "build" | "andmar" = "build", override: Partial<Result> = {}): Result {
   return validateResult({
     schemaVersion: 1, runId: mode, pairId: "pair", repetition: 0, taskId: "task", mode,
@@ -344,7 +374,8 @@ const args=process.argv.slice(2), db=process.env.OPENCODE_DB;
 if(process.env.PWD!==process.cwd())throw new Error('wrong inherited PWD');
 const ref={providerID:'provider',id:'model',variant:'low'};
 const stats=${JSON.stringify(nativeStats)};
-if(args[0]==='run'){
+if(args[0]==='--version'){console.log('opencode v2.0.20');}
+else if(args[0]==='run'){
  const mode=args[args.indexOf('--agent')+1]; writeFileSync(db+'.mode',mode);
  const sql=new DatabaseSync(db);sql.exec('CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT)');
  if(mode==='andmar')sql.prepare('INSERT INTO kv VALUES (?,?)').run('plugin:0061006e0064006d00610072002e00610069:runtime/last-start',JSON.stringify({harnessVersion:${JSON.stringify(currentVersion)}}));sql.close();
@@ -372,6 +403,20 @@ else if(args[0]==='session'){
     assert.equal(b.cost.reported, 0)
     assert.equal(a.cost.estimated, null)
     assert.equal(compare([b], [a]).pairs.length, 1)
+    // The simple command uses the saved model/config and default button task.
+    await mkdir(join(dir, "bench/tasks/trivial"), { recursive: true })
+    await writeFile(join(dir, "bench/tasks/trivial/trivial-button-text.json"), await readFile(taskFile))
+    const savedConfig = { provider: { provider: { settings: { apiKey: "fixture-not-a-real-key" } } } }
+    await saveSettings({ schemaVersion: 1, model: options.model, commonConfig: savedConfig }, join(dir, "bench/local.json"))
+    const configured = await execute([process.execPath, "--experimental-strip-types", join(root, "bench/runner.ts"), "--execute", "--opencode", fake, "--andmar-root", root, "--output", join(dir, "configured-results")], dir, process.env, 30_000, join(dir, "configured-out"), join(dir, "configured-err"))
+    assert.equal(configured.exitStatus, 0)
+    const savedResults: Result[] = []
+    for await (const file of glob("configured-results/**/*.result.json", { cwd: dir })) savedResults.push(validateResult(JSON.parse(await readFile(join(dir, file), "utf8"))))
+    assert.equal(savedResults.length, 2)
+    assert.ok(savedResults.every(r => r.quality.taskSuccess && r.conditions.model === options.model && r.conditions.commonConfigHash === hash(savedConfig)))
+    const configuredOutput = await readFile(join(dir, "configured-err"), "utf8")
+    assert.match(configuredOutput, /Compare: bun run bench:compare/)
+    assert.doesNotMatch(configuredOutput, /fixture-not-a-real-key/)
     const rates = validatePricing({ schemaVersion: 1, provider: "provider", model: "model", variant: "high", currency: "USD", asOf: "2026-09-30", source: "test", perMillion: { input: 1, output: 2, reasoning: 2, cacheRead: 0.1, cacheWrite: 1 } })
     const priced = await runTask(task, "build", { ...options, pricing: { ...rates, variant: "low" } })
     assert.equal(priced.comparable, true)

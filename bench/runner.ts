@@ -12,6 +12,7 @@ import { buildArgs } from "./adapters/build.ts"
 import { andmarArgs } from "./adapters/andmar.ts"
 import { readLedgerMetrics } from "../src/capabilities/development-metrics/index.ts"
 import { readHarnessState } from "./state.ts"
+import { loadSettings } from "./settings.ts"
 
 function git(cwd: string, args: string[], env = process.env): string {
   return execFileSync("git", args, { cwd, env, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 }).trim()
@@ -168,7 +169,7 @@ async function runMeasured(task: Task, mode: Mode, options: RunOptions, runId: s
     initialStateHash: hash(before), commonConfigHash: hash(options.commonConfig), environmentHash: options.environmentHash,
     opencodeVersion: options.opencodeVersion, nodeVersion: process.version, platform: `${process.platform}/${process.arch}`,
     machineHash: hash({ cpus: cpus().map(cpu => cpu.model), memoryBytes: totalmem(), osRelease: release() }),
-    benchmarkCodeHash: hash(Object.fromEntries(await Promise.all(["schema.ts", "runner.ts", "collect.ts", "process.ts", "state.ts", "adapters/build.ts", "adapters/andmar.ts"].map(async file => [file, await readFile(join(import.meta.dirname, file), "utf8")])))),
+    benchmarkCodeHash: hash(Object.fromEntries(await Promise.all(["schema.ts", "runner.ts", "collect.ts", "process.ts", "state.ts", "settings.ts", "adapters/build.ts", "adapters/andmar.ts"].map(async file => [file, await readFile(join(import.meta.dirname, file), "utf8")])))),
     model: options.model, timeoutMs: String(task.timeoutMs), dependencyStateHash,
     pricingHash: hash(options.pricing), protocol: "single-prompt-v1/isolated-db/jev-fallback/auto-permissions",
   }
@@ -322,13 +323,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     const option = (name: string, fallback?: string) => args.includes(name) ? args[args.indexOf(name) + 1] : fallback
     assert(args.includes("--execute"), "LLM runs are opt-in. Usage: bun bench/runner.ts --execute --task FILE --model provider/model#variant [--mode pair|build|andmar] [--output DIR] [--config FILE] [--andmar-root DIR] [--repeat N]")
     assert(process.platform !== "win32", "Runner requires POSIX process-group cancellation; Windows may run under WSL")
-    assert(option("--task") && option("--model"), "--task and --model required")
-    const task = validateTask(await readJson(resolve(option("--task")!)))
+    const settings = await loadSettings()
+    const model = option("--model", settings?.model)
+    assert(model, "Choose a model with bun run bench:configure, or pass --model provider/model#variant")
+    const task = validateTask(await readJson(resolve(option("--task", "bench/tasks/trivial/trivial-button-text.json")!)))
     const selected = option("--mode", "pair")!
     assert(["pair", "build", "andmar"].includes(selected), "Invalid mode")
-    const model = option("--model")!
     const ref = modelRef(model)
-    const commonConfig = validateCommonConfig(option("--config") ? await readJson(resolve(option("--config")!)) : {})
+    const commonConfig = validateCommonConfig(option("--config") ? await readJson(resolve(option("--config")!)) : settings?.commonConfig ?? {})
     const pricing = option("--pricing") ? validatePricing(await readJson(resolve(option("--pricing")!))) : null
     assertPricingMatches(pricing, { provider: ref.providerID, model: ref.id, variant: model.includes("#") ? ref.variant : null })
     const repeat = Number(option("--repeat", "1"))
@@ -348,6 +350,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       })
     }
     console.error(`[bench] Results: ${output}`)
+    if (selected === "pair") console.error(`Compare: bun run bench:compare --baseline ${JSON.stringify(join(output, "build"))} --current ${JSON.stringify(join(output, "andmar"))}`)
   } catch (e) { console.error((e as Error).message); process.exitCode = 1 }
   finally { if (temporary) await rm(temporary, { recursive: true, force: true }) }
 }

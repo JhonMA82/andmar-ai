@@ -28,7 +28,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p bench/tsconfig.json --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "doctor": "node scripts/doctor.mjs",
-    "engram:setup": "node scripts/setup-engram.mjs"
+    "engram:setup": "node scripts/setup-engram.mjs",
+    "bench:configure": "bun bench/configure.ts",
+    "bench": "bun bench/runner.ts",
+    "bench:compare": "bun bench/compare.ts"
   },
   "dependencies": {
     "@opencode/plugin": "2.0.4"

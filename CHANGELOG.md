@@ -2,6 +2,12 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
+## [Unreleased]
+
+### Added
+
+- Add one-time local benchmark setup with hidden API-key entry and saved model/provider settings; manual runs still require `--execute`.
+
 ## [0.15.2] - 2026-09-30
 
 ### Added
