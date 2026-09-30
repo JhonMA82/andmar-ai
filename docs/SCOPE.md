@@ -1,12 +1,12 @@
 # Scope
 
-**Scope:** what AndMar AI `v0.15.1` guarantees today, what is optional, and
+**Scope:** what AndMar AI `v0.15.2` guarantees today, what is optional, and
 what it deliberately does not promise. It is a scope record, not an
 architecture document: the system explanation is [OVERVIEW.md](OVERVIEW.md)
 and the boundaries are [ARCHITECTURE.md](ARCHITECTURE.md). Forward-looking
 triggers with their evidence requirements live in [ROADMAP.md](ROADMAP.md).
 
-Current baseline: **v0.15.1**. This document replaces the retired
+Current baseline: **v0.15.2**. This document replaces the retired
 `MVP-SCOPE.md`, which described the earlier 0.1-era baseline and had become
 contradictory (it denied Engram and Delivery, which now exist).
 

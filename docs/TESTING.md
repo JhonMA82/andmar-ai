@@ -8,14 +8,14 @@ system-level explanation is [OVERVIEW.md](OVERVIEW.md); the architecture is
 **Historical base snapshot (0.7.x era):** `JhonMA82/andmar-ai` main at commit `2f50effef624570b6e686d71caa6d430f77a467f`, plus the intake pilot, the `AndMar` primary agent, and the verification-evidence changes documented in the changelog. Current behavior is described by [SCOPE.md](SCOPE.md) and the generated [CAPABILITIES.md](CAPABILITIES.md).
 
 The core evolution (Intake → Work Ledger → lifecycle → checkpoints →
-Completion → development metrics → Delivery) is complete at `v0.15.1`; real
+Completion → development metrics → Delivery) is complete at `v0.15.2`; real
 use should now drive measured-friction improvements, bug fixes and
 simplifications rather than a new capability.
 
 `bun run check` runs the architecture check, typecheck and the pure
 deterministic suite. Treat any test count as revision-bound: the current
-value is whatever `bun run check` prints in your checkout (234 tests on the
-`v0.15.1` release, which removed the independent-review subsystem).
+value is whatever `bun run check` prints in your checkout (252 tests on the
+`v0.15.2` release, which added the lateral `bench/` benchmark infrastructure).
 
 ## Install the development build
 
