@@ -252,6 +252,15 @@ export async function validateWorkLedger(targetDir, options = {}) {
     if (secName.includes("WORK UNIT") || secName.includes("UNITS")) {
       let currentWuId = null;
       for (const line of lines) {
+        const anyUnit = line.match(/^[-*]\s+\[([^\]]*)\]\s+((?:WU-|W)\d+)/i);
+        if (anyUnit && ![" ", "~", "x", "!"].includes(anyUnit[1])) errors.push(`Invalid Work Unit state: ${anyUnit[1]}`);
+        const filesField = line.match(/^\s+-\s+(Expected Files|Touched Files):\s*(.*)$/i);
+        if (filesField) {
+          try {
+            const paths = JSON.parse(filesField[2]);
+            if (!Array.isArray(paths) || paths.some((file) => typeof file !== "string" || !file.trim() || /[\r\n\0]/.test(file) || file.startsWith("/") || /^[A-Za-z]:/.test(file) || file.replaceAll("\\", "/").split("/").includes(".."))) throw new Error("invalid paths");
+          } catch { errors.push(`${filesField[1]} must be a JSON array of workspace-relative paths`); }
+        }
         const wuMatch = line.match(/^[-*]\s+\[([ ~x!])\]\s+((?:WU-|W)\d+)/i);
         if (wuMatch) {
           const state = wuMatch[1];

@@ -7,6 +7,7 @@ export type SemanticEventType =
   | "andmar.contract"
   | "andmar.intake"
   | "andmar.runtime"
+  | "andmar.work"
 
 export interface SemanticEventInput {
   type: SemanticEventType

@@ -5,6 +5,7 @@ import { realpathSync } from "node:fs";
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { withLedgerLock } from "./work-ledger-lifecycle.mjs";
 import { validateWorkLedger } from "./validate-work-ledger.mjs";
 import { computeWorkingStateRevision } from "./working-state-revision.mjs";
 
@@ -195,6 +196,10 @@ function evidenceIds(unit) {
 }
 
 export async function runWorkUnitCheckpoint(command, targetDir, unitArg, options = {}) {
+  return withLedgerLock(targetDir, () => mutateWorkUnitCheckpoint(command, targetDir, unitArg, options));
+}
+
+async function mutateWorkUnitCheckpoint(command, targetDir, unitArg, options = {}) {
   const resolvedTarget = resolve(targetDir);
   const ledgerMarker = `${sep}.andmar${sep}work${sep}`;
   if (!resolvedTarget.includes(ledgerMarker)) {

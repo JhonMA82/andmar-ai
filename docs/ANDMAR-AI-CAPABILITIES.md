@@ -135,21 +135,26 @@ known limitations.
 
 ### `lifecycle`
 
-- **Purpose:** Deterministic documentation impact and SemVer impact detection.
+- **Purpose:** Deterministic documentation/SemVer impact and portable Work Unit tracking.
 - **Non-goals:** Does not write documentation, bump versions, publish
   releases, run checks, or own Task Contract completion state.
 - **Public primitives:** `andmar_change_impact` (input: `changedPaths` +
   explicit `kind`, optional `breaking`; output: docs impact, version impact,
-  public-surface flag).
+  public-surface flag), `andmar_work_status`, `andmar_work_amend`,
+  `andmar_work_resume` (see [WORK-LEDGER.md](WORK-LEDGER.md) for exact contracts).
 - **Produces:** documentation/version staleness obligations. **Consumes:**
   configured documentation rules and public paths only.
-- **Owns:** no state keys of its own. **Must not own:** receipts, evidence,
-  contracts, or completion state.
-- **State:** stateless.
+- **Owns:** optional per-WU `Expected Files`/`Touched Files` metadata and
+  discovery/exception facts in repository `WORK.md`, using its existing lifecycle
+  helper; no storage keys. Transient session binding/activity/verification
+  projection lives in the setup closure and is dropped at restart.
+  **Must not own:** receipts, requirement evidence, contracts or completion.
+- **State:** documentation impact stays stateless; Work Ledger stays durable.
 - **Configuration:** `documentation.rules` (unique ids, `code`/`docs` glob
   patterns with `*`/`**`/`?`), `versioning.enabled` and
   `versioning.publicPaths`.
-- **External contracts:** none; pure mapping and SemVer policy.
+- **External contracts:** native tool hooks/structured edit output/VCS status and
+  optional read-only JSON Schema RPC. No TUI or dependency upgrade.
 - **Interaction:** its docs/version result is passed into the Task Contract
   completion boundary after exact-revision verification.
 - **Failure / fallback:** detection only; stale documentation or required

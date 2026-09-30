@@ -182,3 +182,26 @@ Run the repository checks after any API update and test the installed package, n
 ## Type validation policy
 
 CI and the authoritative `bun run check` must typecheck against the installed `@opencode/plugin` dependency. `tsconfig.check.json` and the local shim are retained only for explicit offline structural checks (`bun run check:offline`) and are not runtime/API proof.
+
+
+## Work observation and optional presentation RPC
+
+Inspected against the installed `@opencode/plugin@2.0.4` in this change:
+`promise/tool.d.ts` exposes `execute.before`/`execute.after` with stable call IDs;
+`promise/rpc.d.ts` exposes `register` and registration events; `Rpc` portable
+schemas accept JSON Schema. The VCS client exposes `status({location})` with
+`{location, data: FileStatus[]}` (`file`, additions/deletions, status). Lifecycle
+uses no new dependency and does not upgrade the validated package target.
+
+WorkRpc is a read-only `get` plus `changed` notification. RPC setup/send failure
+is isolated; native execution remains available. Structured edit output shapes
+are adapted from the reference plugin, because generic Tool.Result cannot
+prove the outputs of every concrete tool. Unsupported shapes and unavailable
+VCS are explicitly reported as coverage gaps, never parsed from prose.
+
+The reference plugin requires OpenCode >=2.0.19 and TUI peers. AndMar does not
+copy its TUI, export layout or application APIs. Live V2 execution, permission
+propagation through codemode and concrete VCS/edit outputs must be smoke-tested
+on the user's installed version before claiming live integration compatibility.
+An exception blocks subsequent observed session tools; already-running native
+calls and unrelated external processes are not cancelled by this observer.

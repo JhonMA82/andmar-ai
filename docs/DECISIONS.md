@@ -568,3 +568,31 @@ unverified completion. Risky work keeps stronger verification as a
 primary-agent discipline ("adversarial final inspection"), not as another
 agent. Reintroducing any second LLM judge requires a new architectural decision
 with fresh evidence.
+
+
+## D-037 — Adopt deterministic plan-review patterns without its Plan or Review
+
+**Decision:** Reuse the existing WU lifecycle and repository Ledger. Adopt
+successful structured file observations, deduplicated touched paths, derived
+scope drift, bounded necessary-work amendments, exception-only checkpoints,
+serialized read-modify-write, and a derived read-only presentation projection.
+Do not copy a Plan, Plan Contract, reviewer, approval-per-step flow, automatic
+planning classifier or persistent storage/history architecture.
+
+**Reference:** `smykla-skalski/opencode-plugin-plan-review` at
+`afd5c3e4f6d849d4607aa183d377e9853ac4a9e0`: `src/plan.ts`, `src/gate.ts`,
+`src/store.ts`, `src/server.ts`, `src/rpc.ts`, `src/tui.tsx`, `src/schema.ts`.
+The patterns are adapted to current AndMar authority, rather than importing the
+plugin or its schemas/dependencies. TUI is deferred until a real OpenCode smoke;
+the installed `@opencode/plugin@2.0.4` already exposes tool hooks, VCS status
+and JSON Schema RPC definitions. This is type/API validation, not a claim of
+live runtime behavior on the reference's required OpenCode >=2.0.19.
+
+**Consequence:** Lifecycle capability version 4 adds three bounded work tools,
+no new capability, no storage family and no dependency. Native helper calls
+and observations share a file lock and the same glob primitive. Existing
+Ledger formats are preserved through optional fields. Runtime loss requires
+rebinding a repository work ID, not reconstructing a Plan from hidden storage.
+Task Contract, Verification, Completion, Delivery and Intake retain their
+current authorities. Projection and tracking gaps are diagnostic, not extra
+completion gates. D-036 remains in force: there is no independent Review.

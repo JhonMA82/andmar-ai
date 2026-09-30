@@ -168,3 +168,23 @@ For environments without registry/network access, `bun run check:offline` exists
 ## Engram lateral integration regression coverage
 
 `tests/engram-integration.test.ts` verifies JSONC/OpenCode config discovery, effective precedence for partial overrides, agent-profile detection, fail-open startup semantics, runtime-observed availability, and metadata-only memory observability. `tests/engram-setup.test.ts` verifies that AndMar delegates configuration to the upstream-owned `engram setup opencode` command instead of rewriting MCP configuration itself. The suite intentionally does not mock Engram as completion evidence because memory is advisory.
+
+
+## Work tracking
+
+`tests/work-tracking.test.ts` exercises scope paths/globs/symlink escapes,
+structured observations and before-call WU attribution, shell VCS/hash
+reconciliation, deduplication/no-op writes, concurrent helper mutations,
+necessary-work policy, durable exception blocking, restart/rebinding, optional
+RPC failure, existing Verification/Completion integration and Intake trivial
+bypass. Native hooks/VCS/RPC are fixtures here; these tests are not live OpenCode
+proof. The portable helper operates on real temporary repository files.
+
+On an installed OpenCode V2, smoke: initialize and bind a Ledger from Intake,
+create its Task Contract, complete WU1, let WU2 discover low-risk necessary work
+and append it, perform native edits/shell changes, inspect touched/drift,
+record exact-revision verification, satisfy obligations, close via the existing
+Completion gate, then finalize. Separately flag a material discovery, confirm
+native mutation/execution cannot continue while blocked, resolve only after
+an actual user decision, and resume. Finally try `Login` -> `Entrar` unbound:
+no Ledger/contract, no VCS tracking, no question, no mandatory TUI.

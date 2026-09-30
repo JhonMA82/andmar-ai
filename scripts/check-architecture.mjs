@@ -17,6 +17,8 @@ for (const dir of capabilityDirs) {
     failures.push(`Capability ${dir.name} is missing index.ts`)
     continue
   }
+  const localFiles = (await readdir(join(capabilityRoot, dir.name))).filter((name) => name.endsWith(".ts") && name !== "index.ts");
+  content += "\n" + (await Promise.all(localFiles.map((name) => readFile(join(capabilityRoot, dir.name, name), "utf8")))).join("\n");
   capabilitySources.set(dir.name, content)
   if (/capabilities\/[a-zA-Z0-9_-]+/.test(content)) {
     failures.push(`Capability ${dir.name} imports another capability; use a core contract instead.`)

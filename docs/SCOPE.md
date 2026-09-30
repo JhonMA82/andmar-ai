@@ -29,7 +29,7 @@ simplification, a measured-friction improvement, a skill, a script, an
 external integration, or an isolated capability only when a runtime guarantee
 requires it.
 
-Inventory (generated, never hand-edited): 9 capabilities, 15 tools —
+Inventory (generated, never hand-edited): 9 capabilities, 17 tools —
 see [CAPABILITIES.md](CAPABILITIES.md) and
 [ANDMAR-AI-CAPABILITIES.md](ANDMAR-AI-CAPABILITIES.md).
 

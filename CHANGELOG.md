@@ -7,6 +7,25 @@ All notable changes to AndMar AI are recorded here. The package version in `pack
 ### Added
 
 - Add one-time local benchmark setup with hidden API-key entry and saved model/provider settings; manual runs still require `--execute`.
+- Lifecycle v4: optional per-WU expected/touched files, native observation,
+  derived drift, necessary-work amendments and exception-only blocking.
+- Read-only Work Ledger projection and optional native RPC notifications;
+  existing Verification events are reused. No TUI, Review or new dependency.
+
+### Fixed
+
+- Checkpoint recovery now accepts both namespaced and bare OpenCode tool names,
+  so `work_resume` cannot be blocked by the checkpoint it is responsible for
+  clearing. Read-only `search` and the non-product status/intake/routing
+  controls remain available while product mutation stays fail-closed.
+
+### Hardened
+
+- Native lifecycle and checkpoint helpers serialize Ledger writes; unknown WU
+  states and escaping file scopes are rejected. Existing Ledger formats,
+  completion authorities and Intake trivial fast path are preserved.
+- CLI and runtime share the existing glob primitive, including zero-segment
+  `**/` matching.
 
 ## [0.15.2] - 2026-09-30
 
