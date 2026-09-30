@@ -265,6 +265,47 @@ test("exception pauses native execution until user response + explicit resume, i
   } finally { dispose(); await rm(root, { recursive: true, force: true }) }
 })
 
+test("checkpoint gate accepts bare OpenCode recovery names and keeps product execution paused", async () => {
+  const { root } = await fixture()
+  const m = mock(root)
+  const dispose = await setup(m)
+  try {
+    await m.tools.work_status.execute({ workId: "task" }, context)
+    const amendment = content(await m.tools.work_amend.execute({ ...routine, humanDecision: true }, context))
+    assert.equal(amendment.checkpointRequired, true)
+
+    // OpenCode 2.0.20 can surface registered tools to execute.before by
+    // their local names rather than the namespaced UI label.
+    for (const tool of ["work_status", "status", "intake", "route", "task_contract", "work_resume"]) {
+      await m.hooks["execute.before"]!(event(tool, `allowed-${tool}`))
+    }
+    for (const tool of ["andmar.work_resume", "andmar/work_resume", "andmar_work_resume"]) {
+      await m.hooks["execute.before"]!(event(tool, `allowed-${tool}`))
+    }
+
+    for (const tool of ["read", "search", "grep", "glob", "list", "question"]) {
+      const id = `read-${tool}`
+      await m.hooks["execute.before"]!(event(tool, id))
+      await m.hooks["execute.after"]!(event(tool, id, { status: "completed" }))
+    }
+
+    const statusWhileBlocked = content(await m.tools.work_status.execute({}, context))
+    assert.equal(statusWhileBlocked.checkpointRequired, true)
+    assert.equal(statusWhileBlocked.status, "blocked")
+
+    for (const tool of ["shell", "edit", "write", "patch", "work_amend", "completion_gate", "andmar/work_amend"]) {
+      await assert.rejects(() => m.hooks["execute.before"]!(event(tool, `blocked-${tool}`)), /execution paused/)
+    }
+
+    assert.match((await m.tools.work_resume.execute({ reason: "pretend response" }, context)).content, /waiting for/)
+    m.user("u2")
+    await m.hooks["execute.before"]!(event("work_resume", "bare-resume-after-user"))
+    const resumed = content(await m.tools.work_resume.execute({ reason: "User resolved the checkpoint" }, context))
+    assert.equal(resumed.status, "active")
+    await m.hooks["execute.before"]!(event("edit", "edit-after-resume"))
+  } finally { dispose(); await rm(root, { recursive: true, force: true }) }
+})
+
 test("trivial request retains Intake bypass and unbound tracking fast path: no IO, VCS or checkpoints", async () => {
   const request = "Cambia el texto del botón Login por Entrar"
   assert.equal(isTrivialBypass(request), true)

@@ -11,6 +11,13 @@ All notable changes to AndMar AI are recorded here. The package version in `pack
 - Read-only Work Ledger projection and optional native RPC notifications;
   existing Verification events are reused. No TUI, Review or new dependency.
 
+### Fixed
+
+- Checkpoint recovery now accepts both namespaced and bare OpenCode tool names,
+  so `work_resume` cannot be blocked by the checkpoint it is responsible for
+  clearing. Read-only `search` and the non-product status/intake/routing
+  controls remain available while product mutation stays fail-closed.
+
 ### Hardened
 
 - Native lifecycle and checkpoint helpers serialize Ledger writes; unknown WU

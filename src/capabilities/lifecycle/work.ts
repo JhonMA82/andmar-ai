@@ -6,10 +6,16 @@ import type { Rpc } from "@opencode/plugin"
 import type { CapabilityRuntime } from "../../core/contracts.ts"
 import { normalizeFiles, runWorkUnitLifecycle, type Discovery, type LedgerResult } from "../../../scripts/work-ledger-lifecycle.mjs"
 
-const toolName = (name: string) => name.replace(/^andmar[_/:.-]/, "andmar_")
+const ANDMAR_TOOL_PREFIX = /^andmar[_/:.-]/
+const localToolName = (name: string) => name.replace(ANDMAR_TOOL_PREFIX, "")
+const isNamespacedAndmarTool = (name: string) => ANDMAR_TOOL_PREFIX.test(name)
 const EDIT_TOOLS = new Set(["write", "edit", "patch", "apply_patch"])
 const SHELL_TOOLS = new Set(["shell", "bash"])
-const READ_TOOLS = new Set(["read", "glob", "grep", "list", "question"])
+const CHECKPOINT_READ_TOOLS = new Set(["read", "search", "glob", "grep", "list", "question"])
+const CHECKPOINT_CONTROL_TOOLS = new Set([
+  "status", "intake", "route",
+  "work_status", "work_resume", "task_contract",
+])
 const discoveryProperties = {
   title: { type: "string", minLength: 1, maxLength: 500 },
   reason: { type: "string", minLength: 1, maxLength: 500 },
@@ -200,16 +206,20 @@ export async function setupWorkTracking({ ctx, observability }: CapabilityRuntim
     if (!binding || binding.closed) return // fast path: no IO, no Ledger, no projection
     const ledger = await status(binding)
     if (ledger.status === "completed") { binding.closed = true; return }
-    const tool = toolName(event.tool)
-    if (ledger.checkpointRequired && !READ_TOOLS.has(tool) && !["andmar_work_status", "andmar_work_resume", "andmar_task_contract"].includes(tool)) {
+    const rawTool = String(event.tool ?? "")
+    const tool = localToolName(rawTool)
+    const checkpointControl = CHECKPOINT_CONTROL_TOOLS.has(tool)
+    if (ledger.checkpointRequired && !CHECKPOINT_READ_TOOLS.has(tool) && !checkpointControl) {
       // Fail closed only for a real exception, never for an unlisted file.
       if (binding.checkpointUserID === undefined) binding.checkpointUserID = ledger.checkpointUser ?? await latestUserID(event.sessionID)
       notify(event.sessionID, binding, "checkpoint.required")
       throw new Error("AndMar checkpoint required: execution paused until resolved")
     }
-    if (tool.startsWith("andmar_")) return
+    // OpenCode may expose AndMar tools to hooks either namespaced
+    // (andmar.work_resume) or by their local registered name (work_resume).
+    if (isNamespacedAndmarTool(rawTool) || checkpointControl) return
     let filesBefore: Map<string, string> | undefined
-    if (ledger.active && SHELL_TOOLS.has(event.tool)) {
+    if (ledger.active && SHELL_TOOLS.has(tool)) {
       try { filesBefore = await snapshot() } catch (error) { binding.trackingError = String(error) }
     }
     calls.set(event.id, { binding, ...(ledger.active ? { unit: ledger.active } : {}), before: ledger, activity: `Running ${event.tool}`, filesBefore })
