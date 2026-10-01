@@ -82,11 +82,12 @@ try {
   const port = 19000 + Math.floor(Math.random() * 10000);
   server = spawn(binary, ["serve", "--hostname", "127.0.0.1", "--port", String(port)], { cwd: project, env: { ...process.env, OPENCODE_CONFIG_DIR: config, XDG_DATA_HOME: join(base, "data"), XDG_STATE_HOME: join(base, "state"), XDG_CACHE_HOME: join(base, "cache") }, stdio: ["ignore", "pipe", "pipe"] });
   let logs = "";
-  server.on("exit", () => { report.serverLog = logs.replace(/server password \S+/g, "server password [redacted]").slice(-12000); });
+  const redact = text => text.replace(/server password \S+/g, "server password [redacted]");
+  server.on("exit", () => { report.serverLog = redact(logs).slice(-12000); });
   server.stdout.on("data", chunk => logs += chunk.toString()); server.stderr.on("data", chunk => logs += chunk.toString());
   const ready = Date.now() + 30000;
   while (!/server password (\S+)/.test(logs)) {
-    if (server.exitCode !== null || Date.now() > ready) throw new Error(`OpenCode did not start: ${logs.replace(/server password \S+/g, "server password [redacted]").slice(-2000)}`);
+    if (server.exitCode !== null || Date.now() > ready) throw new Error(`OpenCode did not start: ${redact(logs).slice(-2000)}`);
     await new Promise(done => setTimeout(done, 100));
   }
   const password = logs.match(/server password (\S+)/)[1];
@@ -96,16 +97,28 @@ try {
     if (!response.ok) throw new Error(`${path}: ${response.status} ${content.slice(0, 2000)}`);
     return content ? JSON.parse(content) : null;
   };
+  // Readiness must observe the packaged AndMar skills, never an unrelated count:
+  // host-level skills can satisfy a raw length check before this fixture's config
+  // directory has been scanned.
+  const packaged = (await readdir(join(root, "assets/skills"), { withFileTypes: true }))
+    .filter(entry => entry.isDirectory())
+    .map(entry => entry.name)
+    .sort();
+  const fromFixture = body => body.data.filter(skill => packaged.includes(skill.id));
+  const skillsOf = body => body.data.map(skill => skill.id);
   let discovered = await api(`/api/skill?location[directory]=${encodeURIComponent(project)}`);
-  const skillDeadline = Date.now() + 20000;
-  while (discovered.data.length < 5 && Date.now() < skillDeadline) {
+  const skillDeadline = Date.now() + 30000;
+  while (fromFixture(discovered).length < packaged.length && Date.now() < skillDeadline) {
     await new Promise(done => setTimeout(done, 200));
     discovered = await api(`/api/skill?location[directory]=${encodeURIComponent(project)}`);
   }
-  report.discovered = discovered.data.filter(skill => skill.id.startsWith("andmar-")).map(({ id, path }) => ({ id, path }));
+  const fixtureSkills = fromFixture(discovered);
+  report.discovered = fixtureSkills.map(({ id, path }) => ({ id, path }));
+  const discoveryFailure = `discovered=${JSON.stringify(skillsOf(discovered))} packaged=${JSON.stringify(packaged)} serverLog=${JSON.stringify(redact(logs).slice(-2000))}`;
+  assert.deepEqual(fixtureSkills.map(skill => skill.id).sort(), packaged, `native discovery must load every packaged skill from the fixture config: ${discoveryFailure}`);
+  for (const skill of fixtureSkills) assert.ok(skill.path.startsWith(join(config, "skills")), `${skill.id} must resolve inside the fixture config, got ${skill.path}: ${discoveryFailure}`);
   const skills = discovered.data.map(skill => skill.id);
-  assert.equal(skills.filter(id => id.startsWith("andmar-")).length, 5);
-  report.checks.push({ name: "native skills discovery", ok: true, skills });
+  report.checks.push({ name: "native skills discovery", ok: true, packaged, skills });
   const created = await api("/api/session", { title: "AndMar native acceptance", agent: "build", model: { providerID: "acceptance", id: "scripted" }, location: { directory: project }, permissions: [{ action: "*", resource: "*", effect: "allow" }] });
   const sessionID = created.data.id;
   await api(`/api/session/${sessionID}/prompt`, { text: "Run isolated native Verification and Ledger recovery acceptance." });

@@ -249,6 +249,11 @@ Ledger repair/product-shell refusal/recovery for duplicate EV, invalid WU and
 unknown REQ. All three recover in one session without restart. requiredChecks
 contains `custom`; an empty set never hides association failures.
 
+Native skill discovery is asynchronous and also picks up skills installed for
+the host, so readiness waits for the packaged AndMar skills resolved inside the
+fixture config directory, not for an unrelated skill count. The report's
+`discovered` paths must all point into the fixture config.
+
 Verified on installed OpenCode 2.0.21. The fixture validates mechanical runtime
 contracts, not model judgment, semantic skill adoption on arbitrary tasks or
 unhooked global fetch sandboxing. Unit tests independently cover serialization,
