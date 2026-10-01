@@ -39,8 +39,11 @@ All notable changes to AndMar AI are recorded here. The package version in `pack
 
 ### Validation
 
-- Candidate for local acceptance on OpenCode 2.0.20; no tag/publication.
-  See docs/OPENCODE-ACCEPTANCE.md before promotion to 0.16.1 stable.
+- Candidate for local acceptance; no tag/publication. Local acceptance is not
+  recorded in this repository, so 0.16.1 stable stays a promotion decision
+  with explicit authorization: `bun run check` and `bun run doctor` must be
+  green on the candidate and the operational flow must be validated on a real
+  OpenCode session before any tag or publication.
 - No Review, new dependencies or changes to completion authorities.
 - Checkpoints govern subsequent observed native tools, not global Code Mode
   HTTP or already-running effects; they are not a network/security sandbox.

@@ -264,8 +264,8 @@ added to claim otherwise.
 The shared-child evidence regression is fixed in 0.16.1-rc.1. New tests exercise
 parallel children, wrapper exclusion, retained revision-bound receipts, restart,
 a later failed execution and a fresh rerun for a new revision. Local OpenCode
-acceptance and stable promotion are described in
-[OPENCODE-ACCEPTANCE.md](OPENCODE-ACCEPTANCE.md).
+acceptance and stable promotion are not recorded in this repository; they stay
+an explicit decision taken on a real session.
 
 Candidate 0.16.1-rc.1 validation: `bun run check` passed 296/296 tests against
 installed plugin types. `install:dev` and doctor passed after backing up the

@@ -262,5 +262,7 @@ Two real upstream boundaries remain important:
   Default native shell behavior and existing receipt IDs remain compatible.
 
 The candidate validates operational checkpoint recovery and completion;
-acceptance does not claim a universal HTTP/security sandbox. See
-[OPENCODE-ACCEPTANCE.md](OPENCODE-ACCEPTANCE.md) for local promotion criteria.
+acceptance does not claim a universal HTTP/security sandbox. Local acceptance
+is not recorded in this repository: promotion to a stable release remains an
+explicit decision after validating the operational flow on a real OpenCode
+session.
