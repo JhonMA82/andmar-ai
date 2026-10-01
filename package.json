@@ -32,7 +32,8 @@
     "bench:configure": "bun bench/configure.ts",
     "bench": "bun bench/runner.ts",
     "bench:compare": "bun bench/compare.ts",
-    "test:runtime": "node assets/skills/andmar-acceptance/scripts/runtime-acceptance.mjs"
+    "test:runtime": "node assets/skills/andmar-acceptance/scripts/runtime-acceptance.mjs",
+    "acceptance": "bun run check && bun run test:runtime"
   },
   "dependencies": {
     "@opencode/plugin": "2.0.4"

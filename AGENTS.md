@@ -129,6 +129,7 @@ intake / Jev / trace / fallback        -> docs/INTAKE.md
 work ledger / portable continuity      -> docs/WORK-LEDGER.md
 primary policy / skill selection       -> assets/agents/andmar.md
 procedures                            -> assets/skills/*/SKILL.md
+independent OpenCode plugin consumers  -> docs/PLUGINS.md
 why the architecture is this way       -> docs/DECISIONS.md
 what is in / out of scope              -> docs/SCOPE.md
 real-world testing (Bun flow)          -> docs/TESTING.md

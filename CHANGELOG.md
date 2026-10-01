@@ -12,7 +12,10 @@ All notable changes to AndMar AI are recorded here. The package version in `pack
 - Replace pending EV placeholders rather than appending duplicate IDs; refuse real-evidence overwrite and pending evidence on completed WUs.
 - Invalid Ledgers retain read/search/question and Ledger-only native repair; product mutation/completion fail closed. Preserve material checkpoint boundaries through recovery.
 
+- Machine-enforce normalized owner boundaries, canonical native sources, legacy exclusion and exact generated contracts; document independent OpenCode plugin consumers without implementing a plugin framework.
+
 ### Verification
+- Add `bun run acceptance` as check + real runtime acceptance; extend native proof to the packaged primary agent, server restart/new-session rebind and checkpoint response timing, with optional integration unavailable.
 - Add serializer/evidence/token-economy/recovery regressions and native installed-runtime acceptance with a deterministic model driver and real OpenCode tools, hooks, storage and receipts.
 - Native OpenCode 2.0.21 acceptance proves exit 0 receipts/gate, nonzero refusal, stale working-state rejection, native skills loading and three corrupt-Ledger recoveries in one session. No empty required checks or synthesized hook events.
 

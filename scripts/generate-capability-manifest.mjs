@@ -1,43 +1,39 @@
 import { readdir, readFile, writeFile } from "node:fs/promises"
-import { join } from "node:path"
+import { join, resolve } from "node:path"
+import { fileURLToPath } from "node:url"
 
-const root = new URL("../", import.meta.url)
-const capabilitiesDir = new URL("../src/capabilities/", import.meta.url)
-const generatedFile = new URL("../src/generated/capabilities.ts", import.meta.url)
-const versionFile = new URL("../src/generated/version.ts", import.meta.url)
-const packageFile = new URL("../package.json", import.meta.url)
-const capabilitiesIndexFile = new URL("../docs/CAPABILITIES.md", import.meta.url)
-
-const entries = (await readdir(capabilitiesDir, { withFileTypes: true }))
-  .filter((entry) => entry.isDirectory())
-  .map((entry) => entry.name)
-  .sort()
-
-const imports = entries.map((name) => `import ${safeName(name)} from "../capabilities/${name}/index.ts"`).join("\n")
-const list = entries.map(safeName).join(", ")
-const content = `// GENERATED FILE. Run \`bun run generate\`. Do not edit manually.\n${imports}\n\nexport const capabilities = [${list}] as const\n`
-await writeFile(generatedFile, content)
-
-const pkg = JSON.parse(await readFile(packageFile, "utf8"))
-await writeFile(versionFile, `// GENERATED FROM package.json. Do not edit manually.\nexport const HARNESS_VERSION = ${JSON.stringify(pkg.version)} as const\n`)
-
-// Objective capability index: id, version, description and exposed tools are
-// derived from the capability sources, never hand-written. Conceptual prose
-// stays in docs/ANDMAR-AI-CAPABILITIES.md and per-topic docs.
-const rows = []
-for (const name of entries) {
-  const source = await readFile(new URL(`../src/capabilities/${name}/index.ts`, import.meta.url), "utf8")
-  const id = source.match(/^\s*id:\s*"([^"]+)"/m)?.[1] ?? name
-  const version = source.match(/^\s*version:\s*(\d+)/m)?.[1] ?? "?"
-  const description = source.match(/^\s*description:\s*"([^"]+)"/m)?.[1] ?? ""
-  const localFiles = (await readdir(new URL(`../src/capabilities/${name}/`, import.meta.url))).filter((file) => file.endsWith(".ts") && file !== "index.ts");
-  const allSources = [source, ...await Promise.all(localFiles.map((file) => readFile(new URL(`../src/capabilities/${name}/${file}`, import.meta.url), "utf8")))].join("\n");
-  const tools = [...allSources.matchAll(/editor\.add\(\{\s*name:\s*"([^"]+)"/g)].map((match) => `andmar_${match[1]}`)
-  rows.push({ id, version, description, tools })
+export async function sourceFiles(directory) {
+  const files = []
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name)
+    if (entry.isDirectory()) files.push(...await sourceFiles(path))
+    else if (/\.[cm]?[jt]sx?$/.test(entry.name)) files.push(path)
+  }
+  return files.sort()
 }
 
-const table = rows.map((row) => `| \`${row.id}\` | ${row.version} | ${row.description} | ${row.tools.map((tool) => `\`${tool}\``).join("<br>") || "—"} |`).join("\n")
-const index = `# Capabilities Index
+// One serializer for generation and read-only architecture verification.
+export async function capabilityArtifacts(root) {
+  const capabilitiesDir = join(root, "src/capabilities")
+  const entries = (await readdir(capabilitiesDir, { withFileTypes: true }))
+    .filter(entry => entry.isDirectory()).map(entry => entry.name).sort()
+  const safeName = name => name.replace(/[^a-zA-Z0-9_$]/g, "_")
+  const imports = entries.map(name => `import ${safeName(name)} from "../capabilities/${name}/index.ts"`).join("\n")
+  const content = `// GENERATED FILE. Run \`bun run generate\`. Do not edit manually.\n${imports}\n\nexport const capabilities = [${entries.map(safeName).join(", ")}] as const\n`
+  const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf8"))
+  const rows = []
+  for (const name of entries) {
+    const source = await readFile(join(capabilitiesDir, name, "index.ts"), "utf8")
+    const allSources = (await Promise.all((await sourceFiles(join(capabilitiesDir, name))).map(file => readFile(file, "utf8")))).join("\n")
+    rows.push({
+      id: source.match(/^\s*id:\s*"([^"]+)"/m)?.[1] ?? name,
+      version: source.match(/^\s*version:\s*(\d+)/m)?.[1] ?? "?",
+      description: source.match(/^\s*description:\s*"([^"]+)"/m)?.[1] ?? "",
+      tools: [...allSources.matchAll(/editor\.add\(\{\s*name:\s*"([^"]+)"/g)].map(match => `andmar_${match[1]}`),
+    })
+  }
+  const table = rows.map(row => `| \`${row.id}\` | ${row.version} | ${row.description} | ${row.tools.map(tool => `\`${tool}\``).join("<br>") || "—"} |`).join("\n")
+  const index = `# Capabilities Index
 
 <!-- GENERATED FILE. Run \`bun run generate\`. Do not edit manually. -->
 
@@ -52,11 +48,17 @@ ${table}
 
 _Source of truth for registration: \`src/generated/capabilities.ts\`._
 `
-await writeFile(capabilitiesIndexFile, index)
+  return { rows, version: pkg.version, files: new Map([
+    ["src/generated/capabilities.ts", content],
+    ["src/generated/version.ts", `// GENERATED FROM package.json. Do not edit manually.\nexport const HARNESS_VERSION = ${JSON.stringify(pkg.version)} as const\n`],
+    ["docs/CAPABILITIES.md", index],
+  ]) }
+}
 
-console.log(`Generated ${join(root.pathname, "src/generated")} for ${entries.length} capabilities; version ${pkg.version}.`)
-console.log(`Generated ${join(root.pathname, "docs/CAPABILITIES.md")} (${rows.length} capabilities).`)
-
-function safeName(name) {
-  return name.replace(/[^a-zA-Z0-9_$]/g, "_")
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const root = fileURLToPath(new URL("../", import.meta.url))
+  const artifacts = await capabilityArtifacts(root)
+  for (const [path, content] of artifacts.files) await writeFile(join(root, path), content)
+  console.log(`Generated ${join(root, "src/generated")} for ${artifacts.rows.length} capabilities; version ${artifacts.version}.`)
+  console.log(`Generated ${join(root, "docs/CAPABILITIES.md")} (${artifacts.rows.length} capabilities).`)
 }

@@ -276,7 +276,7 @@ Configuration discovery/load orders lower to higher: wellknown, global directory
 explicit file, direct project config, project `.opencode` directories, then config
 content. Skill sources follow directory entries, then explicit configured skills;
 later sources replace earlier identical IDs. AndMar does not override this native
-precedence. The model loads with native `skill({name})`; no AndMar skill tool.
+precedence. The model loads with native `skill({id})`; no AndMar skill tool.
 Native discovery/activation is asynchronous, so acceptance waits boundedly for
 registration rather than treating an initial empty inventory as missing skills.
 
@@ -285,3 +285,18 @@ loading, shell execution, Code Mode calls, receipt association, nonzero rejectio
 stale-revision verification/gate and corrupt-Ledger recovery. Its deterministic
 model fixture selects calls only; it does not fake hooks, storage, tool results or
 permissions. See TESTING.md for invocation and evidence limits.
+
+## Agent, session and restart acceptance on 2.0.21
+
+The real native agent scanner loads the packaged primary Markdown through the
+isolated config's agents/andmar.md. Inventory uses GET /api/agent and
+/api/agent/andmar with location[directory]; session creation POST /api/session
+selects agent:"andmar". Native skill input is `{id}`, verified against
+packages/core/src/tool/plugin/skill.ts and successful observed invocation.
+
+The acceptance fixture uses real POST /api/session/:id/prompt and
+/api/experimental/session/:id/wait, and reads /api/session/:id/context. A real
+server process is terminated/restarted with unchanged durable directories,
+then a new session binds portable work through the existing tool. A later
+checkpoint response is a real newly persisted user message with observed time,
+not a synthesized hook event. Generation alone is scripted.

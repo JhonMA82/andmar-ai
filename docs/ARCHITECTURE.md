@@ -16,7 +16,7 @@ There is no Review, workflow engine, parallel plugin framework or UI in core.
 | `scripts/` | Shared deterministic repository tooling | Reuse directly from capabilities; no internal subprocess orchestration |
 | Skill `scripts/` | Procedure-exclusive automation | Keep with its native skill |
 | `src/generated/` | Capability imports/version/index | Regenerate; never hand edit |
-| Native RPC / projections | Read-only presentation contracts | Future plugins/TUI consume existing state; no core reorganization |
+| OpenCode plugins | Independently installable presentation/UX consumers | Stable RPC/events/public tools; never authority; no internal imports |
 
 A capability exists when skill + script cannot guarantee the required runtime
 invariant. Importance alone is insufficient. Work Ledger remains a repository
@@ -127,3 +127,17 @@ This freezes ownership boundaries, not a promise that future upstream changes
 can never require a new primitive. Ordinary features should change one owner or
 skill. Optional presentation consumers can use `andmar.work` RPC and structured
 status/context without moving core responsibilities.
+
+## Architecture lock and plugin consumers
+
+`bun run acceptance` composes `check` and installed-runtime acceptance without
+duplicating either. `check-architecture.mjs` normalizes relative imports, rejects
+core/integration ownership inversions and sibling implementations, protects native
+agent/skill sources and functional legacy exclusion, and compares all generated
+files byte-for-byte with the shared serializer. Isolated mutation tests prove its
+failures. Core shared Task Contract/Verification read contracts remain deliberate.
+
+[PLUGINS.md](PLUGINS.md) is the canonical independent OpenCode consumer contract:
+read RPC/projections, observe public events, act through public tools. No AndMar
+plugin framework or consumer is created. Ordinary future work stays within these
+ownership surfaces.

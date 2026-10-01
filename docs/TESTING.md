@@ -233,7 +233,7 @@ procedure in this repository.
 
 ## Final modular native acceptance
 
-Run `bun run check`, then `bun run test:runtime` with an installed OpenCode V2
+Run `bun run acceptance` (or `bun run check`, then `bun run test:runtime`) with an installed OpenCode V2
 binary (`OPENCODE_BIN` selects a specific binary). The script creates an isolated
 Git project/config/data directory, starts the actual server and drives native
 shell, write/read, skill and Code Mode tools with a deterministic model fixture.
@@ -259,3 +259,43 @@ contracts, not model judgment, semantic skill adoption on arbitrary tasks or
 unhooked global fetch sandboxing. Unit tests independently cover serialization,
 parallel evidence allocation, compact context/status, stamp invalidation and
 checkpoint boundaries. Do not treat test counts alone as semantic acceptance.
+
+## PR #10 closure acceptance
+
+The same acceptance driver installs the canonical packaged primary agent into
+the isolated native `agents` path, queries the installed `/api/agent` inventory,
+selects `andmar` on session creation and requires successful native
+`skill({id:"andmar-work-ledger"})` execution. The previous discovery-only check
+could miss an invocation error; successful tool completion is now asserted.
+Packaged skill IDs still come from assets/skills and every resolved skill path
+must belong to the fixture config. Host skills cannot satisfy readiness.
+
+After recording one done WU and leaving the next active, the driver stops the
+real server, starts a new process with the same durable project/config/data,
+creates a new AndMar session and explicitly binds through work_status. It checks
+WU-2 active/WU-1 done, loads targeted context, continues WU-2, gates/finalizes and
+checks that the WU-1 completion event occurred only once. No Ledger is recreated
+for continuation, and no entire Ledger is copied into plugin storage.
+
+The checkpoint scenario uses a real material amendment, refused native write/
+shell, successful native read and repeated status, then a refused work_resume
+with the old user message. A subsequent real prompt creates a new user message;
+its observed timestamp must be later than durable Checkpoint At before resume
+and product mutation can succeed. Test code does not synthesize session events
+or timestamps. The scripted model chooses calls, not their outcomes.
+
+The isolated environment has no configured Engram; native AndMar status must
+report unavailable advisory integration while execution continues. No Engram
+installation or evidence substitute is used. Intake classification stays in
+tests/intake.test.ts; it is not replayed as heavy runtime acceptance.
+
+Architecture regression tests introduce actual owner inversions, relative
+sibling imports, duplicate tools, parallel agent sources, incomplete native
+skills, proprietary registries, functional legacy and stale generated output
+inside temporary fixtures. The read-only checker must refuse each. The shared
+generator is the single serializer for exact manifest/version/index comparisons.
+
+The acceptance report is revision-local operational evidence under .andmar,
+not packaged historical state. Output announces each native phase. The fixture
+validates machine/runtime boundaries, not semantic LLM judgment, interactive TUI
+quality or upstream global-fetch permission isolation.
