@@ -13,7 +13,10 @@ import {
   executionEvidenceKey,
   EXECUTION_EVIDENCE_PREFIX,
   extractCommand,
+  extractExitCode,
+  extractTermination,
   isAndMarTool,
+  isSuccessfulExecution,
   isValidExecutionId,
   normalizeCommand,
   resolveCompatibleExecution,
@@ -149,6 +152,213 @@ test("a failed execution can never become a passed receipt", () => {
   const result = validateReceiptEvidence({ revision: "rev-a", passed: true, executionId: "exec-fail" }, failed)
   assert.equal(result.ok, false)
   assert.match((result.ok ? "" : result.reason), /failed execution|cannot become|did not complete/)
+})
+
+test("a non-zero observed exit code can never become a passed receipt", () => {
+  const failed = evidence({ executionId: "exec-exit", exitCode: 1 })
+  assert.equal(isSuccessfulExecution(failed), false)
+
+  const legacy = validateReceiptEvidence({ revision: "rev-a", passed: true, executionId: "exec-exit" }, failed)
+  assert.equal(legacy.ok, false)
+  assert.match((legacy.ok ? "" : legacy.reason), /exited with code 1|non-zero exit/)
+
+  const resolved = resolveCompatibleExecution([{ ...failed, sessionID: "ses-1", commandNormalized: "bun test" }], {
+    sessionID: "ses-1",
+    command: "bun test",
+    passed: true,
+    revision: "rev-a",
+  })
+  assert.equal(resolved.ok, false)
+  assert.match((resolved.ok ? "" : resolved.reason), /non-zero exit/)
+
+  // A failed run may still be recorded honestly as a failed receipt.
+  const failedReceipt = resolveCompatibleExecution([{ ...failed, sessionID: "ses-1", commandNormalized: "bun test" }], {
+    sessionID: "ses-1",
+    command: "bun test",
+    passed: false,
+    revision: "rev-a",
+  })
+  assert.equal(failedReceipt.ok, true)
+})
+
+test("an observed exit code of zero still backs a passed receipt", () => {
+  const green = evidence({ executionId: "exec-green", exitCode: 0 })
+  assert.equal(isSuccessfulExecution(green), true)
+  const resolved = resolveCompatibleExecution(
+    [{ ...green, sessionID: "ses-1", commandNormalized: "bun test" }],
+    { sessionID: "ses-1", command: "bun test", passed: true, revision: "rev-a" },
+  )
+  assert.equal(resolved.ok, true)
+})
+
+test("the observed exit code is captured from the tool result metadata", () => {
+  assert.equal(extractExitCode({ metadata: { exitCode: 3 } }), 3)
+  assert.equal(extractExitCode({ exitCode: 2 }), 2)
+  assert.equal(extractExitCode({ metadata: { exitCode: "1" } }), undefined)
+  assert.equal(extractExitCode({ metadata: {} }), undefined)
+  assert.equal(extractExitCode("not-an-object"), undefined)
+  assert.equal(extractExitCode(undefined), undefined)
+
+  const observed = buildExecutionEvidence({
+    id: "exec-exit",
+    tool: "bash",
+    sessionID: "ses-1",
+    status: "completed",
+    input: { command: "bun test" },
+    result: { metadata: { exitCode: 1 } },
+  })
+  assert.equal(observed?.exitCode, 1)
+
+  const withoutExit = buildExecutionEvidence({
+    id: "exec-noexit",
+    tool: "bash",
+    sessionID: "ses-1",
+    status: "completed",
+    input: { command: "bun test" },
+    result: { metadata: {} },
+  })
+  assert.equal(withoutExit?.exitCode, undefined)
+
+  const toolError = buildExecutionEvidence({
+    id: "exec-err",
+    tool: "bash",
+    sessionID: "ses-1",
+    status: "error",
+    input: { command: "bun test" },
+    error: { message: "boom" },
+  })
+  assert.equal(toolError?.exitCode, undefined)
+})
+
+test("the observed exit code is read from the real OpenCode shell metadata key", () => {
+  // OpenCode 2.0.21 native shell result metadata:
+  // { output, truncated, exit?, signal?, timeout? } — NOT `exitCode`.
+  assert.equal(extractExitCode({ metadata: { exit: 1 } }), 1)
+  assert.equal(extractExitCode({ metadata: { exit: 0 } }), 0)
+  assert.equal(extractExitCode({ metadata: { exit: "1" } }), undefined)
+  assert.equal(extractExitCode({ metadata: { exit: 1.5 } }), undefined)
+
+  const failing = buildExecutionEvidence({
+    id: "exec-shell-exit",
+    tool: "shell",
+    sessionID: "ses-1",
+    status: "completed",
+    input: { command: "bun run test" },
+    result: { output: "1..1\n# fail 1", metadata: { output: "1..1", truncated: true, exit: 1 } },
+  })
+  assert.equal(failing?.exitCode, 1)
+  assert.equal(isSuccessfulExecution(failing!), false)
+
+  const refused = resolveCompatibleExecution([{ ...failing!, commandNormalized: "bun run test" }], {
+    sessionID: "ses-1",
+    command: "bun run test",
+    passed: true,
+    revision: "rev-a",
+  })
+  assert.equal(refused.ok, false)
+  assert.match((refused.ok ? "" : refused.reason), /non-zero exit/)
+
+  const green = buildExecutionEvidence({
+    id: "exec-shell-ok",
+    tool: "shell",
+    sessionID: "ses-1",
+    status: "completed",
+    input: { command: "bun run test" },
+    result: { output: "1..1\n# pass 1", metadata: { output: "1..1", truncated: false, exit: 0 } },
+  })
+  assert.equal(green?.exitCode, 0)
+  const accepted = resolveCompatibleExecution([{ ...green!, commandNormalized: "bun run test" }], {
+    sessionID: "ses-1",
+    command: "bun run test",
+    passed: true,
+    revision: "rev-a",
+  })
+  assert.equal(accepted.ok, true)
+})
+
+test("a signalled or timed-out run never becomes a passed receipt", () => {
+  assert.deepEqual(extractTermination({ metadata: { exit: 1, signal: "SIGKILL" } }), {
+    exitSignal: "SIGKILL",
+  })
+  assert.deepEqual(extractTermination({ metadata: { timeout: true } }), { timedOut: true })
+  assert.deepEqual(extractTermination({ metadata: { signal: "  " } }), {})
+  assert.deepEqual(extractTermination("not-an-object"), {})
+
+  const signalled = buildExecutionEvidence({
+    id: "exec-signal",
+    tool: "shell",
+    sessionID: "ses-1",
+    status: "completed",
+    input: { command: "bun run test" },
+    result: { metadata: { output: "", truncated: false, signal: "SIGKILL" } },
+  })
+  assert.equal(signalled?.exitSignal, "SIGKILL")
+  assert.equal(isSuccessfulExecution(signalled!), false)
+  const signalledReceipt = resolveCompatibleExecution([{ ...signalled!, commandNormalized: "bun run test" }], {
+    sessionID: "ses-1",
+    command: "bun run test",
+    passed: true,
+    revision: "rev-a",
+  })
+  assert.equal(signalledReceipt.ok, false)
+  assert.match((signalledReceipt.ok ? "" : signalledReceipt.reason), /signalled run/)
+
+  const timedOut = buildExecutionEvidence({
+    id: "exec-timeout",
+    tool: "shell",
+    sessionID: "ses-1",
+    status: "completed",
+    input: { command: "bun run test" },
+    result: { metadata: { output: "", truncated: false, timeout: true } },
+  })
+  assert.equal(timedOut?.timedOut, true)
+  assert.equal(isSuccessfulExecution(timedOut!), false)
+  const timeoutReceipt = resolveCompatibleExecution([{ ...timedOut!, commandNormalized: "bun run test" }], {
+    sessionID: "ses-1",
+    command: "bun run test",
+    passed: true,
+    revision: "rev-a",
+  })
+  assert.equal(timeoutReceipt.ok, false)
+  assert.match((timeoutReceipt.ok ? "" : timeoutReceipt.reason), /timed-out run/)
+})
+
+test("a passed receipt is unverified when its backing execution did not succeed", () => {
+  const summary = summarizeVerification(
+    "rev-a",
+    [receipt({ revision: "rev-a", check: "tests", executionId: "exec-red" })],
+    ["tests"],
+    { "exec-red": { executionId: "exec-red", status: "completed", exitCode: 1 } },
+  )
+  assert.equal(summary.ok, false)
+  assert.deepEqual(summary.unverified, ["tests"])
+
+  const timedOut = summarizeVerification(
+    "rev-a",
+    [receipt({ revision: "rev-a", check: "tests", executionId: "exec-timeout" })],
+    ["tests"],
+    { "exec-timeout": { executionId: "exec-timeout", status: "completed", timedOut: true } },
+  )
+  assert.equal(timedOut.ok, false)
+  assert.deepEqual(timedOut.unverified, ["tests"])
+
+  const green = summarizeVerification(
+    "rev-a",
+    [receipt({ revision: "rev-a", check: "tests", executionId: "exec-green" })],
+    ["tests"],
+    { "exec-green": { executionId: "exec-green", status: "completed", exitCode: 0 } },
+  )
+  assert.equal(green.ok, true)
+  assert.deepEqual(green.unverified, [])
+
+  // Legacy evidence without an observed outcome keeps verifying.
+  const legacy = summarizeVerification(
+    "rev-a",
+    [receipt({ revision: "rev-a", check: "tests", executionId: "exec-legacy" })],
+    ["tests"],
+    { "exec-legacy": { executionId: "exec-legacy", status: "completed" } },
+  )
+  assert.equal(legacy.ok, true)
 })
 
 test("a valid completed execution produces acceptable evidence", () => {

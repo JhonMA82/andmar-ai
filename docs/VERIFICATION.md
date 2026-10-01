@@ -72,6 +72,33 @@ andmar_verify_revision(currentRevision: "def456")
 Tienes que volver a correr los checks. Esa es toda la magia: **nadie puede
 reutilizar evidencia vieja por accidente**.
 
+### Un check que falla no puede salir en verde
+
+`passed: true` solo se acepta si la ejecución observada terminó con éxito.
+Para herramientas de shell eso significa tres cosas a la vez:
+
+1. la llamada terminó sin error de herramienta (`status: "completed"`),
+2. el proceso salió con código 0 cuando el código de salida es observable
+   (`result.metadata.exit`), y
+3. el proceso no fue terminado por una señal ni agotó su timeout
+   (`metadata.signal`, `metadata.timeout`).
+
+OpenCode reporta un comando que falla como una *llamada completada* cuyo
+resultado lleva el desenlace real del proceso, así que el segundo punto es el
+que distingue `bun test` en rojo de `bun test` en verde:
+
+```text
+andmar_record_receipt(revision: "abc123", check: "tests", passed: true, command: "bun test")
+-> refused: execution "..." exited with code 1; a non-zero exit cannot become a passed receipt
+```
+
+El desenlace observado se guarda como metadata mínima (un entero y, si aparecen,
+señal o timeout), nunca el output. Si una herramienta no expone código de
+salida, el valor queda desconocido y **no se inventa**: el comportamiento es el
+de siempre. Además `andmar_verify_revision` vuelve a leer ese desenlace, así que
+un receipt verde guardado por cualquier vía contra una ejecución fallida se
+reporta como `unverified`, nunca como verificado.
+
 ## Los dos comandos
 
 | Comando | Para qué sirve |
@@ -205,3 +232,13 @@ de nada.
 - **Exclusión del fingerprint de código/producto:** excluir `.andmar/work/**` del cálculo de la revisión no lo vuelve \"invisible\" ni lo ignora en el repositorio; simplemente garantiza que registrar notas, punteros de evidencia en `EVIDENCE.md` o actualizar el progreso de unidades en `WORK.md` no altere la identidad del código verificado (evitando evidencia auto-invalidante).
 - **Garantía de frescura:** cualquier cambio en archivos de código o producto (`src/**`, tests, scripts, configuración) altera inmediatamente la revisión e invalida cualquier evidencia previa.
 - **Cálculo determinista:** se realiza mediante `node "${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai/scripts/working-state-revision.mjs"` (helper instalado de AndMar) o su comando shell equivalente con exclusión explícita `:!.andmar/work/**`.
+
+## Identidad de ejecuciones en Code Mode (0.16.1-rc.1)
+
+OpenCode 2.0.20 puede entregar el mismo ID a varios comandos hijos de un
+`execute`. AndMar conserva el ID nativo para la primera observación y asigna
+sufijos deterministas a las siguientes, comprobando las claves existentes.
+Serializa únicamente el registro de metadata, no la ejecución de herramientas.
+El wrapper `execute` no constituye evidencia. Ninguna nueva observación puede
+sobrescribir una ejecución anterior o su revisión. La resolución sigue exigiendo
+sesión, comando, resultado y revisión compatibles; el agente no proporciona IDs.

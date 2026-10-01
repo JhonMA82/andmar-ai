@@ -15,6 +15,33 @@ export interface VerificationExecutionState {
   executionId: string
   status: string
   revision?: string
+  /** Observed process exit code, only when the tool exposes it. */
+  exitCode?: number
+  /** Observed termination signal (e.g. `SIGKILL`), only when the tool exposes it. */
+  exitSignal?: string
+  /** Observed timeout, only when the tool exposes it. */
+  timedOut?: boolean
+}
+
+/**
+ * Minimal execution outcome shared by the observed-evidence gate and the
+ * verification summary, so both read success with one deterministic rule.
+ *
+ * An execution is observably successful only when it completed as a tool call,
+ * was not signalled or timed out, and either exposed exit code 0 or exposed no
+ * exit code at all. Nothing is inferred: an unobservable exit code stays
+ * unknown rather than becoming a failure.
+ */
+export function isObservableSuccess(outcome: {
+  status: string
+  exitCode?: number
+  exitSignal?: string
+  timedOut?: boolean
+}): boolean {
+  if (outcome.status !== "completed") return false
+  if (outcome.exitSignal !== undefined) return false
+  if (outcome.timedOut === true) return false
+  return outcome.exitCode === undefined || outcome.exitCode === 0
 }
 
 export interface VerificationStateSummary extends VerificationGateStatus {
@@ -72,7 +99,10 @@ export function summarizeVerificationState(
     if (receipt.passed && executionsById) {
       const execution = receipt.executionId ? lookup(receipt.executionId) : undefined
       const bound = execution !== undefined && (execution.revision === undefined || execution.revision === revision)
-      if (!receipt.executionId || !execution || execution.status !== "completed" || !bound) {
+      // Re-read the observed outcome: a receipt claiming `passed: true` is
+      // unverified when its backing execution did not observably succeed, even
+      // if some other writer stored it.
+      if (!receipt.executionId || !execution || !bound || !isObservableSuccess(execution)) {
         unverified.push(check)
         continue
       }

@@ -145,7 +145,8 @@ known limitations.
 - **Produces:** documentation/version staleness obligations. **Consumes:**
   configured documentation rules and public paths only.
 - **Owns:** optional per-WU `Expected Files`/`Touched Files` metadata and
-  discovery/exception facts in repository `WORK.md`, using its existing lifecycle
+  discovery/exception facts and creation-owned `Checkpoint At`/optional
+  `Checkpoint User` in repository `WORK.md`, using its existing lifecycle
   helper; no storage keys. Transient session binding/activity/verification
   projection lives in the setup closure and is dropped at restart.
   **Must not own:** receipts, requirement evidence, contracts or completion.
@@ -170,6 +171,18 @@ known limitations.
 
 ### `verification`
 
+- **Evidence identity:** Native Code Mode shared IDs receive deterministic
+  collision suffixes; wrapper execution is excluded and previous observations
+  remain immutable, including revision-bound receipts and after restart.
+- **Passing evidence requires a successful process:** an observed tool call
+  that completed but exited non-zero (`result.metadata.exit`, the field
+  OpenCode's native shell tool actually sets), was terminated by a signal
+  (`metadata.signal`) or timed out (`metadata.timeout`) cannot back
+  `passed: true`. The observed outcome is stored as minimal evidence metadata
+  and an unexposed value is never inferred. `andmar_verify_revision` re-reads
+  that outcome, so a stored green receipt whose execution did not succeed is
+  reported as `unverified`. A failing run can still be recorded as
+  `passed: false`.
 - **Purpose:** Turn "the agent says it finished" into evidence that can be
   checked: which checks ran, on which exact revision, and whether they passed.
 - **Non-goals:** Never executes commands itself; never judges whether tests
@@ -189,9 +202,9 @@ known limitations.
   worker or journal keys.
 - **State:** one minimal evidence record per observed non-AndMar tool call
   (session, internal call id, tool, command + normalized form, status,
-  timestamp, optional sha256 digest — never full outputs); one receipt per
-  check per exact revision. Revisions are `encodeURIComponent`-encoded so `/`
-  cannot collide.
+  observed exit code when the tool exposes it, timestamp, optional sha256
+  digest — never full outputs); one receipt per check per exact revision.
+  Revisions are `encodeURIComponent`-encoded so `/` cannot collide.
 - **Configuration:** none of its own; toolchain detection is driven by caller
   input, not config.
 - **External contracts:** the stable `execute.after` hook

@@ -2,6 +2,49 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
+## [Unreleased]
+
+### Fixed
+
+- Verification receipts can no longer claim a passing check for a command that
+  did not finish successfully. `execute.after` reports a failing process as a
+  **completed** tool call whose result carries the process outcome in
+  `metadata` (`exit`, `signal`, `timeout`); AndMar previously read only the
+  tool status, so `passed: true` was accepted for failing runs. A previous
+  attempt at this fix read `metadata.exitCode`, which OpenCode's native shell
+  tool never sets: `Tool.Metadata` is `Record<string, any>`, so the wrong key
+  compiled and tested fine while every real failing run was still accepted as
+  green (observed on OpenCode `2.0.21`). The observed outcome is now read from
+  the fields the shell tool actually populates, stored as minimal evidence
+  metadata, and used to reject `passed: true` in `resolveCompatibleExecution`,
+  in the legacy `validateReceiptEvidence`, and in `isSuccessfulExecution`. A
+  signalled or timed-out run is refused as well. `andmar_verify_revision`
+  re-reads that outcome, so a stored green receipt whose execution did not
+  succeed is reported as `unverified`. A failing run can still be recorded
+  honestly as `passed: false`. When a tool exposes no outcome at all, behavior
+  is unchanged: nothing is inferred.
+
+## [0.16.1-rc.1] - 2026-10-01
+
+### Fixed
+
+- Durable checkpoint creation boundaries, order-independent native user
+  responses, locked resume and one-time legacy recovery; duplicate resume
+  is diagnostic, without another transition or confirmation.
+- Code Mode transport remains available; observed native child mutations
+  are gated independently and outer completion cannot consume attribution.
+- Verification retains separate immutable evidence for native children that
+  share a Code Mode call ID, including parallel completion and restart.
+  Timestamp ties cannot hide a later failure. Existing receipts remain valid.
+
+### Validation
+
+- Candidate for local acceptance on OpenCode 2.0.20; no tag/publication.
+  See docs/OPENCODE-ACCEPTANCE.md before promotion to 0.16.1 stable.
+- No Review, new dependencies or changes to completion authorities.
+- Checkpoints govern subsequent observed native tools, not global Code Mode
+  HTTP or already-running effects; they are not a network/security sandbox.
+
 ## [0.16.0] - 2026-09-30
 
 ### Added

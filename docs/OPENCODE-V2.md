@@ -79,10 +79,33 @@ Event shape relied upon:
 ```
 
 AndMar stores only minimal metadata (`executionId` as internal call id,
-tool, session, command plus normalized form, status, timestamp and optional
-`outputDigest` sha256) under `verification-evidence/<executionId>` plus the
-diagnostic `journal/<sessionID>/<callID>` entry. Full inputs/outputs are
-never persisted by the observer.
+tool, session, command plus normalized form, status, observed process
+outcome, timestamp and optional `outputDigest` sha256) under
+`verification-evidence/<executionId>` plus the diagnostic
+`journal/<sessionID>/<callID>` entry. Full inputs/outputs are never
+persisted by the observer.
+
+### Native shell exposes the process outcome in `metadata.exit`
+
+Observed 2026-09-30 against the installed OpenCode `2.0.21`: the native
+shell tool reports a failing process as a **completed** tool call whose
+result metadata carries the real process outcome. The keys are `exit`,
+`signal` and `timeout` — there is no `exitCode` key:
+
+```text
+result: {
+  output: "...",            // never stored by AndMar
+  metadata: { output: "...", truncated: true, exit: 1 },   // exit: 0 when green
+}
+```
+
+AndMar reads `metadata.exit` (and `metadata.exitCode` / top-level `exitCode`
+/ `exit` as equivalent shapes from other tooling), plus `metadata.signal`
+and `metadata.timeout`, and stores them as minimal evidence. Reading
+`metadata.exitCode` instead leaves the observed outcome permanently
+`undefined`, which silently turns every failing run into an acceptable
+`passed: true` — the `Tool.Metadata` type is `Record<string, any>`, so the
+type surface cannot catch this; only observation can.
 
 ## Sessions
 
@@ -205,3 +228,39 @@ propagation through codemode and concrete VCS/edit outputs must be smoke-tested
 on the user's installed version before claiming live integration compatibility.
 An exception blocks subsequent observed session tools; already-running native
 calls and unrelated external processes are not cancelled by this observer.
+
+
+### Checkpoint audit on the real 2.0.20 runtime
+
+Inspected the official `v2.0.20` tag: `packages/core/src/tool.ts` constructs
+`execute.before/after` with `tool`, `id`, `sessionID`, `messageID`, `input`,
+status and structured result/error. `packages/core/src/codemode/tool.ts`
+passes the SAME outer context/call ID to child calls. Child tool names are
+canonical catalog paths (`andmar.work_resume` observed live). Native shell,
+edit, write and read default to `codemode:false`; a smoke-only plugin exposed
+edit/write as children to test that the native registry enforces the gate.
+AndMar neither changes these defaults nor adds a dependency.
+
+`SessionMessage.User.time.created` is DateTime.Utc in the promise context
+(and milliseconds on the encoded API); `session-message.ts` and
+`identifier.ts` define ascending `msg_` IDs with a timestamp/counter prefix.
+The new WU timestamp avoids relying on presence of an origin in compacted
+context or on session identity. Legacy native IDs retain compatibility.
+
+Two real upstream boundaries remain important:
+
+- `codemode/web.ts` installs a global `fetch` using globalThis.fetch, without
+  tool hooks or permission checks. It can issue HTTP during a bound blocked
+  session. The checkpoint gate does not claim a network sandbox. A lexical
+  source shadow was evaluated and discarded: binding or checkpoint creation
+  inside an already-running outer program makes a before-only restriction
+  insufficient. No source parser/rewriter or hidden retry was added.
+- Custom multi-shell Code Mode exposure shares native IDs. Starting with
+  0.16.1-rc.1, Verification allocates deterministic collision suffixes under
+  its existing evidence keys, serializes metadata insertion, and never replaces
+  an earlier revision-bound execution. The wrapper is excluded from evidence.
+  Default native shell behavior and existing receipt IDs remain compatible.
+
+The candidate validates operational checkpoint recovery and completion;
+acceptance does not claim a universal HTTP/security sandbox. See
+[OPENCODE-ACCEPTANCE.md](OPENCODE-ACCEPTANCE.md) for local promotion criteria.

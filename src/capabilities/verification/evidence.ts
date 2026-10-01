@@ -19,7 +19,9 @@
 // Design constraints:
 // - AndMar never runs subprocesses itself; observation only.
 // - `passed: true` alone is never evidence; it requires a completed,
-//   same-session, same-command observed execution.
+//   same-session, same-command observed execution whose observed process
+//   outcome is successful (exit code 0 when observable, no signal, no
+//   timeout).
 // - The agent never provides `executionId`/`callID`; that identifier stays
 //   internal for audit. `andmar_record_receipt` resolves it from
 //   (sessionID, normalized command).
@@ -30,7 +32,11 @@
 //   itself when the agent supplies it.
 
 import { createHash } from "node:crypto"
-import { VERIFICATION_EVIDENCE_PREFIX, verificationEvidenceKey } from "../../core/verification-state.ts"
+import {
+  isObservableSuccess,
+  VERIFICATION_EVIDENCE_PREFIX,
+  verificationEvidenceKey,
+} from "../../core/verification-state.ts"
 
 export interface ExecutionEvidence {
   executionId: string
@@ -44,6 +50,12 @@ export interface ExecutionEvidence {
   command?: string
   /** Deterministic normalized command used for matching. */
   commandNormalized?: string
+  /** Observed process exit code when the tool exposes it; never inferred. */
+  exitCode?: number
+  /** Observed termination signal when the tool exposes it; never inferred. */
+  exitSignal?: string
+  /** Observed timeout when the tool exposes it; never inferred. */
+  timedOut?: boolean
   /** Optional sha256 digest of the observed result/error (no output stored). */
   outputDigest?: string
 }
@@ -103,6 +115,75 @@ export function extractCommand(input: unknown): string | undefined {
   return undefined
 }
 
+/**
+ * Read the observed process exit code from a tool result.
+ *
+ * OpenCode's native shell tool reports the observed process outcome in
+ * `Tool.Result.metadata` (see `Tool.Metadata` in `@opencode/schema/tool`) as
+ * `{ output, truncated, exit?, signal?, timeout? }`. `metadata.exit` is the
+ * field OpenCode actually sets, so it is the primary source; `metadata.exitCode`
+ * and a top-level `exitCode`/`exit` are accepted as equivalent shapes from other
+ * or older tooling.
+ *
+ * Only a finite integer is accepted: a missing or malformed value stays
+ * `undefined` and is never invented, so evidence keeps its minimal-metadata
+ * contract (CON-2).
+ */
+export function extractExitCode(result: unknown): number | undefined {
+  if (result === null || typeof result !== "object" || Array.isArray(result)) return undefined
+  const record = result as Record<string, unknown>
+  const metadata = record.metadata as Record<string, unknown> | undefined
+  const candidates = [record.exitCode, metadata?.exitCode, record.exit, metadata?.exit]
+  for (const candidate of candidates) {
+    if (typeof candidate === "number" && Number.isInteger(candidate)) return candidate
+  }
+  return undefined
+}
+
+/**
+ * Read the observed termination signals that mean the process did not finish
+ * normally even when the tool call itself completed: a termination signal
+ * (`SIGKILL`) or a timeout. Both come from the same `Tool.Result.metadata`
+ * shape as the exit code. Nothing is inferred; unexposed values stay `undefined`.
+ */
+export function extractTermination(result: unknown): { exitSignal?: string; timedOut?: boolean } {
+  const outcome: { exitSignal?: string; timedOut?: boolean } = {}
+  if (result === null || typeof result !== "object" || Array.isArray(result)) return outcome
+  const metadata = (result as Record<string, unknown>).metadata as Record<string, unknown> | undefined
+  if (metadata === undefined) return outcome
+  const signal = metadata.signal
+  if (typeof signal === "string" && signal.trim() !== "") outcome.exitSignal = signal.trim()
+  if (metadata.timeout === true) outcome.timedOut = true
+  return outcome
+}
+
+/**
+ * True when an observed execution can legitimately back a `passed: true`
+ * receipt: the tool completed **and** the process, when its outcome is
+ * observable, finished successfully.
+ *
+ * A completed tool call is not a successful check. OpenCode reports a failing
+ * process as a completed call carrying a non-zero `metadata.exit`, so both the
+ * status and the observed process outcome are required.
+ */
+export function isSuccessfulExecution(execution: ExecutionEvidence): boolean {
+  return isObservableSuccess(execution)
+}
+
+/** Deterministic refusal reason for a non-successful observed execution. */
+export function unsuccessfulExecutionReason(execution: ExecutionEvidence): string {
+  if (execution.status !== "completed") {
+    return `execution "${execution.executionId}" did not complete successfully (status "${execution.status}"); a failed execution cannot become a passed receipt`
+  }
+  if (execution.exitSignal !== undefined) {
+    return `execution "${execution.executionId}" was terminated by signal "${execution.exitSignal}"; a signalled run cannot become a passed receipt`
+  }
+  if (execution.timedOut) {
+    return `execution "${execution.executionId}" timed out; a timed-out run cannot become a passed receipt`
+  }
+  return `execution "${execution.executionId}" exited with code ${execution.exitCode}; a non-zero exit cannot become a passed receipt`
+}
+
 function digestValue(value: unknown): string | undefined {
   if (value === undefined) return undefined
   try {
@@ -147,20 +228,24 @@ interface HookEventLike {
  *   id: Tool.CallID,      // stable call id — NOT `callID`
  *   input: unknown,       // observed arguments (bash: { command })
  *   status: "completed" | "error",
- *   result?: Tool.Result, // completed
+ *   result?: Tool.Result, // completed (shell: metadata.{output,truncated,exit?,signal?,timeout?})
  *   error?: Tool.Error,   // error
  * }
  * ```
  *
  * `event.callID` is only a legacy fallback and must not be relied on.
- * Only minimal metadata is stored: session, internal call id, tool,
- * command (+ normalized), status, timestamp and an optional output
- * digest. Full inputs/outputs are never persisted.
+ * A `status: "completed"` tool call is not by itself a successful check:
+ * a shell command that exits non-zero still completes as a tool call, so the
+ * observed process outcome (`metadata.exit`, plus `signal`/`timeout` for a
+ * process that never finished) is stored as minimal metadata and gates
+ * `passed: true`. Only session, internal call id, tool, command (+ normalized),
+ * status, observed process outcome, timestamp and an optional output digest
+ * are persisted. Full inputs/outputs are never persisted.
  */
 export function buildExecutionEvidence(event: HookEventLike, now: number = Date.now()): ExecutionEvidence | undefined {
   const rawId = typeof event.id === "string" && event.id.trim() !== "" ? event.id : event.callID
   if (!isValidExecutionId(rawId)) return undefined
-  if (isAndMarTool(event.tool)) return undefined
+  if (isAndMarTool(event.tool) || event.tool === "execute") return undefined
   const tool = typeof event.tool === "string" && event.tool.trim() !== "" ? event.tool : "unknown"
   const status = event.status === "completed" ? "completed" : "error"
   const evidence: ExecutionEvidence = {
@@ -178,11 +263,23 @@ export function buildExecutionEvidence(event: HookEventLike, now: number = Date.
     evidence.command = command
     evidence.commandNormalized = normalizeCommand(command)
   }
+  if (status === "completed") {
+    const exitCode = extractExitCode(event.result)
+    if (exitCode !== undefined) evidence.exitCode = exitCode
+    const termination = extractTermination(event.result)
+    if (termination.exitSignal !== undefined) evidence.exitSignal = termination.exitSignal
+    if (termination.timedOut !== undefined) evidence.timedOut = termination.timedOut
+  }
   const digest = digestValue(status === "completed" ? event.result : event.error)
   if (digest !== undefined) {
     evidence.outputDigest = digest
   }
   return evidence
+}
+
+/** Stable collision suffix; keeps native IDs and existing receipts compatible. */
+export function collisionExecutionId(nativeId: string, ordinal: number): string {
+  return `observed-${createHash("sha256").update(nativeId).digest("hex")}-${ordinal}`
 }
 
 export interface ReceiptEvidenceInput {
@@ -232,10 +329,10 @@ export function validateReceiptEvidence(
       reason: `unknown executionId "${executionId}": no observed OpenCode execution; run the check first through native OpenCode shell/tools`,
     }
   }
-  if (execution.status !== "completed") {
+  if (!isSuccessfulExecution(execution)) {
     return {
       ok: false,
-      reason: `execution "${executionId}" did not complete successfully (status "${execution.status}"); a failed execution cannot become a passed receipt`,
+      reason: unsuccessfulExecutionReason(execution),
     }
   }
   if (execution.revision !== undefined && execution.revision !== input.revision) {
@@ -312,11 +409,8 @@ export function resolveCompatibleExecution(
   }
 
   const latest = [...revisionMatches].sort((a, b) => b.at - a.at)[0]!
-  if (criteria.passed && latest.status !== "completed") {
-    return {
-      ok: false,
-      reason: `observed execution "${latest.executionId}" for command "${wanted}" did not complete successfully (status "${latest.status}"); a failed execution cannot become a passed receipt`,
-    }
+  if (criteria.passed && !isSuccessfulExecution(latest)) {
+    return { ok: false, reason: unsuccessfulExecutionReason(latest) }
   }
   return { ok: true, execution: latest }
 }

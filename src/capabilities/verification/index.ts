@@ -9,6 +9,7 @@ import {
 import {
   bindExecutionToRevision,
   buildExecutionEvidence,
+  collisionExecutionId,
   EXECUTION_EVIDENCE_PREFIX,
   executionEvidenceKey,
   resolveCompatibleExecution,
@@ -26,7 +27,14 @@ function sessionIDFrom(toolContext: any): string | undefined {
 function refusalCategory(reason: string): string {
   if (reason.includes("another session") || reason.includes("current session")) return "session-mismatch"
   if (reason.includes("command mismatch")) return "command-mismatch"
-  if (reason.includes("did not complete") || reason.includes("failed execution")) return "failed-execution"
+  if (
+    reason.includes("did not complete") ||
+    reason.includes("failed execution") ||
+    reason.includes("non-zero exit") ||
+    reason.includes("signalled run") ||
+    reason.includes("timed-out run")
+  )
+    return "failed-execution"
   if (reason.includes("bound to revision") || reason.includes("revision-compatible")) return "revision-mismatch"
   return "no-compatible-execution"
 }
@@ -38,8 +46,9 @@ async function readEvidenceList(state: StateStore): Promise<ExecutionEvidence[]>
 
 export const verificationCapability: Capability = {
   id: "verification",
-  version: 3,
-  description: "Revision-bound verification receipts resolved internally from observed OpenCode execution evidence.",
+  version: 5,
+  description:
+    "Revision-bound verification receipts resolved internally from observed OpenCode execution evidence, including the observed process outcome (exit code, signal, timeout).",
   async setup({ ctx, state, observability }) {
     const disposers: Array<() => void> = []
 
@@ -48,7 +57,7 @@ export const verificationCapability: Capability = {
       editor.add({
         name: "record_receipt",
         description:
-          "Record the outcome of one verification check for an exact revision. Run the command first through native OpenCode shell/tools (this tool never runs commands itself), then record it here with the same revision, check, passed flag and exact command. AndMar resolves the observed execution internally by current session plus normalized command; no executionId is needed. Passed receipts require a completed same-session same-command execution; failed executions can never become passed receipts.",
+          "Record the outcome of one verification check for an exact revision. Run the command first through native OpenCode shell/tools (this tool never runs commands itself), then record it here with the same revision, check, passed flag and exact command. AndMar resolves the observed execution internally by current session plus normalized command; no executionId is needed. Passed receipts require a completed same-session same-command execution; failed executions and observed non-zero exit codes can never become passed receipts.",
         input: {
           type: "object",
           properties: {
@@ -206,16 +215,33 @@ export const verificationCapability: Capability = {
     // subprocesses itself; it only stores minimal metadata (session,
     // internal call id, tool, command + normalized form, status, timestamp
     // and an optional output digest — never full output).
+    // Code Mode children share a native ID. Serialize only metadata writes,
+    // allocate a collision suffix against durable evidence, and never overwrite
+    // an earlier execution (especially one already bound to a revision).
+    // No new storage namespace or agent-supplied identifier is needed.
+    let observationQueue: Promise<void> = Promise.resolve()
+    let lastObservedAt = 0
     const evidenceHook = await ctx.tool.hook("execute.after", async (event: any) => {
       const evidence = buildExecutionEvidence(event, Date.now())
       if (!evidence) return
-      const key = executionEvidenceKey(evidence.executionId)
-      const existing = await state.get<ExecutionEvidence>(key)
-      if (existing?.revision !== undefined && evidence.revision === undefined) {
-        await state.set(key, { ...evidence, revision: existing.revision })
-      } else if (!existing) {
+      const observation = observationQueue.then(async () => {
+        const nativeId = evidence.executionId
+        let ordinal = 0
+        let key = executionEvidenceKey(evidence.executionId)
+        let existing = await state.get<ExecutionEvidence>(key)
+        while (existing) {
+          lastObservedAt = Math.max(lastObservedAt, existing.at)
+          evidence.executionId = collisionExecutionId(nativeId, ++ordinal)
+          key = executionEvidenceKey(evidence.executionId)
+          existing = await state.get<ExecutionEvidence>(key)
+        }
+        // Millisecond ties must not let an earlier success mask a later failure.
+        evidence.at = Math.max(evidence.at, lastObservedAt + 1)
         await state.set(key, evidence)
-      }
+        lastObservedAt = evidence.at
+      })
+      observationQueue = observation.catch(() => {})
+      await observation
     })
     if (evidenceHook?.dispose) disposers.push(() => void evidenceHook.dispose())
 
