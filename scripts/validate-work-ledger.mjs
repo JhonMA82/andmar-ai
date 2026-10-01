@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { realpathSync } from "node:fs";
-import { readFile, stat, readdir } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { resolve, basename, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -39,24 +39,27 @@ export async function validateWorkLedger(targetDir, options = {}) {
     };
   }
 
-  const folderName = basename(resolvedTarget);
-  let filesInDir = [];
-  try {
-    filesInDir = await readdir(resolvedTarget);
-  } catch (err) {
-    return {
-      invocationError: true,
-      error: `Failed to read target directory: ${err.message}`,
-    };
-  }
+  const documents = await readLedgerDocuments(resolvedTarget);
+  return validateLedgerDocuments(resolvedTarget, documents);
+}
 
-  const hasWorkMd = filesInDir.includes("WORK.md");
-  if (!hasWorkMd) {
-    errors.push("Missing required WORK.md");
-    return { valid: false, errors };
+export async function readLedgerDocuments(targetDir) {
+  const documents = {};
+  for (const name of ["WORK.md", "SOURCE.md", "REQUIREMENTS.md", "EVIDENCE.md"]) {
+    try { documents[name] = await readFile(resolve(targetDir, name), "utf8"); }
+    catch (error) { if (error.code !== "ENOENT") throw error; }
   }
+  return documents;
+}
 
-  const workContent = await readFile(resolve(resolvedTarget, "WORK.md"), "utf8");
+// The serializer and every mutation validate these same bytes BEFORE publishing.
+export function validateLedgerDocuments(targetDir, documents) {
+  const errors = [];
+  const warnings = [];
+  const folderName = basename(resolve(targetDir));
+  const filesInDir = Object.keys(documents);
+  const workContent = documents["WORK.md"];
+  if (typeof workContent !== "string") return { valid: false, errors: ["Missing required WORK.md"] };
 
   // Extract metadata
   let workId = null;
@@ -165,7 +168,7 @@ export async function validateWorkLedger(targetDir, options = {}) {
 
   // 1. Requirements declarations
   if (filesInDir.includes("REQUIREMENTS.md")) {
-    const reqContent = await readFile(resolve(resolvedTarget, "REQUIREMENTS.md"), "utf8");
+    const reqContent = documents["REQUIREMENTS.md"];
     for (const line of reqContent.split("\n")) {
       const m = line.match(/^(?:##+|-|\*)\s*(REQ-\d+(?:\.\d+)?)/i);
       if (m) {
@@ -191,7 +194,7 @@ export async function validateWorkLedger(targetDir, options = {}) {
 
   // 2. Constraints declarations
   if (filesInDir.includes("SOURCE.md")) {
-    const srcContent = await readFile(resolve(resolvedTarget, "SOURCE.md"), "utf8");
+    const srcContent = documents["SOURCE.md"];
     for (const line of srcContent.split("\n")) {
       const m = line.match(/^(?:##+|-|\*)\s*(CON-\d+(?:\.\d+)?)/i);
       if (m) {
@@ -216,7 +219,7 @@ export async function validateWorkLedger(targetDir, options = {}) {
 
   // 3. Evidence declarations
   if (filesInDir.includes("EVIDENCE.md")) {
-    const evContent = await readFile(resolve(resolvedTarget, "EVIDENCE.md"), "utf8");
+    const evContent = documents["EVIDENCE.md"];
     for (const line of evContent.split("\n")) {
       const m = line.match(/^(?:##+|-|\*)\s*(EV-\d+)/i);
       if (m) {
@@ -336,6 +339,12 @@ export async function validateWorkLedger(targetDir, options = {}) {
   for (const [id, state] of unitStates) {
     if (state === "x" && !(unitEvidenceRefs.get(id)?.length > 0)) {
       errors.push(`Done Work Unit ${id} requires an Evidence: EV-N reference`);
+    }
+    if (state === "x") for (const evidence of unitEvidenceRefs.get(id) ?? []) {
+      const content = documents["EVIDENCE.md"] ?? workContent;
+      const escaped = evidence.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const declaration = content.match(new RegExp(`^(?:##+|[-*])\\s*${escaped}\\b[: —-]*([^\\n]*)\\n?([\\s\\S]*?)(?=^##?\\s|^[-*]\\s*EV-|$(?![\\s\\S]))`, "m"));
+      if (declaration && /^pending\b/i.test((declaration[1] + "\n" + declaration[2]).trim())) errors.push(`Done Work Unit ${id} references pending evidence ${evidence}`);
     }
     const checkpoint = unitCheckpointRefs.get(id);
     if (checkpoint && state !== "x") {

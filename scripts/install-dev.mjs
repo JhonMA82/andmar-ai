@@ -1,4 +1,4 @@
-import { cp, lstat, mkdir, readFile, readlink, realpath, symlink } from "node:fs/promises"
+import { cp, lstat, mkdir, readdir, readFile, readlink, realpath, symlink } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -50,6 +50,22 @@ async function installAgent() {
   return "installed"
 }
 
+// Native V2 discovery scans <configDir>/skills/**/SKILL.md, following symlinks.
+// Discover packaged sources at installation time, not through an AndMar registry.
+const skillsDir = join(configDir, "skills")
+await mkdir(skillsDir, { recursive: true })
+for (const entry of await readdir(join(root, "assets/skills"), { withFileTypes: true })) {
+  if (!entry.isDirectory()) continue
+  const source = join(root, "assets/skills", entry.name)
+  const target = join(skillsDir, entry.name)
+  try {
+    const info = await lstat(target)
+    if (!info.isSymbolicLink() || await realpath(target) !== await realpath(source)) throw new Error(`${target} already exists and is not this packaged skill. Refusing to overwrite it.`)
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error
+    await symlink(source, target, process.platform === "win32" ? "junction" : "dir")
+  }
+}
 const pluginState = await installPluginLink()
 const agentState = await installAgent()
 

@@ -11,7 +11,7 @@ import {
   type FetchFn,
   type RawAnswers,
   type JevSuccess,
-} from "./jev-client.ts"
+} from "../../integrations/jev/client.ts"
 import { INTAKE_QUESTIONS, type JevQuestion } from "./questions.ts"
 
 export { DEFAULT_JEV_MODEL, DEFAULT_JEV_TIMEOUT_MS, JEV_ENDPOINT, MAX_STATE_CHARS, readApiKey, truncateState }

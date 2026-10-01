@@ -11,7 +11,7 @@ platform.
 The name is a compound of **Andrea + Mario**; it is deliberately broader than
 "AndMar Harness", because the harness is the first product.
 
-> Baseline: **v0.16.1-rc.1** — the planned core evolution (Intake → Work Ledger →
+> Baseline: **v0.17.0** — the planned core evolution (Intake → Work Ledger →
 > work-unit lifecycle → checkpoints → Completion → development metrics →
 > Delivery) is **complete**. Further additions need measured friction, not a new
 > phase.
@@ -243,3 +243,17 @@ Memory never replaces `.andmar/work`, Task Contract state, or Verification evide
 ## License
 
 MIT.
+
+### Native procedures and structured work
+
+The primary agent loads five packaged native OpenCode skills on demand. The dev
+installer installs them under the native config skills directory; assets/skills
+is canonical. Work Ledger creation/evidence/transitions use structured tools and
+compact projections; Markdown remains portable work truth. Invalid bound Ledgers
+retain inspection and Ledger-only repair without restarting the session.
+See [architecture](docs/ARCHITECTURE.md) and [Ledger API](docs/WORK-LEDGER.md).
+`bun run test:runtime` verifies the installed runtime with actual native tools.
+
+Run `bun run acceptance` for deterministic checks plus the actual installed
+OpenCode runtime boundary. Future independently installed presentation/UX
+plugins consume public RPC/events/tools; see [docs/PLUGINS.md](docs/PLUGINS.md).

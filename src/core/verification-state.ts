@@ -1,5 +1,11 @@
 import type { StateStore } from "./contracts.ts"
-import type { VerificationGateStatus } from "./lifecycle.ts"
+export interface VerificationGateStatus {
+  ok: boolean
+  missing: string[]
+  failed: string[]
+  unverified: string[]
+  reasons: string[]
+}
 
 export type VerificationCheckName = "tests" | "lint" | "typecheck" | "build" | "custom"
 

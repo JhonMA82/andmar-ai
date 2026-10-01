@@ -1,4 +1,4 @@
-import { lstat, readFile, readlink, realpath, rm } from "node:fs/promises"
+import { lstat, readdir, readFile, readlink, realpath, rm } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -43,4 +43,16 @@ try {
   }
 } catch (error) {
   if (error?.code !== "ENOENT") throw error
+}
+
+for (const entry of await readdir(join(root, "assets/skills"), { withFileTypes: true })) {
+  if (!entry.isDirectory()) continue
+  const target = join(configDir, "skills", entry.name)
+  const source = join(root, "assets/skills", entry.name)
+  try {
+    if ((await lstat(target)).isSymbolicLink() && await realpath(target) === await realpath(source)) {
+      await rm(target)
+      console.log(`Removed skill link: ${target}`)
+    } else console.warn(`Kept ${target}: not owned by this installer.`)
+  } catch (error) { if (error?.code !== "ENOENT") throw error }
 }

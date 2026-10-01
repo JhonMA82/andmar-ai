@@ -7,6 +7,16 @@ A normal capability should be added without modifying the core or several unrela
 The binding rules live in [CAPABILITY-CONTRACT.md](CAPABILITY-CONTRACT.md).
 This guide is the practical walkthrough; the contract wins on any disagreement.
 
+## Choose the owning surface
+
+If the change is presentation or UX and can consume stable public state, build an
+external OpenCode plugin instead of extending core or moving capability logic.
+Use [PLUGINS.md](PLUGINS.md) for ownership, public RPC/events/actions, permissions,
+failure behavior and future contract versioning. AndMar is already a native
+OpenCode plugin; there is no separate plugin framework. Procedures belong to
+native skills, shared automation to scripts, optional adapters to integrations.
+Only a demonstrated runtime invariant belongs to a capability.
+
 ## Minimal process
 
 ### 1. Create a folder
@@ -141,7 +151,7 @@ Do not add provider adapters to AndMar AI. OpenCode owns provider/model catalogs
 
 Do not encode methodologies in core. A methodology should call harness primitives.
 
-If execution semantics become repetitive, add one generic workflow capability and keep methodology definitions outside it.
+Keep procedures in native skills with deterministic scripts. Runtime hooks and gates belong to existing owners; do not add a generic workflow engine.
 
 ## Backwards compatibility
 

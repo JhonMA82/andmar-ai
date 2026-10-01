@@ -1,11 +1,11 @@
 import type { Capability, ChangeKind } from "../../core/contracts.ts"
-import { analyzeDocumentationImpact, inferVersionImpact } from "../../core/lifecycle.ts"
+import { analyzeDocumentationImpact, inferVersionImpact } from "./impact.ts"
 import { setupWorkTracking } from "./work.ts"
 import { matchesAny } from "../../core/glob.ts"
 
 export const lifecycleCapability: Capability = {
   id: "lifecycle",
-  version: 4,
+  version: 5,
   description: "Deterministic documentation/version impact and portable Work Unit tracking.",
   async setup(runtime) {
     const { ctx, config } = runtime

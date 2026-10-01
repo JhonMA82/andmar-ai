@@ -259,7 +259,7 @@ otherwise the default:
 { "intake": { "model": "typesafe/jev-1.13", "timeoutMs": 8000 } }
 ```
 
-Model resolution lives in the capability. `src/capabilities/intake/jev-client.ts`
+Model resolution lives in the capability. `src/integrations/jev/client.ts`
 holds only the OpenRouter Decisions transport (endpoint, fetch and payload
 shape) used by Intake; no provider policy lives in core. Jev is owned
 exclusively by Intake.
@@ -267,7 +267,7 @@ exclusively by Intake.
 ## Decisions contract
 
 Endpoint in force: `POST https://openrouter.ai/api/alpha/decisions`
-(`JEV_ENDPOINT` in `src/capabilities/intake/jev-client.ts`).
+(`JEV_ENDPOINT` in `src/integrations/jev/client.ts`).
 
 - Request body `{ model, state, questions }`. `state` is the raw request
   truncated to `MAX_STATE_CHARS` with an explicit omission marker.

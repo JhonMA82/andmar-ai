@@ -11,7 +11,7 @@ index in [CAPABILITIES.md](CAPABILITIES.md) (generated, do not edit manually).
 - A capability must not import a sibling capability (`check-architecture.mjs`
   fails the repository check when it does).
 - Capabilities communicate through `src/core/` contracts (config, state,
-  model policy, lifecycle helpers), never through direct imports.
+  model policy, deliberate shared read types), never through direct imports.
 - A core change is justified only when at least two capabilities need the same
   stable primitive; see [ARCHITECTURE.md](ARCHITECTURE.md) and
   [DECISIONS.md](DECISIONS.md).

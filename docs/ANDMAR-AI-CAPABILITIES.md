@@ -140,7 +140,7 @@ known limitations.
   releases, run checks, or own Task Contract completion state.
 - **Public primitives:** `andmar_change_impact` (input: `changedPaths` +
   explicit `kind`, optional `breaking`; output: docs impact, version impact,
-  public-surface flag), `andmar_work_status`, `andmar_work_amend`,
+  public-surface flag), `andmar_work`, `andmar_work_status`, `andmar_work_context`, `andmar_work_amend`,
   `andmar_work_resume` (see [WORK-LEDGER.md](WORK-LEDGER.md) for exact contracts).
 - **Produces:** documentation/version staleness obligations. **Consumes:**
   configured documentation rules and public paths only.
@@ -150,7 +150,8 @@ known limitations.
   helper; no storage keys. Transient session binding/activity/verification
   projection lives in the setup closure and is dropped at restart.
   **Must not own:** receipts, requirement evidence, contracts or completion.
-- **State:** documentation impact stays stateless; Work Ledger stays durable.
+- **State:** documentation impact stays stateless; Work Ledger stays repository-durable. Session-local cached projection is invalidated by nanosecond file stamps, never serialized to plugin storage.
+- **Structured Ledger interface:** creation/evidence/context use shared deterministic helpers. Invalid state blocks product continuation/completion but retains native read/search/question and Ledger-only repairs; refresh without restart. Normal outputs contain no full Markdown or completed unit bodies.
 - **Configuration:** `documentation.rules` (unique ids, `code`/`docs` glob
   patterns with `*`/`**`/`?`), `versioning.enabled` and
   `versioning.publicPaths`.
@@ -165,7 +166,7 @@ known limitations.
   `package.json`, tags, or releases.
 - **Testing contract:** deterministic unit tests for path mapping and SemVer
   classification (`tests/lifecycle.test.ts`, `tests/glob.test.ts`).
-- **Observability:** none of its own beyond returned deterministic impact data.
+- **Observability:** bounded work events/activity, derived read-only RPC and returned impact data; no full prompts or Ledger mirror.
 - **Known limitations:** mapping quality depends on configured rules; semantic
   breaking-change detection beyond explicit `breaking` is out of scope.
 
@@ -265,7 +266,7 @@ known limitations.
   called/available flags, source, reason, latency, raw typed answers, and the
   refinement outcome. Full request text only with `ANDMAR_INTAKE_TRACE_CONTENT=1`.
 - **Configuration:** capability-local `intake.model` / `intake.timeoutMs`
-  (model resolution stays capability-local; `src/capabilities/intake/jev-client.ts`
+  (model resolution stays capability-local; `src/integrations/jev/client.ts`
   holds only the Decisions transport used by Intake) plus
   environment: `OPENROUTER_API_KEY` (required for live Jev, never stored or
   logged), `ANDMAR_INTAKE_MODEL`, `ANDMAR_INTAKE_TIMEOUT_MS`,
@@ -396,15 +397,10 @@ known limitations.
 
 ## AndMar primary agent
 
-`AndMar` is not a capability. It is a custom OpenCode primary agent that applies the existing primitives as a completion policy while still using native OpenCode tools for implementation.
-
-```text
-Build  -> plain OpenCode
-Plan   -> analysis
-AndMar -> OpenCode + AndMar guarantees
-```
-
-The agent intentionally remains model-agnostic.
+AndMar is a native primary agent, not a capability. The small model-agnostic
+profile owns policy/autonomy/authority/skill selection. Packaged native skills
+own procedures. See assets/agents/andmar.md and assets/skills/*/SKILL.md; no
+proprietary skill registry exists. Runtime guarantees remain in capabilities.
 
 ## Candidate capabilities
 

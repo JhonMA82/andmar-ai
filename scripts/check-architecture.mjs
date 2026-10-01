@@ -1,100 +1,101 @@
 import { readdir, readFile } from "node:fs/promises"
-import { join } from "node:path"
+import { basename, dirname, join, relative, resolve } from "node:path"
+import { fileURLToPath } from "node:url"
+import ts from "typescript"
+import { capabilityArtifacts } from "./generate-capability-manifest.mjs"
 
-const root = new URL("../", import.meta.url)
-const rootPath = root.pathname
-const failures = []
+const isolated = path => /^(?:tests|test|fixtures)\//.test(path) || /\/(?:__tests__|__fixtures__)\//.test(path)
+const history = path => path === "CHANGELOG.md" || /(?:^|\/)(?:history|historical|archive)(?:\/|$)/.test(path)
+const legacy = /CompletionSeal|completionSealKey|contractStateToken|task-contract-completion|^(?:andmar[_-]?)?request[_-]?review$|ANDMAR_REVIEW_|review[_ -]?(?:rounds?|budgets?)|^testsPassed$/i
+const coreDomain = /work[-_]?ledger|andmar-work|jev|engram|git[-_]?lifecycle|presentation|sidebar|renderer|tui|workflow/i
 
-const capabilityRoot = join(rootPath, "src/capabilities")
-const capabilityDirs = (await readdir(capabilityRoot, { withFileTypes: true })).filter((d) => d.isDirectory())
-const capabilitySources = new Map()
-for (const dir of capabilityDirs) {
-  const file = join(capabilityRoot, dir.name, "index.ts")
-  let content
+async function repositoryFiles(root, prefix = "") {
+  const files = []
+  for (const entry of await readdir(join(root, prefix), { withFileTypes: true })) {
+    if ([".git", "node_modules", ".andmar", "dist", "coverage"].includes(entry.name)) continue
+    const path = join(prefix, entry.name).replaceAll("\\", "/")
+    if (entry.isDirectory()) files.push(...await repositoryFiles(root, path))
+    else if (entry.isFile() || entry.isSymbolicLink()) files.push(path)
+  }
+  return files.sort()
+}
+
+// Syntax only: static imports/re-exports/import types and literal import/require.
+// Reuse the existing TypeScript dependency to avoid matching examples/comments.
+function inspectSource(path, content) {
+  const source = ts.createSourceFile(path, content, ts.ScriptTarget.Latest, true)
+  const imports = [], symbols = []
+  const visit = node => {
+    if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) imports.push(node.moduleSpecifier.text)
+    if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument) && ts.isStringLiteral(node.argument.literal)) imports.push(node.argument.literal.text)
+    if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || ts.isIdentifier(node.expression) && node.expression.text === "require") && node.arguments[0] && ts.isStringLiteralLike(node.arguments[0])) imports.push(node.arguments[0].text)
+    if (ts.isIdentifier(node) || ts.isStringLiteral(node)) symbols.push(node.text)
+    ts.forEachChild(node, visit)
+  }
+  visit(source)
+  return { imports, symbols }
+}
+
+export async function checkArchitecture(root) {
+  root = resolve(root)
+  const failures = []
+  const files = await repositoryFiles(root)
+  const canonical = "assets/agents/andmar.md"
+  const agent = await readFile(join(root, canonical), "utf8").catch(() => "")
+  if (!agent) failures.push(`Canonical primary agent ${canonical} is missing.`)
+  for (const path of files) {
+    if (!isolated(path) && /^(?:skills\.json|(?:skill|workflow|plugin)-registry\..+)$/.test(basename(path))) failures.push(`Proprietary registry source ${path} is forbidden.`)
+    if (path !== canonical && !isolated(path) && !history(path) && path.endsWith(".md")) {
+      if (basename(path) === "andmar.md" || agent && (await readFile(join(root, path), "utf8")).trim() === agent.trim()) failures.push(`Parallel primary agent source ${path}; use ${canonical}.`)
+    }
+    if (!/\.[cm]?[jt]sx?$/.test(path) || isolated(path) || history(path) || path === "scripts/check-architecture.mjs") continue
+    const content = await readFile(join(root, path), "utf8")
+    const { imports, symbols } = inspectSource(path, content)
+    const owner = path.match(/^src\/capabilities\/([^/]+)\//)?.[1]
+    const core = path.startsWith("src/core/")
+    const integration = path.startsWith("src/integrations/")
+    const consumer = /(?:^|\/)(?:plugins?|presentation|consumers)(?:\/|$)/.test(path)
+    for (const specifier of imports) {
+      const local = specifier.startsWith("file:") ? fileURLToPath(specifier) : specifier
+      const target = local.startsWith(".") || local.startsWith("/") ? relative(root, resolve(root, dirname(path), local)).replaceAll("\\", "/") : local.replace(/^(?:andmar-ai\/|@\/)/, "")
+      const sibling = target.match(/^(?:src\/)?capabilities\/([^/]+)(?:\/|$)/)?.[1]
+      if (core && (/^(?:src\/)?(?:capabilities|integrations)\//.test(target) || /^assets\/skills\//.test(target))) failures.push(`Core ${path} imports forbidden owner ${specifier}.`)
+      if (core && (specifier === "@opencode/plugin" || specifier.startsWith("@opencode/plugin/"))) failures.push(`Core ${path} depends directly on @opencode/plugin; no current exceptions.`)
+      if (core && (coreDomain.test(target) || /^(?:simple-git|isomorphic-git|nodegit)(?:\/|$)/.test(target))) failures.push(`Core ${path} imports domain implementation ${specifier}.`)
+      if (owner && sibling && sibling !== owner) failures.push(`Capability ${owner}: sibling implementation import in ${path}: ${specifier}.`)
+      if (integration && sibling) failures.push(`Integration ${path} imports capability implementation ${specifier}.`)
+      if (consumer && /^(?:src\/)?(?:capabilities|core)\//.test(target)) failures.push(`Presentation/plugin consumer ${path} imports internal ${specifier}; use RPC/events/public tools.`)
+    }
+    if (core && (coreDomain.test(basename(path)) || symbols.some(symbol => coreDomain.test(symbol)))) failures.push(`Core ${path} contains a domain/presentation/workflow symbol; keep implementation with its owner.`)
+    for (const symbol of new Set(symbols.filter(symbol => legacy.test(symbol)))) failures.push(`Functional legacy symbol ${symbol} in ${path}.`)
+  }
+  const skills = (await readdir(join(root, "assets/skills"), { withFileTypes: true })).filter(entry => entry.isDirectory()).map(entry => entry.name)
+  for (const skill of skills) if (!files.includes(`assets/skills/${skill}/SKILL.md`)) failures.push(`Packaged skill ${skill} is missing SKILL.md.`)
+  const capabilityDirs = (await readdir(join(root, "src/capabilities"), { withFileTypes: true })).filter(entry => entry.isDirectory()).map(entry => entry.name)
+  for (const name of capabilityDirs) if (!files.includes(`src/capabilities/${name}/index.ts`)) failures.push(`Capability ${name} is missing index.ts.`)
+  const guide = await readFile(join(root, "docs/ANDMAR-AI-CAPABILITIES.md"), "utf8").catch(() => "")
+  const seenTools = new Map()
+  let version
   try {
-    content = await readFile(file, "utf8")
-  } catch {
-    failures.push(`Capability ${dir.name} is missing index.ts`)
-    continue
-  }
-  const localFiles = (await readdir(join(capabilityRoot, dir.name))).filter((name) => name.endsWith(".ts") && name !== "index.ts");
-  content += "\n" + (await Promise.all(localFiles.map((name) => readFile(join(capabilityRoot, dir.name, name), "utf8")))).join("\n");
-  capabilitySources.set(dir.name, content)
-  if (/capabilities\/[a-zA-Z0-9_-]+/.test(content)) {
-    failures.push(`Capability ${dir.name} imports another capability; use a core contract instead.`)
-  }
-}
-
-for (const name of await readdir(join(rootPath, "src/core"))) {
-  if (!name.endsWith(".ts")) continue
-  const content = await readFile(join(rootPath, "src/core", name), "utf8")
-  if (content.includes("@opencode/plugin")) failures.push(`Core file ${name} depends directly on @opencode/plugin.`)
-  if (content.includes("/capabilities/")) failures.push(`Core file ${name} depends on a capability.`)
-}
-
-// Generated manifest must list exactly the capability directories.
-try {
-  const manifest = await readFile(join(rootPath, "src/generated/capabilities.ts"), "utf8")
-  const imported = [...manifest.matchAll(/\.\.\/capabilities\/([A-Za-z0-9_-]+)\/index\.ts/g)].map((match) => match[1])
-  for (const dir of capabilityDirs) {
-    if (!imported.includes(dir.name)) failures.push(`Registered capability "${dir.name}" has no entry in src/generated/capabilities.ts; run \`bun run generate\`.`)
-  }
-  for (const name of imported) {
-    if (!capabilityDirs.some((dir) => dir.name === name)) {
-      failures.push(`Manifest references unknown capability "${name}" with no src/capabilities/${name}/ directory.`)
+    const artifacts = await capabilityArtifacts(root)
+    version = artifacts.version
+    for (const [path, expected] of artifacts.files) {
+      if (await readFile(join(root, path), "utf8").catch(() => "") !== expected) failures.push(`${path} is not exactly synchronized; run bun run generate.`)
     }
-  }
-} catch {
-  failures.push("src/generated/capabilities.ts is missing; run `bun run generate`.")
-}
-
-// Structural documentation sync (no semantic quality judgment):
-// registered capability -> canonical documentation section exists,
-// public tool -> exactly one owning capability, generated index is in sync.
-let guide = ""
-try {
-  guide = await readFile(join(rootPath, "docs/ANDMAR-AI-CAPABILITIES.md"), "utf8")
-} catch {
-  failures.push("docs/ANDMAR-AI-CAPABILITIES.md is missing; it is the canonical per-capability reference.")
-}
-const seenTools = new Map()
-for (const [dir, content] of capabilitySources) {
-  const id = content.match(/^\s*id:\s*"([^"]+)"/m)?.[1] ?? dir
-  if (guide !== "" && !guide.includes(`### \`${id}\``)) {
-    failures.push(`Capability "${id}" has no \`### \`${id}\`\` section in docs/ANDMAR-AI-CAPABILITIES.md.`)
-  }
-  for (const match of content.matchAll(/editor\.add\(\{\s*name:\s*"([^"]+)"/g)) {
-    const tool = `andmar_${match[1]}`
-    if (seenTools.has(tool)) {
-      failures.push(`Tool "${tool}" is registered by both "${seenTools.get(tool)}" and "${dir}"; tool names must have exactly one owning capability.`)
-    } else {
-      seenTools.set(tool, dir)
+    for (const row of artifacts.rows) {
+      if (!guide.includes(`### \`${row.id}\``)) failures.push(`Capability ${row.id} has no canonical documentation section.`)
+      for (const tool of row.tools) {
+        if (seenTools.has(tool)) failures.push(`Tool ${tool} has duplicate ownership: ${seenTools.get(tool)} and ${row.id}.`)
+        seenTools.set(tool, row.id)
+      }
     }
-  }
-}
-try {
-  const index = await readFile(join(rootPath, "docs/CAPABILITIES.md"), "utf8")
-  if (!index.includes("GENERATED FILE. Run `bun run generate`")) {
-    failures.push("docs/CAPABILITIES.md is not the generated index; run `bun run generate` and do not edit it manually.")
-  }
-  for (const [dir] of capabilitySources) {
-    if (!index.includes(`\`${dir}\``)) failures.push(`Generated docs/CAPABILITIES.md has no entry for capability "${dir}"; run \`bun run generate\`.`)
-  }
-  for (const [tool] of seenTools) {
-    if (!index.includes(`\`${tool}\``)) failures.push(`Generated docs/CAPABILITIES.md has no entry for tool "${tool}"; run \`bun run generate\`.`)
-  }
-} catch {
-  failures.push("docs/CAPABILITIES.md is missing; run `bun run generate`.")
+    if (!(await readFile(join(root, "CHANGELOG.md"), "utf8")).includes(`## [${version}]`)) failures.push(`CHANGELOG.md has no entry for package version ${version}.`)
+  } catch (error) { failures.push(`Generated contract validation failed: ${error.message}`) }
+  return { failures, capabilities: capabilityDirs.length, skills: skills.length, tools: seenTools.size, version }
 }
 
-const pkg = JSON.parse(await readFile(join(rootPath, "package.json"), "utf8"))
-const changelog = await readFile(join(rootPath, "CHANGELOG.md"), "utf8")
-if (!changelog.includes(`## [${pkg.version}]`)) {
-  failures.push(`CHANGELOG.md has no entry for package version ${pkg.version}.`)
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const result = await checkArchitecture(fileURLToPath(new URL("../", import.meta.url)))
+  if (result.failures.length) { console.error("Architecture check failed:\n- " + result.failures.join("\n- ")); process.exitCode = 1 }
+  else console.log(`Architecture check passed (${result.capabilities} capabilities, ${result.skills} skills, ${result.tools} tools, version ${result.version}).`)
 }
-
-if (failures.length) {
-  console.error("Architecture check failed:\n- " + failures.join("\n- "))
-  process.exit(1)
-}
-console.log(`Architecture check passed (${capabilityDirs.length} capabilities, ${seenTools.size} tools, version ${pkg.version}).`)

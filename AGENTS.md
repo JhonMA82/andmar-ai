@@ -48,7 +48,7 @@ If it requires edits across more than 2–3 existing modules, stop and re-evalua
 - state adapter;
 - capability setup;
 - model policy;
-- deterministic lifecycle helpers;
+- minimal shared read contracts for Verification and Task Contract;
 - small generic utilities.
 
 Do not put ODD, Product Plan, release flows, UI, Herdr, Jev, Lane or provider-specific prompts into core.
@@ -105,7 +105,7 @@ Do not add a semantic router until real ambiguous routing cases demonstrate the 
 - This repository is self-hosted: `.andmar/` is in `.gitignore`, so AndMar never versions its own execution state. That exception does not change the general policy for consumer projects, where the Ledger travels with Git.
 - Validate ledger structural integrity deterministically with `node "${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai/scripts/validate-work-ledger.mjs" .andmar/work/<work-id>` at key events.
 - Resolve AndMar runtime helpers from `${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai`; never assume the target repository contains AndMar's `scripts/` directory.
-- Use native OpenCode tools (`read`, `write`, `edit`) for Work Ledger content, but use the installed deterministic `work-ledger-lifecycle.mjs` helper for normal Work Unit state transitions (`activate`, `complete`, `block`, `resume`, `reopen`) and final portable sealing (`finalize`).
+- Use the structured `andmar_work` / `andmar_work_status` / `andmar_work_context` surfaces or installed `andmar-work.mjs` for normal creation, evidence and lifecycle. Native Ledger-only edits are exceptional semantic steering or recovery; validate afterward. Markdown is durable representation, not the routine machine API.
 - For recoverable Work Unit commits, use `work-unit-checkpoint.mjs` as a two-phase gate: `prepare` validates a done/evidenced WU against the exact verified working-state revision; OpenCode performs the native Git commit; `record` stores the current HEAD SHA in `WORK.md`. The helper never stages, commits, pushes, merges, tags, or releases.
 - `delivery.workUnitCommits` is `manual` by default and may be `auto` only by explicit configuration. `auto` authorizes local checkpoint commits only; it never authorizes push/PR/merge/tag/publish/release.
 - Completion is one runtime boundary, not a ceremony chain: for Ledger-backed work require lifecycle `status` → `completionReady:true`, call `andmar_completion_gate` with exact revision/task kind/docs/version/required checks, let the gate derive stored verification truth and close the Task Contract on success, then run lifecycle `finalize --revision <accepted-revision>`. The gate accepts no caller-declared pass/fail. `task_contract(op=close)` only blocks an explicit cancellation with a reason; it never completes a contract.
@@ -127,7 +127,9 @@ options / environment variables        -> docs/CONFIGURATION.md
 receipts / evidence / revision binding -> docs/VERIFICATION.md
 intake / Jev / trace / fallback        -> docs/INTAKE.md
 work ledger / portable continuity      -> docs/WORK-LEDGER.md
-request flow / completion policy       -> assets/agents/andmar.md
+primary policy / skill selection       -> assets/agents/andmar.md
+procedures                            -> assets/skills/*/SKILL.md
+independent OpenCode plugin consumers  -> docs/PLUGINS.md
 why the architecture is this way       -> docs/DECISIONS.md
 what is in / out of scope              -> docs/SCOPE.md
 real-world testing (Bun flow)          -> docs/TESTING.md
@@ -204,3 +206,9 @@ When implementation and docs disagree:
 5. README/examples.
 
 Fix stale lower-priority documentation in the same change.
+
+## Final modular surfaces
+
+Core is frozen for ordinary features. It contains only primitives genuinely used by multiple capabilities; Task Contract transitions/completion and documentation/version procedures belong to their owning capabilities. Native skills under assets/skills are the canonical packaged procedures, installed through OpenCode discovery, never a proprietary registry. Scripted Ledger logic is shared directly with lifecycle; never invoke a subprocess to control it. Optional Jev transport lives in integrations/jev; Intake owns its semantic decision policy.
+
+Use status → active context → related IDs → specific section → exceptional full document. Do not inject a full Ledger on routine transitions. Invalid bound state must preserve native read/search/question and Ledger-only repair while refusing product mutations and completion. Changes to these contracts need recovery, token-economy and native-runtime acceptance tests. Do not ask for a derivable next step.

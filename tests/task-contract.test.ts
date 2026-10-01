@@ -10,8 +10,8 @@ import {
   steerTaskContract,
   updateRequirementStatus,
   type TaskContract,
-} from "../src/core/task-contract.ts"
-import { evaluateCompletion } from "../src/core/lifecycle.ts"
+} from "../src/capabilities/task-contract/contract.ts"
+import { evaluateCompletion } from "../src/capabilities/task-contract/completion.ts"
 import { taskContractCapability } from "../src/capabilities/task-contract/index.ts"
 
 function makeContract(): TaskContract {
