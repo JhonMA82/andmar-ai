@@ -1,9 +1,11 @@
-// Manual smoke test for real Jev decisions. Never runs in CI.
-// Requires OPENROUTER_API_KEY in the environment.
-// Usage: OPENROUTER_API_KEY=... ANDMAR_INTAKE_TRACE=1 node scripts/intake-smoke.mjs
+// Manual smoke for real Jev decisions. Never runs in CI.
+// Requires OPENROUTER_API_KEY in the environment and Node >= 22.18 (native
+// type stripping, so the canonical question definition is imported instead of
+// being copied here).
+// Usage: OPENROUTER_API_KEY=... node scripts/intake-smoke.mjs
 // The script never prints the API key.
 
-import { readFile } from "node:fs/promises";
+import { INTAKE_QUESTIONS } from "../src/capabilities/intake/questions.ts";
 
 const key = (process.env.OPENROUTER_API_KEY ?? "").trim();
 if (key === "") {
@@ -23,34 +25,21 @@ const samples = [
 const endpoint = "https://openrouter.ai/api/alpha/decisions";
 const model = (process.env.ANDMAR_INTAKE_MODEL ?? "typesafe/jev-1.13").trim() || "typesafe/jev-1.13";
 
-// Load the exact questions the capability sends so the smoke matches runtime.
-const questionsUrl = new URL("../src/capabilities/intake/questions.ts", import.meta.url);
-void questionsUrl;
-void readFile;
+const questions = Object.fromEntries(
+  Object.entries(INTAKE_QUESTIONS).map(([id, question]) => {
+    const { type, ...rest } = question;
+    return [id, { type, ...rest }];
+  }),
+);
 
-console.log(`intake-smoke: model=${model} samples=${samples.length}`);
+console.log(`intake-smoke: model=${model} samples=${samples.length} questions=${Object.keys(questions).length}`);
 
 for (const sample of samples) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 12_000);
   const started = Date.now();
   try {
-    // Import questions dynamically from TS source is not possible in plain
-    // node; inline the six question ids for the smoke and rely on the
-    // capability file as the canonical definition (see docs/INTAKE.md).
-    const body = JSON.stringify({
-      model,
-      state: sample,
-      questions: {
-        task_kind: { type: "choice", instructions: "What kind of development work does this request describe? Choose the closest category.", criteria: { "trivial-ui": "Tiny UI/text change.", "docs-format": "Docs/format.", "known-test": "Known test.", feature: "Bounded feature.", bugfix: "Fix broken behavior.", refactor: "Refactor.", debug: "Unclear failure.", architecture: "Architecture.", security: "Security-sensitive.", migration: "Migration/port.", review: "Review.", internal: "Internal/other." } },
-        needs_refinement: { type: "noul", instructions: "Does this request need internal refinement before execution?", criteria: { true: "Too vague to execute.", false: "Precise enough." } },
-        specification_sufficiency: { type: "score", instructions: "How sufficient is the specification?", criteria: ["Empty.", "Goal only.", "Goal plus partial context.", "Clear intent.", "Fully specified."] },
-        risk: { type: "score", instructions: "Risk if executed incorrectly?", criteria: ["Low.", "Medium.", "High.", "Critical."] },
-        external_contract: { type: "noul", instructions: "Depends on external contract/upstream/auth provider?", criteria: { true: "Depends on external contract.", false: "Self-contained." } },
-        product_decision_missing: { type: "noul", instructions: "Is a real product decision missing that must be asked?", criteria: { true: "Missing product decision.", false: "No missing decision." } },
-        request_shape: { type: "choice", instructions: "What is the structural shape and level of detail of this request?", criteria: { compact: "Compact, concrete request.", underspecified: "Underspecified request.", structured: "Multiple requirements, constraints, acceptance criteria, or PRD-like content." } },
-      },
-    });
+    const body = JSON.stringify({ model, state: sample, questions });
     const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },

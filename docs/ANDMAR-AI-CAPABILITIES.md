@@ -286,7 +286,7 @@ known limitations.
   never call Jev. `routeSignals` reuse the `ChangeKind`/`Risk` taxonomy.
   After a `completed` contract, obvious operational continuations bypass Jev
   via `deterministicContinuation` into `mode=direct`; ambiguous ones use the same single Jev
-  call with three conditional continuation questions (D-021).
+  call with three conditional continuation questions (D-020).
 - **Failure / fallback:** never blocks. Missing key, timeout, network failure,
   non-2xx, or invalid payload degrades to an explicit `fallback`: trivial requests yield `direct`, non-trivial short requests yield `enrich` (non-blocking, inspect repo context), and long requests yield `structure`. Jev is
   an optional decision primitive, not a requirement for AndMar to work. The one
@@ -323,23 +323,19 @@ known limitations.
   `update` for requirement transitions; `record_evidence` binding one
   evidence pointer of type `verification`/`runtime`/`diff`/`user-decision`/
   `external` to a requirement; `steer` appending new obligations without
-  removing; `close` marking `completed`/`blocked`, with completed-close
-  retained as a compatibility path); `andmar_completion_gate` (input:
-  `currentRevision`, `taskKind`, `docsStatus`, `versionStatus`, optional
-  `requiredChecks`; legacy `CompletionEvidence` accepted for compatibility;
-  output includes `ok`, `reasons`, and `contractClosed`).
+  removing; `close` blocking the contract on an explicit cancellation with a
+  required reason; `andmar_completion_gate` (input: `currentRevision`,
+  `taskKind`, `docsStatus`, `versionStatus`, optional `requiredChecks`; output
+  includes `ok`, `reasons`, and `contractClosed`).
 - **Produces:** the session's contract and the final completion
   verdict/closure. **Consumes:** core triviality helpers plus verification
   receipts/evidence read-only at completion.
-- **Owns:** `task-contract/<sessionID>` and
-  `task-contract-completion/<sessionID>` (the completion seal). **Must not
-  own:** verification receipts/evidence, worker, journal, or intake keys.
+- **Owns:** `task-contract/<sessionID>`. **Must not own:** verification
+  receipts/evidence, worker, journal, or intake keys.
 - **State:** contract only (`goal`, optional `desiredOutcome`/
   `verificationSurface`, requirements with status/evidence/reason,
   constraints, `active`/`blocked`/`completed`). No transcripts,
-  chain-of-thought, prompts, or source code. Old `task-contract-review*`
-  entries from previous versions are unused data; nothing reads or writes
-  them and no migration exists.
+  chain-of-thought, prompts, or source code.
 - **Configuration:** none. The capability has no environment knobs and no
   model selection; it reuses the configured verification and documentation/
   version surfaces.
@@ -353,12 +349,13 @@ known limitations.
   obligations. `delegation` ownership is untouched.
 - **Failure / fallback:** duplicate active `create` refused (steer
   instead); absurd requirement transitions refused; `blocked`/`skipped`
-  without reason refused; steering a `completed` contract refused; trivial
-  tasks skip the contract entirely (proportional escape hatch). With
-  non-empty `requiredChecks`, completion derives pass/fail from stored
-  verification; a caller `testsPassed` boolean is not authoritative.
+  without reason refused; steering a `completed` contract refused; a `close`
+  without a reason refused; trivial tasks skip the contract entirely
+  (proportional escape hatch). With non-empty `requiredChecks`, completion
+  derives pass/fail from stored verification; the caller cannot declare a
+  passing check.
 - **Security / trust:** evidence stores pointers, never content. No child
-  session, reviewer prompt, or reviewer permission policy exists.
+  session is created by this capability.
 - **Testing contract:** deterministic unit tests for creation, steering,
   evidence, pending/evidence/blocked/stale gates, and trivial bypass, plus
   tool-level positive/negative smoke proving that contract + exact-revision
@@ -366,12 +363,10 @@ known limitations.
   (`tests/task-contract.test.ts`).
 - **Observability:** emits `andmar.contract` (action plus requirement
   counts, never texts) and `andmar.completion` with bounded verification,
-  requirement, lifecycle-status and `contractClosed` metadata. There is no
-  `andmar.review` event.
+  requirement, lifecycle-status and `contractClosed` metadata.
 - **Known limitations:** compaction continuity is pull-based (`status`)
-  because hijacking the compaction summary would destroy context; the
-  `evidence` input object of the completion gate is a legacy compatibility
-  path; real OpenCode runtime smoke is covered by manual testing (see
+  because hijacking the compaction summary would destroy context; real
+  OpenCode runtime smoke is covered by manual testing (see
   [TESTING.md](TESTING.md)).
 
 ### `delivery`

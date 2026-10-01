@@ -19,8 +19,8 @@
 
 export interface SessionDomainLike {
   prompt(input: { sessionID: string; text: string }): Promise<unknown>
-  wait?(input: { sessionID: string }): Promise<unknown>
-  context?(input: { sessionID: string }): Promise<unknown>
+  wait(input: { sessionID: string }): Promise<unknown>
+  context(input: { sessionID: string }): Promise<unknown>
 }
 
 
@@ -120,8 +120,6 @@ function lastAssistantText(messages: unknown): { text: string | undefined; compl
  * Run one bounded child task: queue the prompt, wait for idle, then extract
  * the child's final text from the session messages. Returns `undefined` when
  * the child produced no final text (caller decides how to report it).
- * When `wait`/`context` are unavailable on the host session domain, falls
- * back to the prompt result's own text shape (legacy tolerance).
  */
 export async function runChildTask(
   sessions: SessionDomainLike,
@@ -129,43 +127,29 @@ export async function runChildTask(
   text: string,
   options: RunChildTaskOptions = {},
 ): Promise<string | undefined> {
-  if (typeof sessions?.prompt !== "function") return undefined
   const startedAt = Date.now()
   const timeoutMs = Math.max(1, options.timeoutMs ?? MAX_WAIT_MS)
   const retryDelayMs = Math.max(1, options.retryDelayMs ?? RETRY_DELAY_MS)
   const deadline = startedAt + timeoutMs
-  const queued = await withDeadline(
+  await withDeadline(
     sessions.prompt({ sessionID, text }),
     deadline,
     "session.prompt",
   )
 
-  const canWait = typeof sessions.wait === "function"
-  const canRead = typeof sessions.context === "function"
-  if (!canWait || !canRead) {
-    // Legacy/fallback shape: the host resolved the prompt with a result that
-    // may carry text parts directly.
-    const direct = queued as { parts?: unknown; message?: { parts?: unknown }; text?: unknown; content?: unknown }
-    const textLike = { content: direct.content, parts: direct.parts ?? direct.message?.parts } as AssistantLike
-    const fallback = textFromAssistant(textLike)
-    if (fallback !== "") return fallback
-    if (typeof direct.text === "string" && direct.text.trim() !== "") return direct.text
-    return undefined
-  }
-
   let last: { text: string | undefined; completedAt: number } = { text: undefined, completedAt: 0 }
   while (Date.now() < deadline) {
-    await withDeadline(sessions.wait!({ sessionID }), deadline, "session.wait")
+    await withDeadline(sessions.wait({ sessionID }), deadline, "session.wait")
     const messages = await withDeadline(
-      sessions.context!({ sessionID }),
+      sessions.context({ sessionID }),
       deadline,
       "session.context",
     )
     last = lastAssistantText(messages)
     // Only accept an assistant completion produced by this prompt; a wait
     // that resolved before the queued message even started must be retried.
-    // An unknown completion timestamp (0) is trusted: the wait() already
-    // reported idle, and review sessions have no prior text to confuse.
+    // An unknown completion timestamp (0) is trusted: wait() already reported
+    // idle, so there is no earlier completion to confuse.
     const fresh = last.completedAt === 0 || last.completedAt >= startedAt - 1_000
     if (last.text !== undefined && fresh) return last.text
     if (!fresh) {

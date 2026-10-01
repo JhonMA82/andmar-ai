@@ -127,16 +127,13 @@ ctx.session.context({ sessionID })       // SessionMessageInfo[]
 user prompt (`SessionInboxUser`). To obtain a child's response the pattern
 is `prompt -> wait -> context`. Delegation uses the generic
 `src/core/session.ts` (`runChildTask`). Before v0.5.x the harness serialized
-the prompt result object instead of the child's actual answer; real smoke
-(2026-09-22) exposed this — the child had answered, but the answer was
-unread through the wrong shape.
+the prompt result object instead of the child's actual answer: the child had
+answered, but the answer was unread through the wrong shape.
 
 OpenCode V2 child sessions inherit the permission rules in effect at
 creation. AndMar AI relies on that native behavior instead of constructing
-a parallel permission model. Earlier versions also created reviewer children
-with explicit session-scoped rules through `ctx.permission.rules`; that
-reviewer no longer exists, so AndMar creates child sessions only for
-Delegation.
+a parallel permission model. AndMar creates child sessions only for
+Delegation, and never grants a child permissions the parent does not hold.
 
 Verified 2026-09-22 against the same types (`SessionCreateInput`): the
 typed shape exposes `id/title/agent/model/location/metadata/permissions`
@@ -244,8 +241,8 @@ AndMar neither changes these defaults nor adds a dependency.
 `SessionMessage.User.time.created` is DateTime.Utc in the promise context
 (and milliseconds on the encoded API); `session-message.ts` and
 `identifier.ts` define ascending `msg_` IDs with a timestamp/counter prefix.
-The new WU timestamp avoids relying on presence of an origin in compacted
-context or on session identity. Legacy native IDs retain compatibility.
+The WU checkpoint timestamp avoids relying on the presence of an origin in
+compacted context or on session identity.
 
 Two real upstream boundaries remain important:
 
@@ -255,14 +252,13 @@ Two real upstream boundaries remain important:
   source shadow was evaluated and discarded: binding or checkpoint creation
   inside an already-running outer program makes a before-only restriction
   insufficient. No source parser/rewriter or hidden retry was added.
-- Custom multi-shell Code Mode exposure shares native IDs. Starting with
-  0.16.1-rc.1, Verification allocates deterministic collision suffixes under
-  its existing evidence keys, serializes metadata insertion, and never replaces
-  an earlier revision-bound execution. The wrapper is excluded from evidence.
-  Default native shell behavior and existing receipt IDs remain compatible.
+- Custom multi-shell Code Mode exposure can share native IDs. Verification
+  allocates deterministic collision suffixes under its existing evidence keys,
+  serializes metadata insertion, and never replaces an earlier revision-bound
+  execution. The wrapper is excluded from evidence. Default native shell
+  behavior and existing receipt IDs remain compatible.
 
-The candidate validates operational checkpoint recovery and completion;
-acceptance does not claim a universal HTTP/security sandbox. Local acceptance
-is not recorded in this repository: promotion to a stable release remains an
-explicit decision after validating the operational flow on a real OpenCode
-session.
+These boundaries constrain what a checkpoint can guarantee: it controls
+subsequent observed tools, not a universal HTTP or security sandbox. Promotion
+to a stable release remains an explicit decision after validating the
+operational flow on a real OpenCode session.

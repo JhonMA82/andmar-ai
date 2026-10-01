@@ -101,10 +101,3 @@ export interface WorkerRecord {
   createdAt: number
   updatedAt: number
 }
-
-export interface CompletionEvidence {
-  revision: string
-  testsPassed: boolean
-  docsStatus: "clean" | "updated" | "stale" | "not-applicable"
-  versionStatus: "clean" | "updated" | "required" | "not-applicable"
-}

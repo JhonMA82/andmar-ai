@@ -4,6 +4,55 @@ All notable changes to AndMar AI are recorded here. The package version in `pack
 
 ## [Unreleased]
 
+### Changed
+
+- Removed legacy code, compatibility paths, duplicate definitions and
+  historical documentation so the repository describes only the architecture in
+  force. No dependency, capability, registry, CLI, TUI or modular architecture
+  was added.
+
+  - **Completion:** deleted `CompletionSeal`, `completionSealKey()`,
+    `contractStateToken()`, the `task-contract-completion/<sessionID>` state
+    key and the old `completion_gate -> completion seal ->
+    task_contract(op=close, outcome=completed)` handshake.
+    `andmar_completion_gate` remains the only transition to `completed`, and
+    `task_contract(op=close)` now only records an explicit cancellation as
+    `blocked` (reason required). The `task-contract` capability version
+    increments 3 -> 4 because its public tool surface changed.
+  - **Completion input:** removed the compatibility `evidence` object
+    (`revision`, `testsPassed`, `docsStatus`, `versionStatus`) and its schema.
+    The gate accepts only `currentRevision`, `taskKind`, `requiredChecks`,
+    `docsStatus` and `versionStatus`; stored Verification remains the only
+    authority over checks, so a caller cannot declare a passing check.
+  - **Core:** `CompletionEvidence` is gone. The three-layer
+    `evaluateCompletion` / `evaluateCompletionWithVerification` /
+    `evaluateCompletionV2` chain collapsed into a single `evaluateCompletion`
+    taking a minimal `CompletionObligations`. Also removed the dead
+    `validateTaskContract()`.
+  - **State compatibility:** removed the `event.callID` and `event.args`
+    fallbacks (neither field exists in the installed
+    `@opencode/plugin@2.0.4` surface), the `SessionDomainLike` host-shape
+    tolerance in `runChildTask`, the dead `validateReceiptEvidence()` receipt
+    validator, and the ID-only Work Ledger checkpoint-boundary recovery that
+    only applied to Ledgers written by earlier versions. Current restart,
+    resume, checkpoint and Work Ledger recovery are unchanged.
+  - **Primary agent:** `.opencode/agents/andmar.md` duplicated
+    `assets/agents/andmar.md` byte-for-byte. The repository copy and its
+    directory were deleted; `assets/agents/andmar.md` is the single source of
+    truth and `install-dev.mjs` is unchanged.
+  - **Self-hosting:** `.andmar/` is now in `.gitignore`, so this repository no
+    longer versions its own Work Ledger execution state. The Work Ledger
+    policy for consumer projects is unchanged.
+  - **Docs:** removed documentation, comments and configuration that existed
+    only to describe removed systems, plus historical snapshots, dated smoke
+    narratives and stale test counts. `docs/DECISIONS.md` keeps only
+    decisions that still explain an invariant or limit; superseded decisions
+    were deleted rather than archived, and every decision cross-reference was
+    re-pointed. Release history remains in this file.
+  - **Scripts:** `scripts/intake-smoke.mjs` had drifted from the canonical
+    Intake questions; it now imports `INTAKE_QUESTIONS` directly so the two
+    cannot diverge.
+
 ### Fixed
 
 - Verification receipts can no longer claim a passing check for a command that
@@ -16,13 +65,12 @@ All notable changes to AndMar AI are recorded here. The package version in `pack
   compiled and tested fine while every real failing run was still accepted as
   green (observed on OpenCode `2.0.21`). The observed outcome is now read from
   the fields the shell tool actually populates, stored as minimal evidence
-  metadata, and used to reject `passed: true` in `resolveCompatibleExecution`,
-  in the legacy `validateReceiptEvidence`, and in `isSuccessfulExecution`. A
-  signalled or timed-out run is refused as well. `andmar_verify_revision`
-  re-reads that outcome, so a stored green receipt whose execution did not
-  succeed is reported as `unverified`. A failing run can still be recorded
-  honestly as `passed: false`. When a tool exposes no outcome at all, behavior
-  is unchanged: nothing is inferred.
+  metadata, and used to reject `passed: true` in `resolveCompatibleExecution`
+  and in `isSuccessfulExecution`. A signalled or timed-out run is refused as
+  well. `andmar_verify_revision` re-reads that outcome, so a stored green
+  receipt whose execution did not succeed is reported as `unverified`. A
+  failing run can still be recorded honestly as `passed: false`. When a tool
+  exposes no outcome at all, behavior is unchanged: nothing is inferred.
 
 ## [0.16.1-rc.1] - 2026-10-01
 

@@ -1,14 +1,12 @@
 # Scope
 
-**Scope:** what AndMar AI `v0.16.0` guarantees today, what is optional, and
+**Scope:** what AndMar AI guarantees today, what is optional, and
 what it deliberately does not promise. It is a scope record, not an
 architecture document: the system explanation is [OVERVIEW.md](OVERVIEW.md)
 and the boundaries are [ARCHITECTURE.md](ARCHITECTURE.md). Forward-looking
 triggers with their evidence requirements live in [ROADMAP.md](ROADMAP.md).
 
-Current baseline: **v0.16.0**. This document replaces the retired
-`MVP-SCOPE.md`, which described the earlier 0.1-era baseline and had become
-contradictory (it denied Engram and Delivery, which now exist).
+Current baseline: **v0.16.1-rc.1**.
 
 ## Current baseline: the core evolution is complete
 
@@ -68,7 +66,10 @@ requirements, evidence pointers and recovery state. It travels with Git, does
 not use `ctx.storage` as its source of truth, is not semantic memory, and is
 excluded from the working-state revision fingerprint. The deterministic
 helpers (`validate-work-ledger.mjs`, `work-ledger-lifecycle.mjs`,
-`work-unit-checkpoint.mjs`, `working-state-revision.mjs`) stay scripts.
+`work-unit-checkpoint.mjs`, `working-state-revision.mjs`) stay scripts. The
+`andmar-ai` repository itself is self-hosted and ignores `.andmar/`, so it never
+versions its own execution state; the general policy for consumer projects is
+unchanged.
 
 ### Completion
 
@@ -78,7 +79,8 @@ requires every Task Contract requirement to be resolved and evidenced for the
 same revision, requires clean docs/version obligations, and closes the Task
 Contract in the same operation -> Ledger `finalize --revision`.
 
-There is no independent-review subsystem. No second LLM judges completion.
+`andmar_task_contract(op=close)` only blocks an explicit cancellation with a
+reason; the gate is the only transition to `completed`.
 
 ### Delivery
 
@@ -120,17 +122,6 @@ These are omissions by design, not missing TODOs:
 - a custom terminal dashboard, file leases, or a generic plugin framework
   on top of the capability framework;
 - autonomous PR/release publication.
-
-## Legacy compatibility
-
-Compatibility paths remain only because tests still cover them; the normal
-agent flow neither uses nor recommends them:
-
-- the manual `testsPassed` completion input;
-- legacy completion-seal / completed-close compatibility.
-
-Removing them is a separate breaking change with real evidence, not part of
-routine cleanup.
 
 ## Future work requires measured friction
 

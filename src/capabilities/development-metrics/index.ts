@@ -1,6 +1,6 @@
 import { readdir, readFile } from "node:fs/promises"
 import { join } from "node:path"
-import type { Capability, StateStore } from "../../core/contracts.ts"
+import type { Capability } from "../../core/contracts.ts"
 import type { SemanticEventInput } from "../../core/observability.ts"
 
 const METRICS_KEY = "development-metrics/v1/aggregate"
@@ -259,9 +259,7 @@ export async function readLedgerMetrics(projectRoot: string | undefined): Promis
       else result.workUnits.pending += 1
     }
 
-    for (const match of content.matchAll(/\b(WU-\d+|W\d+):\s*active\s*→\s*done\b/gi)) {
-      result.history.completionTransitions += 1
-    }
+    result.history.completionTransitions += (content.match(/\b(WU-\d+|W\d+):\s*active\s*→\s*done\b/gi) ?? []).length
     for (const match of content.matchAll(/\b(WU-\d+|W\d+):\s*done\s*→\s*active\b([^\n]*)/gi)) {
       result.history.reopenEvents += 1
       reopened.add(`${entry.name}:${match[1]?.toUpperCase()}`)

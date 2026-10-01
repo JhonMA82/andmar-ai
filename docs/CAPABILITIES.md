@@ -16,7 +16,7 @@ For purpose, boundaries, state ownership and failure behavior see the canonical
 | `lifecycle` | 4 | Deterministic documentation/version impact and portable Work Unit tracking. | `andmar_change_impact`<br>`andmar_work_status`<br>`andmar_work_amend`<br>`andmar_work_resume` |
 | `routing` | 1 | Deterministic minimum-sufficient model profile selection. | `andmar_route` |
 | `system` | 1 | Core safety rails, status and lightweight execution journaling. | `andmar_status` |
-| `task-contract` | 3 | Persist Task Contract obligations and enforce the evidence-derived completion boundary. | `andmar_task_contract`<br>`andmar_completion_gate` |
+| `task-contract` | 4 | Persist Task Contract obligations and enforce the evidence-derived completion boundary. | `andmar_task_contract`<br>`andmar_completion_gate` |
 | `verification` | 5 | Revision-bound verification receipts resolved internally from observed OpenCode execution evidence, including the observed process outcome (exit code, signal, timeout). | `andmar_record_receipt`<br>`andmar_verify_revision`<br>`andmar_suggest_checks` |
 
 _Source of truth for registration: `src/generated/capabilities.ts`._

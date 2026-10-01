@@ -180,9 +180,8 @@ aquí.
 Lo que sí es específico de esta capability:
 
 - el gate **no** acepta un booleano manual como fuente de verdad para
-  verification: en el flujo normal el caller no envía `testsPassed`; el gate lo
-  deriva desde el estado AndMar de la misma revisión. El viejo objeto
-  `evidence` se conserva solo por compatibilidad;
+  verification: el caller no puede declarar un check en verde; el gate lo deriva
+  desde el estado AndMar de la misma revisión;
 - para tareas que genuinamente no requieren checks, el gate acepta
   `requiredChecks: []` explícito;
 - pasar los tests demuestra solo lo que esos tests cubren; no demuestra que la
@@ -229,11 +228,11 @@ de nada.
 > `.andmar/work/**` is operational metadata and is excluded from the working-state revision used to bind code/product verification evidence.
 
 - **Portabilidad sin invalidación recursiva:** el Work Ledger (`.andmar/work/**`) puede y suele estar versionado en Git, permitiendo continuidad entre ramas y máquinas.
-- **Exclusión del fingerprint de código/producto:** excluir `.andmar/work/**` del cálculo de la revisión no lo vuelve \"invisible\" ni lo ignora en el repositorio; simplemente garantiza que registrar notas, punteros de evidencia en `EVIDENCE.md` o actualizar el progreso de unidades en `WORK.md` no altere la identidad del código verificado (evitando evidencia auto-invalidante).
+- **Exclusión del fingerprint de código/producto:** excluir `.andmar/work/**` del cálculo de la revisión no lo vuelve "invisible" ni lo ignora en el repositorio; simplemente garantiza que registrar notas, punteros de evidencia en `EVIDENCE.md` o actualizar el progreso de unidades en `WORK.md` no altere la identidad del código verificado (evitando evidencia auto-invalidante). La exclusión es independiente de si el proyecto versiona o ignora `.andmar/`: el propio repositorio `andmar-ai` lo ignora mediante su `.gitignore` para no versionar su propio estado de ejecución.
 - **Garantía de frescura:** cualquier cambio en archivos de código o producto (`src/**`, tests, scripts, configuración) altera inmediatamente la revisión e invalida cualquier evidencia previa.
 - **Cálculo determinista:** se realiza mediante `node "${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/andmar-ai/scripts/working-state-revision.mjs"` (helper instalado de AndMar) o su comando shell equivalente con exclusión explícita `:!.andmar/work/**`.
 
-## Identidad de ejecuciones en Code Mode (0.16.1-rc.1)
+## Identidad de ejecuciones en Code Mode
 
 OpenCode 2.0.20 puede entregar el mismo ID a varios comandos hijos de un
 `execute`. AndMar conserva el ID nativo para la primera observación y asigna

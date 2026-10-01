@@ -105,7 +105,7 @@ export function deriveIntakeMode(input: DeriveIntakeModeInput): IntakeMode {
     return "direct";
   }
 
-  // If needsRefinement is explicitly false without sufficiency score (e.g. legacy/direct tests)
+  // Explicitly not refined, with no sufficiency score to judge.
   if (input.needsRefinement === false && input.specificationSufficiency === undefined) {
     return "direct";
   }

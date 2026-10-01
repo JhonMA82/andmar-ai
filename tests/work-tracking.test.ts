@@ -573,43 +573,22 @@ test("checkpoint cannot resume from an older unrelated message or synthetic inpu
   } finally { cleanup(); await rm(root, { recursive: true, force: true }) }
 })
 
-test("legacy boundary missing: explicit one-time recovery persists across reads and restart", async () => {
-  const { root, dir } = await fixture()
-  const first = mock(root)
-  const dispose = await setup(first)
-  try {
-    await runWorkUnitLifecycle("block", dir, "WU-1", { reason: "Legacy decision" })
-    const path = join(dir, "WORK.md")
-    await writeFile(path, (await readFile(path, "utf8")).replace(/^.*Checkpoint (?:At|User):.*\n/gm, ""))
-    first.user("cannot-prove")
-    await first.tools.work_status.execute({ workId: "task" }, context)
-    const refused = await first.tools.work_resume.execute({ reason: "Legacy recovery" }, context)
-    assert.match(refused.content, /legacy checkpoint.*boundary.*ask/i)
-    const established = await readFile(path, "utf8")
-    assert.match(established, /Checkpoint At:/)
-    await first.tools.work_status.execute({ workId: "task" }, context)
-    assert.equal(await readFile(path, "utf8"), established)
-    dispose()
-    const second = mock(root)
-    const cleanup = await setup(second)
-    try {
-      second.user("new-human-decision")
-      await second.tools.work_status.execute({ workId: "task" }, context)
-      assert.equal(content(await second.tools.work_resume.execute({ reason: "Confirmed after recovery boundary" }, context)).status, "active")
-    } finally { cleanup() }
-  } finally { dispose(); await rm(root, { recursive: true, force: true }) }
-})
-
-
-test("pure checkpoint ordering: durable millis, DateTime, legacy context/native IDs, no != shortcut", () => {
-  assert.equal(checkpointResponseAfter({ checkpointAt: 100, checkpointUser: "origin" }, [{ id: "reply", time: { created: { epochMilliseconds: 101 } } }]), true)
-  for (const created of [99, 100, NaN]) assert.equal(checkpointResponseAfter({ checkpointAt: 100 }, [{ id: "reply", time: { created } }]), false)
-  assert.equal(checkpointResponseAfter({ checkpointAt: 100, checkpointUser: "origin" }, [{ id: "origin", time: { created: 101 } }]), false)
-  assert.equal(checkpointResponseAfter({ checkpointUser: "origin" }, [{ id: "origin" }, { id: "reply" }]), true)
-  assert.equal(checkpointResponseAfter({ checkpointUser: "origin" }, [{ id: "unrelated" }]), false)
-  const native = (prefix: string) => `msg_${prefix}${"A".repeat(14)}`
-  assert.equal(checkpointResponseAfter({ checkpointUser: native("0123456789ab") }, [{ id: native("0123456789ac") }]), true)
-  assert.equal(checkpointResponseAfter({ checkpointUser: native("0123456789ab") }, [{ id: native("0123456789aa") }]), false)
+test("checkpoint response is decided by the recorded temporal boundary", () => {
+  // DateTime.Utc shape returned by ctx.session.context.
+  assert.equal(
+    checkpointResponseAfter({ checkpointAt: 100 }, [{ id: "reply", time: { created: { epochMilliseconds: 101 } } }]),
+    true,
+  )
+  // Encoded clients expose plain millis.
+  assert.equal(checkpointResponseAfter({ checkpointAt: 100 }, [{ id: "reply", time: { created: 101 } }]), true)
+  // Same instant, older instant, and an unobservable timestamp never count as a
+  // response: the decision must be strictly later than the checkpoint.
+  for (const created of [99, 100, NaN, undefined]) {
+    assert.equal(checkpointResponseAfter({ checkpointAt: 100 }, [{ id: "reply", time: { created } }]), false)
+  }
+  // No messages, and no recorded boundary, cannot authorize a resume.
+  assert.equal(checkpointResponseAfter({ checkpointAt: 100 }, []), false)
+  assert.equal(checkpointResponseAfter({ checkpointAt: null }, [{ id: "reply", time: { created: 101 } }]), false)
 })
 
 test("resume compares exact boundary under the Ledger lock and never resumes a newer checkpoint", async () => {

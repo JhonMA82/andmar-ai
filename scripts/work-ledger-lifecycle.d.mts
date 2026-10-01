@@ -33,7 +33,7 @@ export interface LedgerResult {
   blockedReason?: string | null
   [key: string]: unknown
 }
-export function runWorkUnitLifecycle(command: string, targetDir: string, unitArg?: string, options?: { reason?: string; establishBoundary?: boolean; expectedCheckpoint?: { user: string | null; at: number | null }; checkpointUser?: string; evidence?: string; next?: string; revision?: string; files?: string[]; discovery?: Discovery }): Promise<LedgerResult>
+export function runWorkUnitLifecycle(command: string, targetDir: string, unitArg?: string, options?: { reason?: string; expectedCheckpoint?: { user: string | null; at: number | null }; checkpointUser?: string; evidence?: string; next?: string; revision?: string; files?: string[]; discovery?: Discovery }): Promise<LedgerResult>
 export function normalizeFiles(files: string[], workspace: string): string[]
 export function scopeDrift(touched: string[], expected: string[]): string[]
 export function classifyDiscovery(input: Discovery): { checkpointRequired: boolean; reasons: string[]; continue: boolean }

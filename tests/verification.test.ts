@@ -20,7 +20,6 @@ import {
   isValidExecutionId,
   normalizeCommand,
   resolveCompatibleExecution,
-  validateReceiptEvidence,
   type ExecutionEvidence,
 } from "../src/capabilities/verification/evidence.ts"
 import { detectProjectChecks } from "../src/capabilities/verification/detect.ts"
@@ -139,17 +138,40 @@ test("detection reports unknown when no signal files exist", () => {
   assert.deepEqual(detectProjectChecks([]), { ecosystems: [], unknown: true })
 })
 
-test("a passed receipt without execution evidence is refused", () => {
-  assert.equal(validateReceiptEvidence({ revision: "rev-a", passed: true }, undefined).ok, false)
-  assert.equal(validateReceiptEvidence({ revision: "rev-a", passed: true, executionId: "  " }, undefined).ok, false)
-  assert.equal(validateReceiptEvidence({ revision: "rev-a", passed: true, executionId: "exec-1" }, undefined).ok, false)
-  const refused = validateReceiptEvidence({ revision: "rev-a", passed: true }, undefined)
-  assert.match((refused.ok ? "" : refused.reason), /executionId/)
+test("a passed receipt without a same-session same-command execution is refused", () => {
+  const observed = [{ ...evidence({ executionId: "exec-1" }), sessionID: "ses-1", commandNormalized: "bun test" }]
+  const criteria = { sessionID: "ses-1", command: "bun test", passed: true, revision: "rev-a" }
+
+  // Nothing observed at all in this session.
+  const none = resolveCompatibleExecution([], criteria)
+  assert.equal(none.ok, false)
+  assert.match((none.ok ? "" : none.reason), /no observed OpenCode execution/)
+
+  // Observed, but for another command.
+  const other = resolveCompatibleExecution(
+    [{ ...evidence({ executionId: "exec-2" }), sessionID: "ses-1", commandNormalized: "bun run typecheck" }],
+    criteria,
+  )
+  assert.equal(other.ok, false)
+  assert.match((other.ok ? "" : other.reason), /command mismatch/)
+
+  // Observed, but in another session.
+  const foreign = resolveCompatibleExecution(
+    [{ ...evidence({ executionId: "exec-3" }), sessionID: "ses-2", commandNormalized: "bun test" }],
+    criteria,
+  )
+  assert.equal(foreign.ok, false)
+  assert.match((foreign.ok ? "" : foreign.reason), /another session|current session/)
+
+  assert.equal(resolveCompatibleExecution(observed, criteria).ok, true)
 })
 
 test("a failed execution can never become a passed receipt", () => {
   const failed = evidence({ executionId: "exec-fail", status: "error" })
-  const result = validateReceiptEvidence({ revision: "rev-a", passed: true, executionId: "exec-fail" }, failed)
+  const result = resolveCompatibleExecution(
+    [{ ...failed, sessionID: "ses-1", commandNormalized: "bun test" }],
+    { sessionID: "ses-1", command: "bun test", passed: true, revision: "rev-a" },
+  )
   assert.equal(result.ok, false)
   assert.match((result.ok ? "" : result.reason), /failed execution|cannot become|did not complete/)
 })
@@ -157,10 +179,6 @@ test("a failed execution can never become a passed receipt", () => {
 test("a non-zero observed exit code can never become a passed receipt", () => {
   const failed = evidence({ executionId: "exec-exit", exitCode: 1 })
   assert.equal(isSuccessfulExecution(failed), false)
-
-  const legacy = validateReceiptEvidence({ revision: "rev-a", passed: true, executionId: "exec-exit" }, failed)
-  assert.equal(legacy.ok, false)
-  assert.match((legacy.ok ? "" : legacy.reason), /exited with code 1|non-zero exit/)
 
   const resolved = resolveCompatibleExecution([{ ...failed, sessionID: "ses-1", commandNormalized: "bun test" }], {
     sessionID: "ses-1",
@@ -351,22 +369,18 @@ test("a passed receipt is unverified when its backing execution did not succeed"
   assert.equal(green.ok, true)
   assert.deepEqual(green.unverified, [])
 
-  // Legacy evidence without an observed outcome keeps verifying.
-  const legacy = summarizeVerification(
+  // An execution whose tool exposes no exit code stays unknown, not failed.
+  const unobservable = summarizeVerification(
     "rev-a",
-    [receipt({ revision: "rev-a", check: "tests", executionId: "exec-legacy" })],
+    [receipt({ revision: "rev-a", check: "tests", executionId: "exec-noexit" })],
     ["tests"],
-    { "exec-legacy": { executionId: "exec-legacy", status: "completed" } },
+    { "exec-noexit": { executionId: "exec-noexit", status: "completed" } },
   )
-  assert.equal(legacy.ok, true)
+  assert.equal(unobservable.ok, true)
 })
 
 test("a valid completed execution produces acceptable evidence", () => {
   const completed = evidence({ executionId: "exec-1" })
-  assert.equal(
-    validateReceiptEvidence({ revision: "rev-a", passed: true, executionId: "exec-1" }, completed).ok,
-    true,
-  )
   const summary = summarizeVerification(
     "rev-a",
     [
@@ -382,9 +396,12 @@ test("a valid completed execution produces acceptable evidence", () => {
 
 test("evidence bound to another revision cannot satisfy the current revision", () => {
   const bound = evidence({ executionId: "exec-1", revision: "rev-a" })
-  const result = validateReceiptEvidence({ revision: "rev-b", passed: true, executionId: "exec-1" }, bound)
-  assert.equal(result.ok, false)
-  assert.match((result.ok ? "" : result.reason), /bound to revision/)
+  const resolved = resolveCompatibleExecution(
+    [{ ...bound, sessionID: "ses-1", commandNormalized: "bun test" }],
+    { sessionID: "ses-1", command: "bun test", passed: true, revision: "rev-b" },
+  )
+  assert.equal(resolved.ok, false)
+  assert.match((resolved.ok ? "" : resolved.reason), /bound to revision/)
   const summary = summarizeVerification(
     "rev-b",
     [receipt({ revision: "rev-b", check: "tests", executionId: "exec-1" })],
@@ -424,7 +441,7 @@ test("passed receipts without evidence are unverified when executions are loaded
   assert.deepEqual(summary.unverified, ["tests", "typecheck"])
 })
 
-test("legacy receipts still verify when no execution map is supplied", () => {
+test("receipts are summarized from stored state without an execution map", () => {
   const summary = summarizeVerification("rev-a", [
     receipt({ revision: "rev-a", check: "tests" }),
     receipt({ revision: "rev-a", check: "typecheck" }),

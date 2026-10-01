@@ -75,36 +75,6 @@ export function contractKey(sessionID: string): string {
   return `task-contract/${sessionID}`
 }
 
-export interface CompletionSeal {
-  revision: string
-  taskKind: ChangeKind
-  contractStateToken?: string | undefined
-  at: number
-}
-
-export function completionSealKey(sessionID: string): string {
-  return `task-contract-completion/${sessionID}`
-}
-
-export function contractStateToken(contract: TaskContract): string {
-  return JSON.stringify({
-    id: contract.id,
-    taskKind: contract.taskKind,
-    status: contract.status,
-    updatedAt: contract.updatedAt,
-    requirements: contract.requirements.map((requirement) => ({
-      id: requirement.id,
-      status: requirement.status,
-      evidence: requirement.evidence.map((entry) => ({
-        type: entry.type,
-        revision: entry.revision ?? null,
-        at: entry.at,
-      })),
-    })),
-    constraints: contract.constraints.map((constraint) => constraint.id),
-  })
-}
-
 // ---------------------------------------------------------------------------
 // Trivial-task policy (no mandatory contract ceremony).
 // ---------------------------------------------------------------------------
@@ -198,34 +168,6 @@ export function createTaskContract(
       updatedAt: now,
     },
   }
-}
-
-export function validateTaskContract(contract: TaskContract): string[] {
-  const errors: string[] = []
-  if (!contract || typeof contract !== "object") return ["contract must be an object"]
-  if (typeof contract.taskKind !== "string" || contract.taskKind.trim() === "") errors.push("taskKind must be non-empty")
-  if (typeof contract.goal !== "string" || contract.goal.trim() === "") errors.push("goal must be non-empty")
-  if (!Array.isArray(contract.requirements) || contract.requirements.length === 0) {
-    errors.push("requirements must be non-empty")
-  }
-  const reqIDs = new Set<string>()
-  for (const req of contract.requirements ?? []) {
-    if (reqIDs.has(req.id)) errors.push(`duplicate requirement id ${req.id}`)
-    reqIDs.add(req.id)
-    if (!["pending", "satisfied", "blocked", "skipped"].includes(req.status)) {
-      errors.push(`requirement ${req.id} has invalid status ${req.status}`)
-    }
-    if ((req.status === "blocked" || req.status === "skipped") && !req.reason) {
-      errors.push(`requirement ${req.id} is ${req.status} without a reason`)
-    }
-  }
-  const conIDs = new Set<string>()
-  for (const con of contract.constraints ?? []) {
-    if (conIDs.has(con.id)) errors.push(`duplicate constraint id ${con.id}`)
-    conIDs.add(con.id)
-  }
-  if (!["active", "blocked", "completed"].includes(contract.status)) errors.push("invalid contract status")
-  return errors
 }
 
 // ---------------------------------------------------------------------------

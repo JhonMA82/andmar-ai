@@ -3,13 +3,15 @@ import assert from "node:assert/strict"
 import {
   analyzeDocumentationImpact,
   evaluateCompletion,
-  evaluateCompletionWithVerification,
   inferVersionImpact,
 } from "../src/core/lifecycle.ts"
 
 const rules = [
   { id: "api", code: ["src/api/**"], docs: ["docs/api/**", "README.md"] },
 ]
+
+const CLEAN = { docsStatus: "clean", versionStatus: "clean" } as const
+const GREEN = { ok: true, missing: [], failed: [], unverified: [], reasons: [] }
 
 test("marks mapped documentation stale when implementation changes alone", () => {
   const result = analyzeDocumentationImpact(["src/api/users.ts"], rules)
@@ -29,24 +31,7 @@ test("infers conservative semver impact for public changes", () => {
   assert.equal(inferVersionImpact({ kind: "internal", touchesPublicSurface: false }), "none")
 })
 
-test("completion evidence is invalidated by revision changes", () => {
-  const result = evaluateCompletion("rev-b", {
-    revision: "rev-a",
-    testsPassed: true,
-    docsStatus: "clean",
-    versionStatus: "clean",
-  })
-  assert.equal(result.ok, false)
-  assert.match(result.reasons.join(" "), /stale/)
-})
-
-test("completion gate cannot formally verify when required verification is missing", () => {
-  const evidence = {
-    revision: "rev-a",
-    testsPassed: true,
-    docsStatus: "clean" as const,
-    versionStatus: "clean" as const,
-  }
+test("completion cannot be formally verified when required verification is missing", () => {
   const missing = {
     ok: false,
     missing: ["tests", "typecheck"],
@@ -54,19 +39,15 @@ test("completion gate cannot formally verify when required verification is missi
     unverified: [],
     reasons: ["missing receipts for: tests, typecheck"],
   }
-  const gated = evaluateCompletionWithVerification("rev-a", evidence, missing, ["tests", "typecheck"])
-  assert.equal(gated.ok, false)
-  assert.match(gated.reasons.join(" "), /required verification/)
-  assert.match(gated.reasons.join(" "), /missing receipts/)
+  const result = evaluateCompletion("rev-a", CLEAN, missing, ["tests", "typecheck"])
+  assert.equal(result.ok, false)
+  assert.match(result.reasons.join(" "), /required verification/)
+  assert.match(result.reasons.join(" "), /missing receipts/)
+  // The revision is named, so the agent can see which state is unverified.
+  assert.match(result.reasons.join(" "), /rev-a/)
 })
 
-test("completion gate cannot be bypassed with manual testsPassed when verification failed", () => {
-  const evidence = {
-    revision: "rev-a",
-    testsPassed: true,
-    docsStatus: "clean" as const,
-    versionStatus: "clean" as const,
-  }
+test("completion is denied when a required check failed", () => {
   const failed = {
     ok: false,
     missing: [],
@@ -74,16 +55,10 @@ test("completion gate cannot be bypassed with manual testsPassed when verificati
     unverified: [],
     reasons: ["failed checks: tests"],
   }
-  assert.equal(evaluateCompletionWithVerification("rev-a", evidence, failed, ["tests"]).ok, false)
+  assert.equal(evaluateCompletion("rev-a", CLEAN, failed, ["tests"]).ok, false)
 })
 
-test("completion gate cannot be bypassed when receipts are unverified", () => {
-  const evidence = {
-    revision: "rev-a",
-    testsPassed: true,
-    docsStatus: "clean" as const,
-    versionStatus: "clean" as const,
-  }
+test("completion is denied when a receipt is unverified", () => {
   const unverified = {
     ok: false,
     missing: [],
@@ -91,29 +66,42 @@ test("completion gate cannot be bypassed when receipts are unverified", () => {
     unverified: ["tests"],
     reasons: ["unverified receipts (no valid completed same-revision execution): tests"],
   }
-  const gated = evaluateCompletionWithVerification("rev-a", evidence, unverified, ["tests"])
-  assert.equal(gated.ok, false)
-  assert.match(gated.reasons.join(" "), /unverified/)
+  const result = evaluateCompletion("rev-a", CLEAN, unverified, ["tests"])
+  assert.equal(result.ok, false)
+  assert.match(result.reasons.join(" "), /unverified/)
 })
 
-test("completion gate passes when required verification is satisfied", () => {
-  const evidence = {
-    revision: "rev-a",
-    testsPassed: true,
-    docsStatus: "clean" as const,
-    versionStatus: "clean" as const,
-  }
-  const clean = { ok: true, missing: [], failed: [], unverified: [], reasons: [] }
-  assert.equal(evaluateCompletionWithVerification("rev-a", evidence, clean, ["tests", "typecheck"]).ok, true)
+test("completion passes when required verification is satisfied", () => {
+  assert.equal(evaluateCompletion("rev-a", CLEAN, GREEN, ["tests", "typecheck"]).ok, true)
 })
 
-test("completion gate stays proportional when no checks are genuinely required", () => {
-  const evidence = {
-    revision: "rev-a",
-    testsPassed: true,
-    docsStatus: "not-applicable" as const,
-    versionStatus: "not-applicable" as const,
+test("completion is denied by stale documentation and a required version bump", () => {
+  const stale = evaluateCompletion("rev-a", { docsStatus: "stale", versionStatus: "clean" }, GREEN, ["tests"])
+  assert.equal(stale.ok, false)
+  assert.match(stale.reasons.join(" "), /documentation is potentially stale/)
+
+  const needsVersion = evaluateCompletion("rev-a", { docsStatus: "clean", versionStatus: "required" }, GREEN, ["tests"])
+  assert.equal(needsVersion.ok, false)
+  assert.match(needsVersion.reasons.join(" "), /version\/changelog update is still required/)
+})
+
+test("a denied requirement gate is reported with its own reasons", () => {
+  const pending = {
+    ok: false,
+    pending: ["REQ-3"],
+    blocked: [],
+    missingEvidence: [],
+    stale: [],
+    reasons: ["pending requirements: REQ-3"],
+    total: 3,
+    satisfied: 2,
   }
+  const result = evaluateCompletion("rev-a", CLEAN, GREEN, ["tests"], pending)
+  assert.equal(result.ok, false)
+  assert.match(result.reasons.join(" "), /task contract: pending requirements: REQ-3/)
+})
+
+test("completion stays proportional when no checks are genuinely required", () => {
   const missing = {
     ok: false,
     missing: ["tests"],
@@ -121,7 +109,7 @@ test("completion gate stays proportional when no checks are genuinely required",
     unverified: [],
     reasons: ["missing receipts for: tests"],
   }
-  assert.equal(evaluateCompletionWithVerification("rev-a", evidence, missing, []).ok, true)
+  assert.equal(evaluateCompletion("rev-a", CLEAN, missing, []).ok, true)
 })
 
 test("Work Ledger path touches neither public surface nor documentation rules", () => {

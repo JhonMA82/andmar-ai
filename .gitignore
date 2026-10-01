@@ -61,6 +61,10 @@ desktop.ini
 .harness/
 backlog/
 
+# AndMar is self-hosted here: this repository must not version its own
+# Work Ledger execution state. Consumer repositories keep the general policy.
+.andmar/
+
 # Manual benchmark runs may contain private source/session exports.
 bench/results/*
 !bench/results/.gitkeep

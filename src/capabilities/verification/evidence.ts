@@ -1,13 +1,13 @@
 // Observed execution evidence (pure helpers, no OpenCode imports).
 //
-// Verification flow (v0.4.x):
+// Verification flow:
 //
 // ```text
 // native OpenCode shell/tools
 //         ↓
 // tool.execute.after (authoritative source)
 //         ↓
-// ObservedExecution (sessionID, callID, command, result, timestamp...)
+// ObservedExecution (executionId, sessionID, command, result, timestamp...)
 //         ↓
 // andmar_record_receipt (check, revision, command)
 //         ↓
@@ -22,9 +22,9 @@
 //   same-session, same-command observed execution whose observed process
 //   outcome is successful (exit code 0 when observable, no signal, no
 //   timeout).
-// - The agent never provides `executionId`/`callID`; that identifier stays
-//   internal for audit. `andmar_record_receipt` resolves it from
-//   (sessionID, normalized command).
+// - The agent never provides `executionId`; that identifier stays internal for
+//   audit. `andmar_record_receipt` resolves it from (sessionID, normalized
+//   command).
 // - Evidence is bound to one working-state revision on first use and can
 //   never satisfy a different revision.
 // - Only minimal metadata is stored; full command output is never stored
@@ -200,14 +200,11 @@ function digestValue(value: unknown): string | undefined {
 
 interface HookEventLike {
   id?: unknown
-  callID?: unknown
   tool?: unknown
   status?: unknown
   sessionID?: unknown
   /** Official stable field: observed tool arguments. */
   input?: unknown
-  /** Legacy/alias some callers use for arguments; accepted for robustness. */
-  args?: unknown
   result?: unknown
   error?: unknown
 }
@@ -225,7 +222,7 @@ interface HookEventLike {
  *   sessionID: Session.ID,
  *   agent: Agent.ID,
  *   messageID: SessionMessage.ID,
- *   id: Tool.CallID,      // stable call id — NOT `callID`
+ *   id: Tool.CallID,      // the stable call id
  *   input: unknown,       // observed arguments (bash: { command })
  *   status: "completed" | "error",
  *   result?: Tool.Result, // completed (shell: metadata.{output,truncated,exit?,signal?,timeout?})
@@ -233,7 +230,7 @@ interface HookEventLike {
  * }
  * ```
  *
- * `event.callID` is only a legacy fallback and must not be relied on.
+ * `event.id` is the only stable call identifier on this hook.
  * A `status: "completed"` tool call is not by itself a successful check:
  * a shell command that exits non-zero still completes as a tool call, so the
  * observed process outcome (`metadata.exit`, plus `signal`/`timeout` for a
@@ -243,7 +240,7 @@ interface HookEventLike {
  * are persisted. Full inputs/outputs are never persisted.
  */
 export function buildExecutionEvidence(event: HookEventLike, now: number = Date.now()): ExecutionEvidence | undefined {
-  const rawId = typeof event.id === "string" && event.id.trim() !== "" ? event.id : event.callID
+  const rawId = event.id
   if (!isValidExecutionId(rawId)) return undefined
   if (isAndMarTool(event.tool) || event.tool === "execute") return undefined
   const tool = typeof event.tool === "string" && event.tool.trim() !== "" ? event.tool : "unknown"
@@ -257,8 +254,7 @@ export function buildExecutionEvidence(event: HookEventLike, now: number = Date.
   if (typeof event.sessionID === "string" && event.sessionID !== "") {
     evidence.sessionID = event.sessionID
   }
-  const rawInput = event.input !== undefined ? event.input : event.args
-  const command = extractCommand(rawInput)
+  const command = extractCommand(event.input)
   if (command !== undefined) {
     evidence.command = command
     evidence.commandNormalized = normalizeCommand(command)
@@ -280,68 +276,6 @@ export function buildExecutionEvidence(event: HookEventLike, now: number = Date.
 /** Stable collision suffix; keeps native IDs and existing receipts compatible. */
 export function collisionExecutionId(nativeId: string, ordinal: number): string {
   return `observed-${createHash("sha256").update(nativeId).digest("hex")}-${ordinal}`
-}
-
-export interface ReceiptEvidenceInput {
-  revision: string
-  passed: boolean
-  executionId?: string
-}
-
-/**
- * Legacy executionId-based validation (kept for `verify_revision`
- * linkage checks and backward-compat unit coverage).
- * New receipts resolve via `resolveCompatibleExecution` instead of
- * requiring the agent to supply `executionId`.
- * Pure and deterministic; storage lookups happen in the caller.
- */
-export function validateReceiptEvidence(
-  input: ReceiptEvidenceInput,
-  execution: ExecutionEvidence | undefined,
-): { ok: true } | { ok: false; reason: string } {
-  const executionId = input.executionId?.trim() ?? ""
-  if (!input.passed) {
-    if (executionId === "") return { ok: true }
-    if (!isValidExecutionId(input.executionId)) {
-      return { ok: false, reason: "executionId is not a valid non-empty id" }
-    }
-    if (!execution) {
-      return { ok: false, reason: `unknown executionId "${executionId}": no observed OpenCode execution` }
-    }
-    if (execution.revision !== undefined && execution.revision !== input.revision) {
-      return {
-        ok: false,
-        reason: `execution "${executionId}" is bound to revision "${execution.revision}" and cannot satisfy revision "${input.revision}"`,
-      }
-    }
-    return { ok: true }
-  }
-
-  if (!isValidExecutionId(input.executionId)) {
-    return {
-      ok: false,
-      reason: "passed receipts require executionId: record only the executionId observed via OpenCode execute.after for the command that just ran",
-    }
-  }
-  if (!execution) {
-    return {
-      ok: false,
-      reason: `unknown executionId "${executionId}": no observed OpenCode execution; run the check first through native OpenCode shell/tools`,
-    }
-  }
-  if (!isSuccessfulExecution(execution)) {
-    return {
-      ok: false,
-      reason: unsuccessfulExecutionReason(execution),
-    }
-  }
-  if (execution.revision !== undefined && execution.revision !== input.revision) {
-    return {
-      ok: false,
-      reason: `execution "${executionId}" is bound to revision "${execution.revision}" and cannot satisfy revision "${input.revision}"; re-run the check on the current working state`,
-    }
-  }
-  return { ok: true }
 }
 
 export interface ReceiptResolutionCriteria {

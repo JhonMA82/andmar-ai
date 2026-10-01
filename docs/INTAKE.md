@@ -323,7 +323,7 @@ never prints the key.
 - No workflow, memory, scoring, embeddings, dashboard, telemetry, auto-tuning,
   or per-message evaluation. Pilot only.
 
-## Operational continuations (D-021)
+## Operational continuations (D-020)
 
 After a `completed` Task Contract, a new request that only operates on the
 already-approved result fast-paths as `continuation.fastPath=true`:

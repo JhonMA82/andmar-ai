@@ -189,28 +189,36 @@ test("completion_gate tool enforces stored verification and stays proportional",
   assert.ok(gate)
 
   const clean = {
-    revision: "rev-a",
-    testsPassed: true,
-    docsStatus: "clean",
-    versionStatus: "not-applicable",
+    docsStatus: "clean" as const,
+    versionStatus: "not-applicable" as const,
   }
 
-  // Only tests recorded: typecheck missing, so the gate must fail despite testsPassed:true.
-  const blocked: any = await gate.execute({ taskKind: "known-test", currentRevision: "rev-a", evidence: clean }, { sessionID: "ses-1" })
+  // Only tests recorded: typecheck missing, so the default required checks fail.
+  const blocked: any = await gate.execute(
+    { taskKind: "known-test", currentRevision: "rev-a", ...clean },
+    { sessionID: "ses-1" },
+  )
   const blockedJson = JSON.parse(blocked.content)
   assert.equal(blockedJson.ok, false)
   assert.match(blockedJson.reasons.join(" "), /required verification/)
+  assert.match(blockedJson.reasons.join(" "), /missing receipts/)
 
   // After recording the second check, the same revision becomes formally verified.
   await vTools.get("record_receipt").execute(
     { revision: "rev-a", check: "typecheck", passed: true, command: "bunx tsc --noEmit" },
     { sessionID: "ses-1" },
   )
-  const passed: any = await gate.execute({ taskKind: "known-test", currentRevision: "rev-a", evidence: clean }, { sessionID: "ses-1" })
+  const passed: any = await gate.execute(
+    { taskKind: "known-test", currentRevision: "rev-a", ...clean },
+    { sessionID: "ses-1" },
+  )
   assert.equal(JSON.parse(passed.content).ok, true)
 
   // Explicit opt-out for tasks that genuinely require no checks.
-  const trivial: any = await gate.execute({ taskKind: "known-test", currentRevision: "rev-a", evidence: clean, requiredChecks: [] }, { sessionID: "ses-1" })
+  const trivial: any = await gate.execute(
+    { taskKind: "known-test", currentRevision: "rev-a", ...clean, requiredChecks: [] },
+    { sessionID: "ses-1" },
+  )
   assert.equal(JSON.parse(trivial.content).ok, true)
 })
 

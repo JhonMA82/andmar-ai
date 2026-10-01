@@ -11,7 +11,7 @@ platform.
 The name is a compound of **Andrea + Mario**; it is deliberately broader than
 "AndMar Harness", because the harness is the first product.
 
-> Baseline: **v0.16.0** — the planned core evolution (Intake → Work Ledger →
+> Baseline: **v0.16.1-rc.1** — the planned core evolution (Intake → Work Ledger →
 > work-unit lifecycle → checkpoints → Completion → development metrics →
 > Delivery) is **complete**. Further additions need measured friction, not a new
 > phase.
@@ -97,6 +97,10 @@ delivery          (only when explicitly requested, one named operation)
 The step-by-step version, including which steps are conditional, is
 [docs/OVERVIEW.md](docs/OVERVIEW.md) §3.
 
+The Work Ledger lives in `.andmar/work/<work-id>/` and travels with Git in the
+projects you work on. This repository is self-hosted and ignores `.andmar/`, so
+AndMar never versions its own execution state.
+
 ## Quick start
 
 Local development install from this checkout:
@@ -146,10 +150,10 @@ AndMar -> OpenCode development + AndMar routing, evidence and completion rules
 ```
 
 The repository ships a model-agnostic `AndMar` primary agent in
-`assets/agents/andmar.md` (also discoverable project-locally under
-`.opencode/agents/andmar.md`). It uses native OpenCode tools for normal
-development and calls AndMar primitives only where they add deterministic
-value.
+`assets/agents/andmar.md`, the single source of truth. `bun run install:dev`
+copies it to `~/.config/opencode/agents/andmar.md`. It uses native OpenCode
+tools for normal development and calls AndMar primitives only where they add
+deterministic value.
 
 ## Tools
 

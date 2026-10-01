@@ -1,4 +1,4 @@
-import type { ChangeKind, DocumentationRule, CompletionEvidence } from "./contracts.ts"
+import type { ChangeKind, DocumentationRule } from "./contracts.ts"
 import type { RequirementGateResult } from "./task-contract.ts"
 import { matchesAny } from "./glob.ts"
 
@@ -38,18 +38,6 @@ export function inferVersionImpact(input: {
   return "none"
 }
 
-export function evaluateCompletion(currentRevision: string, evidence: CompletionEvidence): {
-  ok: boolean
-  reasons: string[]
-} {
-  const reasons: string[] = []
-  if (evidence.revision !== currentRevision) reasons.push("verification evidence is stale for the current revision")
-  if (!evidence.testsPassed) reasons.push("tests have not passed")
-  if (evidence.docsStatus === "stale") reasons.push("documentation is potentially stale")
-  if (evidence.versionStatus === "required") reasons.push("version/changelog update is still required")
-  return { ok: reasons.length === 0, reasons }
-}
-
 export interface VerificationGateStatus {
   ok: boolean
   missing: string[]
@@ -59,59 +47,57 @@ export interface VerificationGateStatus {
 }
 
 /**
- * Completion gate V2: exact-revision verification plus Task Contract
- * requirement gate, then docs/version obligations. Order is fixed:
- *
- * ```text
- * 1. revision verification
- * 2. Task Contract gate (pending/blocked/evidence/staleness)
- * 3. docs/version obligations
- * 4. completion
- * ```
- *
- * `contractGate` is undefined when no Task Contract exists for the session
- * (trivial tasks): the gate then behaves exactly like
- * `evaluateCompletionWithVerification`. No second LLM judges completion.
+ * Documentation and version obligations reported by the caller. They are the
+ * only completion inputs that cannot be derived from stored state.
  */
-export function evaluateCompletionV2(
-  currentRevision: string,
-  evidence: CompletionEvidence,
-  verification: VerificationGateStatus,
-  requiredChecks: readonly string[] = ["tests", "typecheck"],
-  contractGate?: RequirementGateResult | undefined,
-): { ok: boolean; reasons: string[] } {
-  const base = evaluateCompletionWithVerification(currentRevision, evidence, verification, requiredChecks)
-  const reasons = [...base.reasons]
-  if (contractGate && !contractGate.ok) {
-    for (const reason of contractGate.reasons) reasons.push(`task contract: ${reason}`)
-  }
-  return { ok: reasons.length === 0, reasons }
+export interface CompletionObligations {
+  docsStatus: "clean" | "updated" | "stale" | "not-applicable"
+  versionStatus: "clean" | "updated" | "required" | "not-applicable"
+}
+
+export interface CompletionResult {
+  ok: boolean
+  reasons: string[]
 }
 
 /**
- * Completion gate with required-verification invariant.
+ * The single completion boundary, enforced in fixed order:
  *
- * When `requiredChecks` is non-empty, stored verification for the exact
- * current revision must also be satisfied: a manual `testsPassed: true`
- * flag alone can never represent the revision as formally verified.
- * Pass `requiredChecks: []` only for tasks that genuinely require no
- * checks (proportional escape hatch, explicit and observable).
+ * ```text
+ * 1. exact-revision stored Verification for the required checks
+ * 2. Task Contract requirements (pending/blocked/evidence/staleness)
+ * 3. docs and version obligations
+ * ```
+ *
+ * Exact-revision identity is not a caller claim: `verification` is already
+ * summarized for `currentRevision` and `contractGate` is already evaluated
+ * against `currentRevision`, so stale evidence cannot satisfy completion. With
+ * non-empty `requiredChecks`, missing, failed or unverified receipts fail
+ * closed. `requiredChecks: []` is the explicit proportional escape hatch for
+ * tasks that genuinely require no checks.
+ *
+ * `contractGate` is undefined when no Task Contract exists for the session
+ * (trivial tasks). No second LLM judges completion.
  */
-export function evaluateCompletionWithVerification(
+export function evaluateCompletion(
   currentRevision: string,
-  evidence: CompletionEvidence,
+  obligations: CompletionObligations,
   verification: VerificationGateStatus,
-  requiredChecks: readonly string[] = ["tests", "typecheck"],
-): { ok: boolean; reasons: string[] } {
-  const base = evaluateCompletion(currentRevision, evidence)
-  if (requiredChecks.length === 0) return base
-  if (verification.ok) return base
-  const detail = verification.reasons.length > 0 ? verification.reasons.join("; ") : "required verification is incomplete"
-  return {
-    ok: false,
-    reasons: [
-      ...base.reasons,
+  requiredChecks: readonly string[],
+  contractGate?: RequirementGateResult | undefined,
+): CompletionResult {
+  const reasons: string[] = []
+  if (requiredChecks.length > 0 && !verification.ok) {
+    const detail =
+      verification.reasons.length > 0 ? verification.reasons.join("; ") : "required verification is incomplete"
+    reasons.push(
       `required verification (${requiredChecks.join(", ")}) is not satisfied for revision "${currentRevision}": ${detail}`,
-    ],
+    )
   }
+  if (contractGate && !contractGate.ok) {
+    for (const reason of contractGate.reasons) reasons.push(`task contract: ${reason}`)
+  }
+  if (obligations.docsStatus === "stale") reasons.push("documentation is potentially stale")
+  if (obligations.versionStatus === "required") reasons.push("version/changelog update is still required")
+  return { ok: reasons.length === 0, reasons }
 }

@@ -56,26 +56,16 @@ export function editedFiles(output: unknown): string[] {
 }
 
 type UserMessage = { id: string; time?: { created: number | { epochMilliseconds: number } } }
-const nativeMessageOrder = (id: string | null | undefined) => /^msg_[a-f0-9]{12}[0-9A-Za-z]{14}$/.test(id ?? "") ? id!.slice(4, 16) : null
-function checkpointOriginKnown(origin: string | null, messages: UserMessage[]) {
-  return !!origin && (messages.some((message) => message.id === origin) || nativeMessageOrder(origin) !== null)
-}
 
 // ctx.session.context returns DateTime.Utc; encoded clients expose millis.
-// ID-only legacy Ledgers use context order or V2's ascending native ID prefix.
-export function checkpointResponseAfter(ledger: Pick<LedgerResult, "checkpointAt" | "checkpointUser">, messages: UserMessage[]): boolean {
+// A blocked Work Unit always records `Checkpoint At`, so the temporal boundary
+// is decidable without relying on message identity or ordering.
+export function checkpointResponseAfter(ledger: Pick<LedgerResult, "checkpointAt">, messages: UserMessage[]): boolean {
   const latest = messages.at(-1)
-  if (!latest || latest.id === ledger.checkpointUser) return false
-  if (ledger.checkpointAt) {
-    const created = latest.time?.created
-    const millis = typeof created === "number" ? created : created?.epochMilliseconds
-    return typeof millis === "number" && Number.isFinite(millis) && millis > ledger.checkpointAt
-  }
-  const origin = messages.findIndex((message) => message.id === ledger.checkpointUser)
-  if (origin >= 0) return origin < messages.length - 1
-  const before = nativeMessageOrder(ledger.checkpointUser)
-  const after = nativeMessageOrder(latest.id)
-  return before !== null && after !== null && after > before
+  if (!latest || !ledger.checkpointAt) return false
+  const created = latest.time?.created
+  const millis = typeof created === "number" ? created : created?.epochMilliseconds
+  return typeof millis === "number" && Number.isFinite(millis) && millis > ledger.checkpointAt
 }
 
 interface Binding {
@@ -186,12 +176,6 @@ export async function setupWorkTracking({ ctx, observability }: CapabilityRuntim
           const messages = await users(context.sessionID)
           const boundary = { user: ledger.checkpointUser ?? null, at: ledger.checkpointAt ?? null }
           if (!checkpointResponseAfter(ledger, messages)) {
-            if (!boundary.at && !checkpointOriginKnown(boundary.user, messages)) {
-              // Only explicit legacy recovery (never bind/read) establishes
-              // the missing temporal boundary, once. This does not resume.
-              await runWorkUnitLifecycle("resume", binding.directory, unit.id, { ...input, expectedCheckpoint: boundary, establishBoundary: true, ...(messages.at(-1)?.id ? { checkpointUser: messages.at(-1).id } : {}) })
-              return { content: "refused: legacy checkpoint had no provable boundary; recovery boundary recorded once. Ask the user to resolve the displayed blocker now, then call work_resume. Reads and restart do not reset this boundary." }
-            }
             return { content: `refused: checkpoint is waiting for a user response created after ${boundary.at ? `checkpoint time ${boundary.at}` : `message ${boundary.user}`}; ask about the displayed blocker, then call work_resume with the decision` }
           }
           const result = await runWorkUnitLifecycle("resume", binding.directory, unit.id, { ...input, expectedCheckpoint: boundary })
