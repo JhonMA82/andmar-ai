@@ -270,7 +270,7 @@ export async function setupEngramIntegration(input: {
       const operation = engramOperation(event.tool)
       if (!operation) return
       const at = Date.now()
-      const rawInput = event.input !== undefined ? event.input : event.args
+      const rawInput = event.input
       try {
         const current = (await state.get<EngramIntegrationStatus>(ENGRAM_STATUS_KEY)) ?? status
         await state.set(ENGRAM_STATUS_KEY, {

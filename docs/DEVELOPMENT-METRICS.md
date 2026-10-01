@@ -39,10 +39,6 @@ Useful interventions include preventing invalid verification evidence, blocking 
 
 Friction currently includes duplicate exact-revision verification, delegation failure, and failed AndMar tool execution observed by OpenCode.
 
-There is no review section: the independent-review subsystem was removed, so
-`review.rejections`, `review.timeouts`, `review.invalidOutputs` and
-`review.unnecessaryRetriesPrevented` no longer exist.
-
 ## Recovery
 
 When a completed Work Unit is reopened, lifecycle clears its active Evidence and Checkpoint pointers. If a checkpoint existed, the lifecycle history retains only the previous checkpoint SHA as bounded recovery metadata. `andmar_report` therefore reports how many reopened units had a recovery checkpoint without preserving another runtime copy of the Ledger.

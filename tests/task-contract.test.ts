@@ -2,7 +2,6 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import {
   MAX_REQUIREMENTS,
-  contractStateToken,
   createTaskContract,
   evaluateRequirementGate,
   formatContractBrief,
@@ -12,7 +11,7 @@ import {
   updateRequirementStatus,
   type TaskContract,
 } from "../src/core/task-contract.ts"
-import { evaluateCompletionV2 } from "../src/core/lifecycle.ts"
+import { evaluateCompletion } from "../src/core/lifecycle.ts"
 import { taskContractCapability } from "../src/capabilities/task-contract/index.ts"
 
 function makeContract(): TaskContract {
@@ -156,13 +155,13 @@ test("completion V2 passes only with exact-revision verification and a green req
     ).contract
     contract = (updateRequirementStatus(contract, id, "satisfied") as { ok: true; contract: TaskContract }).contract
   }
-  const evidence = { revision: "rev-a", testsPassed: true, docsStatus: "clean" as const, versionStatus: "clean" as const }
+  const obligations = { docsStatus: "clean" as const, versionStatus: "clean" as const }
   const verification = { ok: true, missing: [], failed: [], unverified: [], reasons: [] }
   const contractGate = evaluateRequirementGate(contract, "rev-a")
-  assert.equal(evaluateCompletionV2("rev-a", evidence, verification, ["tests"], contractGate).ok, true)
+  assert.equal(evaluateCompletion("rev-a", obligations, verification, ["tests"], contractGate).ok, true)
 
   const pendingGate = evaluateRequirementGate(makeContract(), "rev-a")
-  assert.equal(evaluateCompletionV2("rev-a", evidence, verification, ["tests"], pendingGate).ok, false)
+  assert.equal(evaluateCompletion("rev-a", obligations, verification, ["tests"], pendingGate).ok, false)
 })
 
 test("completion V2 still blocks when required verification is missing", () => {
@@ -176,7 +175,7 @@ test("completion V2 still blocks when required verification is missing", () => {
     ).contract
     contract = (updateRequirementStatus(contract, id, "satisfied") as { ok: true; contract: TaskContract }).contract
   }
-  const evidence = { revision: "rev-a", testsPassed: true, docsStatus: "clean" as const, versionStatus: "clean" as const }
+  const obligations = { docsStatus: "clean" as const, versionStatus: "clean" as const }
   const unverified = {
     ok: false,
     missing: [],
@@ -185,7 +184,7 @@ test("completion V2 still blocks when required verification is missing", () => {
     reasons: ["unverified receipts (no valid completed same-revision execution): tests"],
   }
   const contractGate = evaluateRequirementGate(contract, "rev-a")
-  const result = evaluateCompletionV2("rev-a", evidence, unverified, ["tests"], contractGate)
+  const result = evaluateCompletion("rev-a", obligations, unverified, ["tests"], contractGate)
   assert.equal(result.ok, false)
   assert.match(result.reasons.join(" "), /required verification/)
 })
@@ -197,19 +196,13 @@ test("contract brief is a compact projection for post-compaction continuity", ()
   assert.match(brief, /CON-1 constraint/)
 })
 
-// --- The independent-review subsystem no longer exists. ---
+// --- Capability public surface ---
 
-test("task-contract exposes contract + completion only, with no review tool or child session", async () => {
+test("task-contract registers exactly the contract and completion tools", async () => {
   const state: any = createMemoryState()
   const { ctx, tools } = createToolHarness()
-  let createdSessions = 0
-  ctx.session.create = async (input: any) => {
-    createdSessions += 1
-    return { id: `unexpected-child-${createdSessions}`, ...input }
-  }
   await taskContractCapability.setup({ ctx, config: { models: {} } as any, state })
   assert.deepEqual([...tools.keys()].sort(), ["completion_gate", "task_contract"])
-  assert.equal(tools.get("request_review"), undefined)
 })
 
 // ---------------------------------------------------------------------------
@@ -403,9 +396,14 @@ test("negative smoke: green tests cannot complete a task with a pending README r
     state,
   })
   const gate = lHarness.tools.get("completion_gate")
-  const clean = { revision: "rev-a", testsPassed: true, docsStatus: "clean", versionStatus: "not-applicable" }
   const denied: any = await gate.execute(
-    { taskKind: "feature", currentRevision: "rev-a", evidence: clean, requiredChecks: ["tests", "typecheck"] },
+    {
+      taskKind: "feature",
+      currentRevision: "rev-a",
+      docsStatus: "clean",
+      versionStatus: "not-applicable",
+      requiredChecks: ["tests", "typecheck"],
+    },
     { sessionID: "ses-1" },
   )
   const deniedJson = JSON.parse(denied.content)
@@ -477,17 +475,23 @@ test("positive smoke: ordinary feature completes from requirements and exact-rev
     config: { documentation: { rules: [] }, versioning: { enabled: false, publicPaths: [] } } as any,
     state,
   })
-  const clean = { revision: "rev-a", testsPassed: true, docsStatus: "clean", versionStatus: "not-applicable" }
-  const passed: any = await lHarness.tools
-    .get("completion_gate")
-    .execute({ taskKind: "feature", currentRevision: "rev-a", evidence: clean, requiredChecks: ["tests", "typecheck"] }, { sessionID: "ses-1" })
+  const passed: any = await lHarness.tools.get("completion_gate").execute(
+    {
+      taskKind: "feature",
+      currentRevision: "rev-a",
+      docsStatus: "clean",
+      versionStatus: "not-applicable",
+      requiredChecks: ["tests", "typecheck"],
+    },
+    { sessionID: "ses-1" },
+  )
   const parsed = JSON.parse(passed.content)
   assert.equal(parsed.ok, true)
-  assert.equal("review" in parsed, false)
+  assert.equal(parsed.contractClosed, true)
 })
 
-// Removing Review must not create a bypass: a manual `testsPassed: true`
-// claim still cannot replace stored exact-revision Verification.
+// Stored Verification is the only authority: a green contract plus clean
+// docs/version status still cannot complete without exact-revision receipts.
 test("negative smoke: a green contract with clean docs/version is still denied without exact-revision verification", async () => {
   const state: any = createMemoryState()
   const harness = createToolHarness()
@@ -505,7 +509,7 @@ test("negative smoke: a green contract with clean docs/version is still denied w
     await contract.execute({ op: "update", requirementId: id, status: "satisfied" }, { sessionID: "ses-unverified" })
   }
   // Deliberately no `verification/rev-a/*` receipts and no
-  // `verification-evidence/*` entries: the caller still claims testsPassed.
+  // `verification-evidence/*` entries: there is nothing to verify.
 
   const lHarness = createToolHarness()
   await taskContractCapability.setup({
@@ -517,7 +521,8 @@ test("negative smoke: a green contract with clean docs/version is still denied w
     {
       taskKind: "feature",
       currentRevision: "rev-a",
-      evidence: { revision: "rev-a", testsPassed: true, docsStatus: "clean", versionStatus: "not-applicable" },
+      docsStatus: "clean",
+      versionStatus: "not-applicable",
       requiredChecks: ["tests", "typecheck"],
     },
     { sessionID: "ses-unverified" },
@@ -540,22 +545,28 @@ test("completion gate derives contract policy from taskKind", async () => {
     config: { documentation: { rules: [] }, versioning: { enabled: false, publicPaths: [] } } as any,
     state,
   })
-  const clean = { revision: "rev-a", testsPassed: true, docsStatus: "clean", versionStatus: "not-applicable" }
-
-  const trivial: any = await lHarness.tools
-    .get("completion_gate")
-    .execute(
-      { taskKind: "docs-format", currentRevision: "rev-a", evidence: clean, requiredChecks: [] },
-      { sessionID: "ses-1" },
-    )
+  const trivial: any = await lHarness.tools.get("completion_gate").execute(
+    {
+      taskKind: "docs-format",
+      currentRevision: "rev-a",
+      docsStatus: "clean",
+      versionStatus: "not-applicable",
+      requiredChecks: [],
+    },
+    { sessionID: "ses-1" },
+  )
   assert.equal(JSON.parse(trivial.content).ok, true)
 
-  const nonTrivial: any = await lHarness.tools
-    .get("completion_gate")
-    .execute(
-      { taskKind: "feature", currentRevision: "rev-a", evidence: clean, requiredChecks: [] },
-      { sessionID: "ses-1" },
-    )
+  const nonTrivial: any = await lHarness.tools.get("completion_gate").execute(
+    {
+      taskKind: "feature",
+      currentRevision: "rev-a",
+      docsStatus: "clean",
+      versionStatus: "not-applicable",
+      requiredChecks: [],
+    },
+    { sessionID: "ses-1" },
+  )
   const nonTrivialJson = JSON.parse(nonTrivial.content)
   assert.equal(nonTrivialJson.ok, false)
   assert.match(nonTrivialJson.reasons.join(" "), /Task Contract required/)
@@ -579,47 +590,6 @@ test("revision-sensitive requirement evidence is refused without a revision", ()
     true,
   )
 })
-
-test("contract cannot close completed without an exact completion-gate seal", async () => {
-  const state: any = createMemoryState()
-  const { ctx, tools } = createToolHarness()
-  await taskContractCapability.setup({ ctx, config: { models: {} } as any, state })
-  const contract = tools.get("task_contract")
-
-  await contract.execute(
-    {
-      op: "create",
-      taskKind: "feature",
-      goal: "ship feature",
-      requirements: ["requirement"],
-    },
-    { sessionID: "ses-close" },
-  )
-
-  const denied: any = await contract.execute(
-    { op: "close", outcome: "completed", revision: "rev-a" },
-    { sessionID: "ses-close" },
-  )
-  assert.match(denied.content, /^refused:/)
-
-  const statusBeforeClose: any = await contract.execute(
-    { op: "status" },
-    { sessionID: "ses-close" },
-  )
-  const currentContract = JSON.parse(statusBeforeClose.content).contract
-  await state.set("task-contract-completion/ses-close", {
-    revision: "rev-a",
-    taskKind: "feature",
-    contractStateToken: contractStateToken(currentContract),
-    at: Date.now(),
-  })
-  const accepted: any = await contract.execute(
-    { op: "close", outcome: "completed", revision: "rev-a" },
-    { sessionID: "ses-close" },
-  )
-  assert.match(accepted.content, /"status": "completed"/)
-})
-
 test("completion gate denies a taskKind mismatch even when the requirement gate itself is green", async () => {
   const state: any = createMemoryState()
   const harness = createToolHarness()
@@ -663,17 +633,12 @@ test("completion gate denies a taskKind mismatch even when the requirement gate 
     state,
   })
 
-  const clean = {
-    revision: "rev-a",
-    testsPassed: true,
-    docsStatus: "clean",
-    versionStatus: "not-applicable",
-  }
   const result: any = await lifecycle.tools.get("completion_gate").execute(
     {
       taskKind: "known-test",
       currentRevision: "rev-a",
-      evidence: clean,
+      docsStatus: "clean",
+      versionStatus: "not-applicable",
       requiredChecks: [],
     },
     { sessionID: "ses-kind-mismatch" },
@@ -683,125 +648,6 @@ test("completion gate denies a taskKind mismatch even when the requirement gate 
   assert.equal(parsed.ok, false)
   assert.match(parsed.reasons.join(" "), /taskKind mismatch/)
 })
-
-test("a completion seal for an older contract state cannot close a mutated contract", async () => {
-  const state: any = createMemoryState()
-  const { ctx, tools } = createToolHarness()
-  await taskContractCapability.setup({
-    ctx,
-    config: { models: {} } as any,
-    state,
-  })
-
-  const contract = tools.get("task_contract")
-  await contract.execute(
-    {
-      op: "create",
-      taskKind: "feature",
-      goal: "Ship feature",
-      requirements: ["ship the feature"],
-    },
-    { sessionID: "ses-stale-seal" },
-  )
-
-  const before: any = await contract.execute(
-    { op: "status" },
-    { sessionID: "ses-stale-seal" },
-  )
-  const beforeContract = JSON.parse(before.content).contract
-  const staleToken = contractStateToken(beforeContract)
-
-  await contract.execute(
-    { op: "steer", addConstraints: ["do not change public API"] },
-    { sessionID: "ses-stale-seal" },
-  )
-
-  // Simulate: gate evaluated A -> contract became B -> old gate writes A's seal.
-  await state.set("task-contract-completion/ses-stale-seal", {
-    revision: "rev-a",
-    taskKind: "feature",
-    contractStateToken: staleToken,
-    at: Date.now(),
-  })
-
-  const close: any = await contract.execute(
-    { op: "close", outcome: "completed", revision: "rev-a" },
-    { sessionID: "ses-stale-seal" },
-  )
-  assert.match(close.content, /^refused:/)
-  assert.match(close.content, /stale/)
-})
-
-test("completion gate ignores removed review state and closes on contract + verification only", async () => {
-  const state: any = createMemoryState()
-  const created = createTaskContract("ses-legacy-review-state", {
-    taskKind: "security",
-    goal: "harden auth",
-    requirements: ["no bypass"],
-  })
-  assert.equal(created.ok, true)
-  let contract = (created as { ok: true; contract: TaskContract }).contract
-  contract = (
-    recordRequirementEvidence(contract, "REQ-1", {
-      type: "verification",
-      reference: "security tests",
-      revision: "rev-a",
-    }) as { ok: true; contract: TaskContract }
-  ).contract
-  contract = (
-    updateRequirementStatus(contract, "REQ-1", "satisfied") as { ok: true; contract: TaskContract }
-  ).contract
-  await state.set("task-contract/ses-legacy-review-state", contract)
-  // Old stored review records are now unused data: they must not be read and
-  // must never block or gate completion.
-  await state.set("task-contract-review/ses-legacy-review-state/1", {
-    verdict: "reject",
-    findings: [],
-    round: 1,
-    reviewSessionID: "legacy-review",
-    revision: "rev-a",
-    at: 1,
-  })
-  await state.set("task-contract-review-availability/ses-legacy-review-state", {
-    status: "unavailable",
-    mode: "deep",
-    reason: "deadline_exceeded",
-    stage: "session.wait",
-    revision: "rev-a",
-    reviewSessionID: "legacy-review",
-    elapsedMs: 180_000,
-    contractStateToken: contractStateToken(contract),
-    at: 1,
-  })
-
-  const harness = createToolHarness()
-  await taskContractCapability.setup({
-    ctx: harness.ctx,
-    config: { documentation: { rules: [] }, versioning: { enabled: false, publicPaths: [] } } as any,
-    state,
-  })
-
-  const result: any = await harness.tools.get("completion_gate").execute(
-    {
-      taskKind: "security",
-      currentRevision: "rev-a",
-      evidence: {
-        revision: "rev-a",
-        testsPassed: true,
-        docsStatus: "clean",
-        versionStatus: "not-applicable",
-      },
-      requiredChecks: [],
-    },
-    { sessionID: "ses-legacy-review-state" },
-  )
-  const parsed = JSON.parse(result.content)
-  assert.equal(parsed.ok, true)
-  assert.equal(parsed.contractClosed, true)
-  assert.equal("review" in parsed, false)
-  assert.doesNotMatch(parsed.reasons.join(" "), /review/i)
-})
-
 test("contract creation supports 25 requirements with 1:1 REQ-N IDs", () => {
   const reqs = Array.from({ length: 25 }, (_, i) => `Real explicit obligation number ${i + 1}`)
   const result = createTaskContract("ses-25", {
@@ -928,13 +774,10 @@ test("completion simplification: gate derives verification state and closes the 
 
   const status: any = await contractTool.execute({ op: "status" }, { sessionID: "ses-simple-complete" })
   assert.equal(JSON.parse(status.content).contract.status, "completed")
-  assert.equal(await state.get("task-contract-completion/ses-simple-complete"), undefined)
 
-  const legacyClose: any = await contractTool.execute(
-    { op: "close", outcome: "completed", revision: "rev-a" },
-    { sessionID: "ses-simple-complete" },
-  )
-  assert.equal(JSON.parse(legacyClose.content).alreadyCompleted, true)
+  // The gate is the only transition to `completed`, and it writes no other key.
+  const storedKeys = ["task-contract-completion/ses-simple-complete"]
+  for (const key of storedKeys) assert.equal(await state.get(key), undefined)
 })
 
 test("completion simplification: a denied gate leaves the Task Contract active", async () => {

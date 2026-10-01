@@ -6,7 +6,7 @@ state-vs-context-vs-memory boundary is [ARCHITECTURE.md](ARCHITECTURE.md) §6.
 
 AndMar AI uses OpenCode V2 plugin storage for operational facts. This state is deliberately small and JSON-serializable. It is durable execution state, not semantic memory, history, or context.
 
-> **Repository vs runtime state:** Work Ledger is repository state under `.andmar/work/<work-id>/`, not `ctx.storage` state. It must not be mirrored as `work-ledger/<sessionID>` in plugin storage. See [WORK-LEDGER.md](WORK-LEDGER.md) and [DECISIONS.md](DECISIONS.md) D-027.
+> **Repository vs runtime state:** Work Ledger is repository state under `.andmar/work/<work-id>/`, not `ctx.storage` state. It must not be mirrored as `work-ledger/<sessionID>` in plugin storage. See [WORK-LEDGER.md](WORK-LEDGER.md) and [DECISIONS.md](DECISIONS.md) D-023.
 
 ## Key families and owners
 
@@ -21,7 +21,6 @@ AndMar AI uses OpenCode V2 plugin storage for operational facts. This state is d
 | `verification/<revision>/<check>` | `verification` | `verification`, `task-contract` (read-only via `core/verification-state`) | a new revision starts with no receipts; old receipts are never reused; unbounded, no pruning yet |
 | `intake-trace/<timestamp>-<rand>` | `intake` | `andmar_intake_trace` queries | max 20 entries, oldest pruned first |
 | `task-contract/<sessionID>` | `task-contract` | `task-contract` | one active contract per session; `active` → `completed`/`blocked`; unbounded, no pruning yet |
-| `task-contract-completion/<sessionID>` | `task-contract` | `task-contract` | one completion seal (`revision`, `taskKind`, `contractStateToken`, `at`) written by the close path; removed when a contract is mutated and when completion succeeds |
 | `development-metrics/v1/aggregate` | `development-metrics` | `andmar_report` | one bounded metadata-only aggregate; overwritten as counters advance; disabled by `developmentMetrics.enabled=false` |
 | *(none)* | `delivery` | — | Delivery is stateless; it reads current session user intent + Task Contract readiness and stores no authorization copy |
 
@@ -77,18 +76,9 @@ The active Task Contract for one parent session: `goal`, optional
 (`active`/`blocked`/`completed`). Steering appends requirements/constraints
 with the next deterministic numbers and never removes. Stores no
 transcripts, chain-of-thought, prompts, or source code — only obligations
-and evidence pointers.
-
-`task-contract-review*` keys written by earlier versions are no longer owned,
-read, or written by any capability. They simply remain as unused data; no
-migration exists.
-
-### `task-contract-completion/<sessionID>`
-
-One completion seal (`revision`, `taskKind`, `contractStateToken`, `at`)
-written by the close path. It is removed whenever the contract is created,
-steered, updated, or re-verified, so a stale seal can never close a mutated
-contract.
+and evidence pointers. `andmar_completion_gate` is the only writer of
+`completed`; `op=close` writes `blocked` on an explicit cancellation with a
+reason.
 
 ### `development-metrics/v1/aggregate`
 
@@ -151,7 +141,7 @@ A future explicit maintenance operation can use maximum age 30 days and maximum
 (timestamp then key as deterministic tie-breaker). These are proposed defaults,
 not active configuration. Bounds apply only to eligible closed/unreferenced state:
 protect every active/blocked Task Contract and worker, all revisions and execution
-IDs referenced by requirements, receipts, completion seals, or portable Work Ledger
+IDs referenced by requirements, receipts, or portable Work Ledger
 evidence/checkpoints. Preserve an entire protected receipt/evidence chain.
 
 Implement a dry-run inventory before deletion, resolving references through the

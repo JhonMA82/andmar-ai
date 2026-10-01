@@ -23,7 +23,7 @@ Work Ledger is **portable repository state**. It is **not**:
 - a memory system;
 - a runtime capability.
 
-## 2. Capability vs repository artifact (D-027, D-028)
+## 2. Capability vs repository artifact (D-023, D-024)
 
 AndMar AI defines a capability as a *runtime guarantee requiring state, hooks, ownership, or gates*.
 
@@ -31,7 +31,7 @@ In AndMar AI, Work Ledger is deliberately **not** a capability:
 - It uses repository-native durable markdown files under `.andmar/work/<work-id>/`.
 - It is read and written using OpenCode native tools (`read`, `write`, `edit`).
 - It does not introduce new `ctx.storage` keys or bypass OpenCode permission systems.
-- It travels with Git, remaining visible and portable across machines, branches, and agents.
+- It travels with Git, remaining visible and portable across machines, branches, and agents (the `andmar-ai` repository itself is the documented exception and ignores `.andmar/`).
 - **Operational metadata:** `.andmar/work/**` is operational metadata and is strictly excluded from the working-state revision fingerprint used to bind code/product verification evidence.
 
 ## 3. Relationship with Task Contract
@@ -86,9 +86,9 @@ Work Ledger artifacts reside under:
 .andmar/work/<work-id>/
 ```
 
-- **`work-id`**: Short, human-readable, path-safe slug derived from the goal (e.g. `fix-review-timeout`, `add-file-line-routing`, `auth-refresh-flow`). UUIDs and global registries are avoided. If a collision occurs with a different active work item, append a concise suffix (e.g. `auth-refresh-flow-2`).
-- **Git tracking**: `.andmar/work/**` is not ignored by default. It travels with Git unless project-specific policies dictate otherwise.
-- **Harness execution**: The `andmar-ai` development repo does not commit execution data under `.andmar/work/`. The convention applies to projects where AndMar operates.
+- **`work-id`**: Short, human-readable, path-safe slug derived from the goal (e.g. `fix-receipt-exit-code`, `add-file-line-routing`, `auth-refresh-flow`). UUIDs and global registries are avoided. If a collision occurs with a different active work item, append a concise suffix (e.g. `auth-refresh-flow-2`).
+- **Git tracking**: `.andmar/work/**` travels with Git and is not ignored, so continuity crosses machines, branches and agents, unless the project deliberately ignores it.
+- **Self-hosted exception**: the `andmar-ai` repository itself ignores `.andmar/` (see its `.gitignore`). AndMar is not versioned by its own execution state; this is the only repository where that convention applies, and it does not change the general policy for consumer projects.
 
 ## 5. Work Projection from Intake
 
@@ -478,8 +478,8 @@ Work Ledger does **not** create a second completion gate. Completion now uses on
 2. Reconcile Task Contract requirements with Ledger obligations 1:1 and record exact-revision requirement evidence with the existing Task Contract primitive.
 3. Run integrated verification and `andmar_verify_revision` for the final working-state revision.
 4. Resolve docs/version obligations.
-5. Call `andmar_completion_gate` with `currentRevision`, `taskKind`, `docsStatus`, `versionStatus`, and the relevant `requiredChecks`. The gate derives verification truth from stored AndMar evidence; normal callers do not repeat a `testsPassed` boolean.
-6. If the gate returns `ok:true`, it closes the non-trivial Task Contract in the same operation. There is no second `task_contract(op=close)` call in the normal flow.
+5. Call `andmar_completion_gate` with `currentRevision`, `taskKind`, `docsStatus`, `versionStatus`, and the relevant `requiredChecks`. The gate derives verification truth from stored AndMar evidence; the caller cannot declare a passing check.
+6. If the gate returns `ok:true`, it closes the non-trivial Task Contract in the same operation. `task_contract(op=close)` only blocks an explicit cancellation with a reason; it is never the normal completion step.
 7. Finalize the portable Ledger:
 
 ```text
@@ -487,8 +487,6 @@ node ".../work-ledger-lifecycle.mjs" finalize .andmar/work/<work-id> --revision 
 ```
 
 `finalize` requires all Work Units done, writes `Status: completed`, the final revision and completion timestamp, updates `Next`, and leaves the completed Ledger immutable. This metadata-only write remains excluded from the code/product revision fingerprint.
-
-The legacy completion-evidence object and explicit Task Contract close path remain accepted for compatibility, but new agent policy does not use them.
 
 ## 8. No hidden context
 
@@ -583,18 +581,12 @@ nor tool observation can move either marker. There is no runtime approval
 baseline. `work_resume` compares the last native `type: user` message's
 creation time against that durable boundary and rechecks the exact boundary
 under the existing write lock before transitioning. Equal/older times fail
-closed. A successful resume removes `Blocker`, `Checkpoint At` and
+failed closed. A successful resume removes `Blocker`, `Checkpoint At` and
 `Checkpoint User`; a duplicate returns `no blocked Work Unit`.
 
-ID-only legacy Ledgers remain readable: when the origin is in the native
-context, a later user message must follow it. Across sessions/compaction the
-verified V2 ascending native message-ID prefix supplies ordering. Arbitrary
-unequal IDs are never proof. If an old Ledger has no provable boundary, the
-first explicit `work_resume` establishes a durable recovery boundary once,
-keeps the WU blocked and explains that a decision after this boundary is
-needed. This is explicit legacy reconciliation, not approval. Status/reads
-never initialize it, and restarting cannot re-arm it. Clock rollback or
-missing native timestamps produce an actionable refusal, not a heuristic.
+Without a provable boundary — a missing `Checkpoint At`, a missing native
+timestamp, or a clock rollback — `work_resume` produces an actionable refusal
+asking for a decision created after the boundary, never a heuristic approval.
 
 For an already-bound blocked session, the native Code Mode `execute` wrapper
 is transport. Its child hooks apply the same read/control vs product-tool

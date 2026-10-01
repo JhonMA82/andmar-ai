@@ -1,11 +1,9 @@
-import type { Capability, ChangeKind, CompletionEvidence, StateStore } from "../../core/contracts.ts"
-import { evaluateCompletionV2 } from "../../core/lifecycle.ts"
+import type { Capability, ChangeKind, StateStore } from "../../core/contracts.ts"
+import { evaluateCompletion, type CompletionObligations } from "../../core/lifecycle.ts"
 import { readVerificationState } from "../../core/verification-state.ts"
 import type { SemanticObservability } from "../../core/observability.ts"
 import {
-  completionSealKey,
   contractKey,
-  contractStateToken,
   contractMetrics,
   createTaskContract,
   evaluateRequirementGate,
@@ -79,7 +77,6 @@ async function mutateTaskContract(
       verificationSurface: input.verificationSurface,
     })
     if (!created.ok) return `refused: ${created.error}`
-    await state.remove(completionSealKey(sessionID))
     await state.set(contractKey(sessionID), created.contract)
     observability?.emit({
       type: "andmar.contract",
@@ -100,7 +97,6 @@ async function mutateTaskContract(
       input.reason,
     )
     if (!updated.ok) return `refused: ${updated.error}`
-    await state.remove(completionSealKey(sessionID))
     await state.set(contractKey(sessionID), updated.contract)
     observability?.emit({
       type: "andmar.contract",
@@ -120,7 +116,6 @@ async function mutateTaskContract(
       revision: input.revision,
     })
     if (!recorded.ok) return `refused: ${recorded.error}`
-    await state.remove(completionSealKey(sessionID))
     await state.set(contractKey(sessionID), recorded.contract)
     observability?.emit({
       type: "andmar.contract",
@@ -139,7 +134,6 @@ async function mutateTaskContract(
       addConstraints: input.addConstraints,
     })
     if (!steered.ok) return `refused: ${steered.error}`
-    await state.remove(completionSealKey(sessionID))
     await state.set(contractKey(sessionID), steered.contract)
     observability?.emit({
       type: "andmar.contract",
@@ -149,41 +143,21 @@ async function mutateTaskContract(
     return JSON.stringify({ stored: true, contract: steered.contract }, null, 2)
   }
 
+  // The only manual close left is explicit blocking/cancellation. Completion is
+  // never closed by hand: `andmar_completion_gate` owns that transition.
   if (op === "close") {
-    if (input.outcome !== "completed" && input.outcome !== "blocked") {
-      return 'refused: close requires outcome "completed" or "blocked"'
-    }
-    if (contract.status === "completed" && input.outcome === "completed") {
+    if (contract.status === "completed") {
       return JSON.stringify({ stored: true, alreadyCompleted: true, contract }, null, 2)
     }
-    if (input.outcome === "blocked" && (typeof input.reason !== "string" || input.reason.trim() === "")) {
+    if (typeof input.reason !== "string" || input.reason.trim() === "") {
       return "refused: closing as blocked requires a reason"
     }
-    if (input.outcome === "completed") {
-      if (typeof input.revision !== "string" || input.revision.trim() === "") {
-        return "refused: closing as completed requires the exact revision that passed andmar_completion_gate"
-      }
-      const seal = await state.get<{
-        revision: string
-        taskKind?: ChangeKind
-        contractStateToken?: string
-      }>(completionSealKey(sessionID))
-      if (
-        !seal ||
-        seal.revision !== input.revision ||
-        seal.taskKind !== contract.taskKind ||
-        seal.contractStateToken !== contractStateToken(contract)
-      ) {
-        return "refused: completion gate seal is missing or stale for the current revision and Task Contract state"
-      }
-    }
-    const closed: TaskContract = { ...contract, status: input.outcome, updatedAt: Date.now() }
+    const closed: TaskContract = { ...contract, status: "blocked", updatedAt: Date.now() }
     await state.set(contractKey(sessionID), closed)
-    await state.remove(completionSealKey(sessionID))
     observability?.emit({
       type: "andmar.contract",
       sessionID,
-      payload: contractEventPayload("closed", closed),
+      payload: contractEventPayload("blocked", closed),
     })
     return JSON.stringify({ stored: true, contract: closed }, null, 2)
   }
@@ -210,10 +184,8 @@ function contractEventPayload(
 
 interface CompletionGateInput {
   currentRevision: string
-  docsStatus?: CompletionEvidence["docsStatus"]
-  versionStatus?: CompletionEvidence["versionStatus"]
-  /** Compatibility only. Verification booleans are not authoritative. */
-  evidence?: CompletionEvidence
+  docsStatus?: CompletionObligations["docsStatus"]
+  versionStatus?: CompletionObligations["versionStatus"]
   requiredChecks?: string[]
   taskKind: ChangeKind
 }
@@ -229,28 +201,15 @@ async function evaluateAndCloseCompletion(
     required.length === 0
       ? { ok: true, missing: [], failed: [], unverified: [], reasons: [] }
       : await readVerificationState(state, input.currentRevision, required)
-  const docsStatus = input.docsStatus ?? input.evidence?.docsStatus
-  const versionStatus = input.versionStatus ?? input.evidence?.versionStatus
+  const { docsStatus, versionStatus } = input
   if (docsStatus === undefined || versionStatus === undefined) {
     return {
       ok: false,
-      reasons: [
-        "completion requires docsStatus and versionStatus (top-level preferred; legacy evidence object is still accepted)",
-      ],
+      reasons: ["completion requires docsStatus and versionStatus"],
       contractClosed: false,
     }
   }
 
-  // Compatibility seals from the old gate->close handshake are invalid once
-  // a new completion attempt begins. New successful gates close directly.
-  await state.remove(completionSealKey(sessionID))
-
-  const derivedEvidence: CompletionEvidence = {
-    revision: input.currentRevision,
-    testsPassed: required.length === 0 || verification.ok,
-    docsStatus,
-    versionStatus,
-  }
   const contract = await readContract(state, sessionID)
 
   const contractRequired = !isTrivialTask(input.taskKind)
@@ -285,18 +244,17 @@ async function evaluateAndCloseCompletion(
           }
         : undefined
 
-  const result = evaluateCompletionV2(
+  const result = evaluateCompletion(
     input.currentRevision,
-    derivedEvidence,
+    { docsStatus, versionStatus },
     verification,
     required,
     combinedContractGate,
   )
 
   let contractClosed = false
-  let closedContract: TaskContract | undefined
   if (result.ok && contract !== undefined) {
-    closedContract = { ...contract, status: "completed", updatedAt: Date.now() }
+    const closedContract: TaskContract = { ...contract, status: "completed", updatedAt: Date.now() }
     await state.set(contractKey(sessionID), closedContract)
     contractClosed = true
     observability?.emit({
@@ -313,9 +271,8 @@ async function evaluateAndCloseCompletion(
     payload: {
       ok: result.ok,
       verificationDerived: true,
-      testsPassed: derivedEvidence.testsPassed,
-      docsStatus: derivedEvidence.docsStatus,
-      versionStatus: derivedEvidence.versionStatus,
+      docsStatus,
+      versionStatus,
       requiredChecks: [...required],
       verificationOk: verification.ok,
       missingCount: verification.missing.length,
@@ -341,11 +298,10 @@ async function evaluateAndCloseCompletion(
 
 export const taskContractCapability: Capability = {
   id: "task-contract",
-  // 3: the independent-review subsystem was removed, so the persisted
-  // contract shape dropped `reviewRequired` and the `task-contract-review*`
-  // key families disappeared. Old stored contracts are read as-is; the extra
-  // legacy field is simply ignored, and no migration is needed.
-  version: 3,
+  // 4: the public tool surface no longer accepts a caller-declared completion
+  // evidence object, and `close` no longer completes a contract by hand. The
+  // completion gate is the only owner of the completed transition.
+  version: 4,
   description: "Persist Task Contract obligations and enforce the evidence-derived completion boundary.",
   async setup({ ctx, state, observability }) {
     const registration = await ctx.tool.transform((editor: any) => {
@@ -353,7 +309,7 @@ export const taskContractCapability: Capability = {
       editor.add({
         name: "task_contract",
         description:
-          "Manage the active Task Contract for this session (op: create, status, update, record_evidence, steer, close). Create one contract per non-trivial task with the goal, explicit requirements and constraints; trivial edits skip it. A new user instruction steers the active contract instead of replacing it. Completion requires every requirement satisfied (with evidence), blocked, or explicitly skipped.",
+          "Manage the active Task Contract for this session (op: create, status, update, record_evidence, steer, close). Create one contract per non-trivial task with the goal, explicit requirements and constraints; trivial edits skip it. A new user instruction steers the active contract instead of replacing it. Completion requires every requirement satisfied (with evidence), blocked, or explicitly skipped. `close` only blocks an explicit cancellation with a reason; andmar_completion_gate is the only way a contract becomes completed.",
         input: {
           type: "object",
           properties: {
@@ -375,7 +331,6 @@ export const taskContractCapability: Capability = {
             revision: { type: "string" },
             addRequirements: { type: "array", items: { type: "string" } },
             addConstraints: { type: "array", items: { type: "string" } },
-            outcome: { type: "string", enum: ["completed", "blocked"] },
           },
           required: ["op"],
           additionalProperties: false,
@@ -412,24 +367,13 @@ export const taskContractCapability: Capability = {
       editor.add({
         name: "completion_gate",
         description:
-          "Accept completion only when stored evidence for the exact current revision is green, Task Contract requirements are fulfilled, and docs/version obligations are clean. Verification success is derived from AndMar state instead of caller booleans. On success, the Task Contract is closed in this same operation. Legacy evidence input remains accepted for compatibility. Pass requiredChecks: [] only for tasks that genuinely require no checks.",
+          "Accept completion only when stored evidence for the exact current revision is green, Task Contract requirements are fulfilled, and docs/version obligations are clean. Verification success is derived from AndMar state; the caller cannot declare a passing test. On success, the Task Contract is closed in this same operation. Pass requiredChecks: [] only for tasks that genuinely require no checks.",
         input: {
           type: "object",
           properties: {
             currentRevision: { type: "string", minLength: 1 },
             docsStatus: { type: "string", enum: ["clean", "updated", "stale", "not-applicable"] },
             versionStatus: { type: "string", enum: ["clean", "updated", "required", "not-applicable"] },
-            evidence: {
-              type: "object",
-              properties: {
-                revision: { type: "string", minLength: 1 },
-                testsPassed: { type: "boolean" },
-                docsStatus: { type: "string", enum: ["clean", "updated", "stale", "not-applicable"] },
-                versionStatus: { type: "string", enum: ["clean", "updated", "required", "not-applicable"] },
-              },
-              required: ["revision", "testsPassed", "docsStatus", "versionStatus"],
-              additionalProperties: false,
-            },
             requiredChecks: { type: "array", items: { type: "string", enum: [...CHECKS] } },
             taskKind: {
               type: "string",

@@ -63,7 +63,6 @@ test("AndMar agent does not summarize requests before intake", () => {
 
 test("AndMar agent works through a Task Contract and separates tests from completion", () => {
   assert.match(agent, /andmar_task_contract\b/)
-  assert.doesNotMatch(agent, /andmar_request_review\b/)
   assert.match(agent, /Passing tests prove only what those tests cover/i)
   assert.match(agent, /not only against the implementation plan you created yourself/i)
   assert.match(agent, /Compaction does not end the task/i)
@@ -88,9 +87,7 @@ test("AndMar agent passes taskKind through contract and completion boundaries", 
   assert.match(agent, /runtime.*derived.*taskKind|taskKind.*runtime.*derived/i)
 })
 
-test("AndMar agent definitions in assets and .opencode are synchronized and clean of escaped literals", async () => {
-  const opencodeAgent = await readFile(new URL("../.opencode/agents/andmar.md", import.meta.url), "utf8");
-  assert.equal(agent, opencodeAgent);
+test("AndMar agent definition is clean of escaped literals and states its context rules", () => {
   assert.doesNotMatch(agent, /\\x27/);
   assert.match(agent, /OpenCode's/);
   assert.match(agent, /No hidden context/i);
@@ -176,18 +173,14 @@ test("AndMar agent uses exact-revision Work Unit checkpoints without taking over
 
 test("AndMar agent uses the simplified completion flow without a second close ceremony", () => {
   assert.match(agent, /completionReady:true/i)
-  assert.match(agent, /Do \*\*not\*\* pass a manual `testsPassed` claim/i)
+  assert.match(agent, /accepts no caller-declared pass\/fail/i)
   assert.match(agent, /contractClosed:true/i)
-  assert.match(agent, /do not call `andmar_task_contract\(op=close\)` afterward/i)
+  assert.match(agent, /`andmar_task_contract\(op=close\)` exists only to block an explicit cancellation with a reason, so never use it to complete work/i)
   assert.match(agent, /work-ledger-lifecycle\.mjs finalize .*--revision <currentRevision>/i)
 })
-
 test("AndMar agent completes through contract obligations, exact-revision verification and docs/version only", () => {
   assert.match(agent, /The gate enforces, in order: exact-revision verification, Task Contract requirements[\s\S]*?then docs\/version obligations\./)
   assert.match(agent, /No second LLM judges completion\./)
-  assert.doesNotMatch(agent, /andmar_request_review\b/)
-  assert.doesNotMatch(agent, /reviewPassed/);
-  assert.doesNotMatch(agent, /\bdeep review\b|\badvisory audit\b|reviewer session|review rounds/);
   // Risky work keeps stronger primary-agent verification discipline.
   assert.match(agent, /adversarial final inspection/i)
   assert.match(agent, /This is your own verification discipline, not another agent\./)

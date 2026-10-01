@@ -246,15 +246,6 @@ ANDMAR_INTAKE_TRACE=1
 ANDMAR_INTAKE_TRACE_CONTENT=1
 ```
 
-## Removed review settings
-
-The independent-review subsystem was removed, so it has **no configuration at
-all** — no routing table, no reviewer model, no deadline, no Jev call. There is
-nothing to enable and no legacy variable to migrate: `ANDMAR_REVIEW_MODEL` and
-`ANDMAR_REVIEW_TIMEOUT_MS` are not read by any current code path. Jev
-configuration applies to Intake only. See [DECISIONS.md](DECISIONS.md).
-
-
 ## Engram integration
 
 Engram has no AndMar core configuration block. It is an optional external integration. Configure it with the upstream owner:

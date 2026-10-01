@@ -8,7 +8,7 @@ inventory ([CAPABILITIES.md](CAPABILITIES.md)) plus
 excluded is [SCOPE.md](SCOPE.md). This document is canonical for
 *triggers*, not for current behavior.
 
-## Current baseline — v0.16.0
+## Current baseline
 
 The planned core evolution is **complete**:
 
@@ -35,8 +35,7 @@ distinctive pieces are:
   verification truth from stored evidence and closes the Task Contract in the
   same operation;
 - Task Contract behavioral core: per-session obligation record
-  (`andmar_task_contract`) and requirement-gated completion, with no
-  independent-review subsystem;
+  (`andmar_task_contract`) and requirement-gated completion;
 - bounded development metrics (`andmar_report`), diagnostic only;
 - delivery authorization/readiness (`andmar_delivery`), execution native;
 - Engram as an optional lateral integration outside the capability
@@ -109,7 +108,7 @@ Previous trigger was "completion gate inputs become repeatedly manual". The `ver
 
 ## Implemented: completion simplification
 
-The completion boundary now consumes those stored receipts plus Task Contract requirement evidence. Normal callers provide the exact revision, task kind, docs/version status and proportional required checks; they no longer repeat a `testsPassed` boolean. A successful `andmar_completion_gate` closes the Task Contract in the same serialized operation. Ledger-backed work uses `completionReady:true` before the gate and `work-ledger-lifecycle.mjs finalize --revision ...` afterward to preserve portable final revision/timestamp without adding another runtime completion subsystem.
+The completion boundary consumes those stored receipts plus Task Contract requirement evidence. Callers provide the exact revision, task kind, docs/version status and proportional required checks; the gate accepts no caller-declared pass/fail. A successful `andmar_completion_gate` closes the Task Contract in the same serialized operation. Ledger-backed work uses `completionReady:true` before the gate and `work-ledger-lifecycle.mjs finalize --revision ...` afterward to preserve portable final revision/timestamp without adding another runtime completion subsystem.
 
 ## Implemented (pilot): intake request refinement
 

@@ -130,7 +130,7 @@ using the generic guarantees that already exist?
         -> evaluate a capability.
 ```
 
-**Work Ledger = repository-native operational artifact** (`.andmar/work/<work-id>/`), not a capability. It uses OpenCode native file tools and Git portability rather than plugin storage (`ctx.storage`) or capability code. Work Unit state transitions are handled by a small deterministic script (`scripts/work-ledger-lifecycle.mjs`) rather than a workflow runtime. Recoverable Work Unit commits use a second small two-phase helper (`scripts/work-unit-checkpoint.mjs`): AndMar validates exact-revision readiness and records the resulting SHA while OpenCode remains the Git executor. See [WORK-LEDGER.md](WORK-LEDGER.md) and [DECISIONS.md](DECISIONS.md) D-027/D-030.
+**Work Ledger = repository-native operational artifact** (`.andmar/work/<work-id>/`), not a capability. It uses OpenCode native file tools and Git portability rather than plugin storage (`ctx.storage`) or capability code. Work Unit state transitions are handled by a small deterministic script (`scripts/work-ledger-lifecycle.mjs`) rather than a workflow runtime. Recoverable Work Unit commits use a second small two-phase helper (`scripts/work-unit-checkpoint.mjs`): AndMar validates exact-revision readiness and records the resulting SHA while OpenCode remains the Git executor. See [WORK-LEDGER.md](WORK-LEDGER.md) and [DECISIONS.md](DECISIONS.md) D-023/D-026.
 
 
 The same test exists in executable form in
@@ -197,15 +197,14 @@ Completion (`andmar_completion_gate`: exact-revision evidence +
   verification)
 ```
 
-No second LLM judges completion. The independent-review subsystem was
-removed; completion is decided by explicit Task Contract obligations plus
-deterministic exact-revision evidence.
+No second LLM judges completion. Completion is decided by explicit Task
+Contract obligations plus deterministic exact-revision evidence.
 
 There is intentionally no generic Workflow engine between these steps: each
 transition is an explicit primitive call by the agent, and the completion gate
 is the only composition point. See D-015 for why Workflow stays deferred.
 
-`development-metrics` sits outside this request flow. It subscribes to the existing metadata-only semantic-event primitive and exposes `andmar_report` only for explicit harness diagnostics/tuning; it is not another execution step or gate. Work Ledger recovery counts are read only from `.andmar/work/*/WORK.md`. See [DEVELOPMENT-METRICS.md](DEVELOPMENT-METRICS.md) and D-033.
+`development-metrics` sits outside this request flow. It subscribes to the existing metadata-only semantic-event primitive and exposes `andmar_report` only for explicit harness diagnostics/tuning; it is not another execution step or gate. Work Ledger recovery counts are read only from `.andmar/work/*/WORK.md`. See [DEVELOPMENT-METRICS.md](DEVELOPMENT-METRICS.md) and D-028.
 
 ### 2.3 Documentation ownership
 

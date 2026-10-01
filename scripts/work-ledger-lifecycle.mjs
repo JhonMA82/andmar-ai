@@ -477,13 +477,6 @@ async function mutateWorkUnitLifecycle(command, targetDir, unitArg, options = {}
     if (!options.reason?.trim() || /[\r\n\0]/.test(options.reason) || options.reason.length > 500) throw new Error("resume requires --reason describing why the blocker is resolved (single line, max 500)");
     const boundary = { user: getUnitField(lines, unitId, "Checkpoint User") ?? null, at: Number(getUnitField(lines, unitId, "Checkpoint At")) || null };
     if (options.expectedCheckpoint && (boundary.user !== options.expectedCheckpoint.user || boundary.at !== options.expectedCheckpoint.at)) throw new Error("Checkpoint changed; inspect the current decision before resume");
-    if (options.establishBoundary) {
-      if (boundary.at) throw new Error("Checkpoint boundary already exists; recovery cannot move it");
-      setUnitField(lines, unitId, "Checkpoint At", String(Date.now()));
-      if (options.checkpointUser) setUnitField(lines, unitId, "Checkpoint User", options.checkpointUser);
-      await saveValidated(resolvedTarget, workPath, lines, original);
-      return { changed: true, ...summary() };
-    }
     if (activeOther) throw new Error(`Cannot resume ${unitId}; ${activeOther.id} is already active`);
     setUnitState(lines, unitId, "active");
     setUnitField(lines, unitId, "Blocker", null);

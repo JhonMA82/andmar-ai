@@ -5,8 +5,6 @@
 // direct (normal execution), enrich (operational brief from repo context), or
 // structure (structured projection preserving the full raw request).
 
-export type JevQuestionType = "choice" | "noul" | "score";
-
 export interface JevChoiceQuestion {
   type: "choice";
   instructions: string;
