@@ -1,8 +1,9 @@
 // Manual smoke for real Jev decisions. Never runs in CI.
-// Requires OPENROUTER_API_KEY in the environment and Node >= 22.18 (native
-// type stripping, so the canonical question definition is imported instead of
-// being copied here).
-// Usage: OPENROUTER_API_KEY=... node scripts/intake-smoke.mjs
+// Requires OPENROUTER_API_KEY in the environment.
+// Run it with Bun, the runtime of this repository's toolchain: Bun loads the
+// canonical TypeScript question definition directly, so it is imported instead
+// of being copied here.
+// Usage: OPENROUTER_API_KEY=... bun scripts/intake-smoke.mjs
 // The script never prints the API key.
 
 import { INTAKE_QUESTIONS } from "../src/capabilities/intake/questions.ts";

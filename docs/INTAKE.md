@@ -96,7 +96,7 @@ The request already contains abundant information, requirements, or constraints.
 - **Behavior:** The agent must **not** compress or summarize the request into a compact brief that drops requirements. It prepares a Work-Ledger-shaped projection (Source, Requirements, Constraints, Work Units, Acceptance/Verification, Unresolved decisions) while keeping the full raw request authoritative.
 
 ### Work Ledger handoff
-Intake does not implement a Work Ledger capability, state machines, or Markdown persistence in this phase. It produces the `workProjection` contract (`mode: "none" | "lightweight" | "structured"`, `preserveSource: boolean`) to communicate the required representation to the agent and future capabilities.
+Intake does not implement a Work Ledger capability, state machines, or Markdown persistence; the Work Ledger already exists as repository-native project state (see [WORK-LEDGER.md](WORK-LEDGER.md)) and is deliberately not a capability. Intake produces the `workProjection` contract (`mode: "none" | "lightweight" | "structured"`, `preserveSource: boolean`) so the primary agent selects the appropriate Work Ledger representation.
 
 ### No hidden context
 > «AndMar may use available context but must never depend on invisible context.»
@@ -264,18 +264,21 @@ holds only the OpenRouter Decisions transport (endpoint, fetch and payload
 shape) used by Intake; no provider policy lives in core. Jev is owned
 exclusively by Intake.
 
-## Contract verification (2026-09-21)
+## Decisions contract
 
-- Live OpenAPI: `POST https://openrouter.ai/api/alpha/decisions`
-  (`/api/v1/alpha/decisions` 404s; `/chat/completions` rejects Jev models).
-- Body `{ model, state, questions }`; `state` is the raw request (truncated at
-  8000 chars for the 32k context).
-- Response `{ model, answers, usage }`; `answers` keyed by question id.
-- `noul` → `{ type, noul }` (value is the probability, no confidence).
+Endpoint in force: `POST https://openrouter.ai/api/alpha/decisions`
+(`JEV_ENDPOINT` in `src/capabilities/intake/jev-client.ts`).
+
+- Request body `{ model, state, questions }`. `state` is the raw request
+  truncated to `MAX_STATE_CHARS` with an explicit omission marker.
+- Response: AndMar reads `answers`, keyed by question id, and `model`. Any other
+  field is ignored, and a missing or non-object `answers` is `invalid_response`.
+- `noul` → `{ type, noul }`. The value is the probability in `[0,1]`; there is no
+  confidence by design. A missing or out-of-range probability is a fallback.
 - `choice` → `{ type, choice, confidence?, probabilities? }`.
 - `score` → `{ type, score, confidence?, probabilities?, legend? }`.
-- Default pilot model `typesafe/jev-1.13` (served as
-  `typesafe/jev-1.13-20260917`); configurable without core coupling.
+- `MAX_STATE_CHARS` is `8_000`. The model id is configurable (see
+  [Configuration](#configuration)) and defaults to `typesafe/jev-1.13`.
 
 ## Manual matrix (with trace on)
 
@@ -292,18 +295,15 @@ Then `andmar_intake_trace` and check: was Jev called, what it answered, why
 refinement fired, fallback or not, latency. Use the evidence to tune
 questions/thresholds, not intuition.
 
-Real pilot run 2026-09-21 (`typesafe/jev-1.13-20260917`, latencies 189–376ms):
-trivial bypassed Jev; other five returned `needsRefinement=true`,
-`sufficiency=1`; `security`→critical+external, `migration`→high+external,
-`feature+Google`→high+external, `debug`→medium, `feature+form`→medium.
-`productDecisionMissing=true` fired on all five vague samples — possibly
-aggressive; candidate for threshold/question tuning with more trace data.
-
 ## Smoke (manual, never CI)
 
 ```bash
-OPENROUTER_API_KEY=... node scripts/intake-smoke.mjs
+OPENROUTER_API_KEY=... bun scripts/intake-smoke.mjs
 ```
+
+Run it with Bun, the runtime of this repository's toolchain: it loads the
+canonical TypeScript question definition, so the smoke imports
+`INTAKE_QUESTIONS` instead of copying the questions and the two cannot diverge.
 
 Exit `2` when the key is missing. Prints models, latencies, and raw answers;
 never prints the key.
