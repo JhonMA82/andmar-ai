@@ -1,50 +1,7 @@
-import type { ChangeKind, DocumentationRule } from "./contracts.ts"
-import type { RequirementGateResult } from "./task-contract.ts"
-import { matchesAny } from "./glob.ts"
+import type { RequirementGateResult } from "./contract.ts"
 
-export interface DocumentationImpact {
-  status: "clean" | "stale" | "not-applicable"
-  affectedRuleIDs: string[]
-  expectedDocs: string[]
-}
-
-export function analyzeDocumentationImpact(changedPaths: string[], rules: DocumentationRule[]): DocumentationImpact {
-  const affected = rules.filter((rule) => changedPaths.some((path) => matchesAny(rule.code, path)))
-  if (affected.length === 0) return { status: "not-applicable", affectedRuleIDs: [], expectedDocs: [] }
-
-  const expectedDocs = [...new Set(affected.flatMap((rule) => rule.docs))]
-  const docsChanged = affected.every((rule) =>
-    changedPaths.some((path) => matchesAny(rule.docs, path)),
-  )
-
-  return {
-    status: docsChanged ? "clean" : "stale",
-    affectedRuleIDs: affected.map((rule) => rule.id),
-    expectedDocs,
-  }
-}
-
-export type VersionImpact = "none" | "patch" | "minor" | "major"
-
-export function inferVersionImpact(input: {
-  kind: ChangeKind
-  touchesPublicSurface: boolean
-  breaking?: boolean
-}): VersionImpact {
-  if (!input.touchesPublicSurface) return "none"
-  if (input.breaking) return "major"
-  if (input.kind === "feature") return "minor"
-  if (["bugfix", "refactor", "security", "migration"].includes(input.kind)) return "patch"
-  return "none"
-}
-
-export interface VerificationGateStatus {
-  ok: boolean
-  missing: string[]
-  failed: string[]
-  unverified: string[]
-  reasons: string[]
-}
+import type { VerificationGateStatus } from "../../core/verification-state.ts"
+export type { VerificationGateStatus } from "../../core/verification-state.ts"
 
 /**
  * Documentation and version obligations reported by the caller. They are the

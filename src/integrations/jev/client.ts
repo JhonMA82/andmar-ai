@@ -1,4 +1,4 @@
-// OpenRouter Decisions transport owned by the Intake capability.
+// Optional OpenRouter Decisions transport. Intake owns the decision policy.
 // No capability imports and no plugin-API dependency.
 
 export const JEV_ENDPOINT = "https://openrouter.ai/api/alpha/decisions"

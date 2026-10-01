@@ -1,10 +1,9 @@
+import { analyzeDocumentationImpact, inferVersionImpact } from "../src/capabilities/lifecycle/impact.ts"
 import test from "node:test"
 import assert from "node:assert/strict"
 import {
-  analyzeDocumentationImpact,
   evaluateCompletion,
-  inferVersionImpact,
-} from "../src/core/lifecycle.ts"
+} from "../src/capabilities/task-contract/completion.ts"
 
 const rules = [
   { id: "api", code: ["src/api/**"], docs: ["docs/api/**", "README.md"] },

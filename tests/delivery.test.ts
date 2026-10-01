@@ -1,7 +1,7 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import { deliveryAuthorization, deliveryCapability, evaluateDelivery } from "../src/capabilities/delivery/index.ts"
-import { contractKey, createTaskContract, type TaskContract } from "../src/core/task-contract.ts"
+import { contractKey, createTaskContract, type TaskContract } from "../src/capabilities/task-contract/contract.ts"
 
 function createMemoryState() {
   const map = new Map<string, unknown>()

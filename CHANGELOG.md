@@ -2,6 +2,20 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
+## [0.17.0]
+
+### Changed
+- Freeze modular ownership: core retains actual shared primitives/read contracts; Task Contract/Completion and impact logic live with their capabilities. Optional Jev transport lives in integrations.
+- Reduce the primary agent from 28,903 to 3,947 bytes; move procedures into five native OpenCode skills installed from canonical assets without a registry.
+- Add one structured portable Work Ledger facade for semantic init, compact status/context, safe evidence recording and existing lifecycle operations. Validate bytes before atomic writes and derive mutation responses without rereading for output.
+- Cache only compact projections for normal hooks; refresh/validate when cheap file stamps change. Keep Markdown in the repository, never ctx.storage.
+- Replace pending EV placeholders rather than appending duplicate IDs; refuse real-evidence overwrite and pending evidence on completed WUs.
+- Invalid Ledgers retain read/search/question and Ledger-only native repair; product mutation/completion fail closed. Preserve material checkpoint boundaries through recovery.
+
+### Verification
+- Add serializer/evidence/token-economy/recovery regressions and native installed-runtime acceptance with a deterministic model driver and real OpenCode tools, hooks, storage and receipts.
+- Native OpenCode 2.0.21 acceptance proves exit 0 receipts/gate, nonzero refusal, stale working-state rejection, native skills loading and three corrupt-Ledger recoveries in one session. No empty required checks or synthesized hook events.
+
 ## [Unreleased]
 
 ### Changed

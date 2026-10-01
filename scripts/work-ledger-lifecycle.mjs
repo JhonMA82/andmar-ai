@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-import { readFile, rename, writeFile, mkdir, rm, realpath } from "node:fs/promises";
+import { rename, writeFile, mkdir, rm, realpath } from "node:fs/promises";
 import { dirname, resolve, sep, relative, isAbsolute } from "node:path";
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { globMatch } from "../src/core/glob.mjs";
-import { validateWorkLedger } from "./validate-work-ledger.mjs";
+import { readLedgerDocuments, validateLedgerDocuments } from "./validate-work-ledger.mjs";
 
 const UNIT_LINE_RE = /^(\s*[-*]\s+\[)([ ~x!])(\]\s+)((?:WU-|W)\d+)(.*)$/i;
 
@@ -204,13 +204,6 @@ function nextPendingAfter(lines, completedId, explicitNext) {
   return after ?? units.find((unit) => unit.state === " ") ?? null;
 }
 
-async function validateOrThrow(targetDir) {
-  const result = await validateWorkLedger(targetDir);
-  if (result.invocationError) throw new Error(result.error);
-  if (!result.valid) throw new Error(`Ledger validation failed: ${result.errors.join("; ")}`);
-  return result;
-}
-
 async function atomicWrite(workPath, content) {
   const tempPath = resolve(dirname(workPath), `.WORK.md.andmar-${process.pid}.tmp`);
   await writeFile(tempPath, content, "utf8");
@@ -289,13 +282,11 @@ export function classifyDiscovery(input) {
   return { checkpointRequired: reasons.length > 0, reasons, continue: reasons.length === 0 };
 }
 
-async function saveValidated(target, workPath, lines, original) {
-  await atomicWrite(workPath, lines.join("\n").replace(/\n+$/g, "\n"));
-  const after = await validateWorkLedger(target);
-  if (after.invocationError || !after.valid) {
-    await atomicWrite(workPath, original);
-    throw new Error(`Lifecycle mutation rolled back because ledger became invalid: ${after.invocationError ? after.error : after.errors.join("; ")}`);
-  }
+async function saveValidated(target, workPath, lines, documents) {
+  const content = lines.join("\n").replace(/\n+$/g, "\n");
+  const after = validateLedgerDocuments(target, { ...documents, "WORK.md": content });
+  if (!after.valid) throw new Error(`Lifecycle mutation refused because ledger became invalid: ${after.errors.join("; ")}`);
+  await atomicWrite(workPath, content);
   return after;
 }
 
@@ -320,6 +311,19 @@ export async function withLedgerLock(targetDir, operation) {
   finally { await rm(lock, { recursive: true }); }
 }
 
+export function projectLedgerDocuments(resolvedTarget, documents, validation = validateLedgerDocuments(resolvedTarget, documents)) {
+  if (!validation.valid) throw new Error(`Ledger validation failed: ${validation.errors.join("; ")}`);
+  const lines = documents["WORK.md"].replace(/\r\n/g, "\n").split("\n");
+    const units = projectUnits(lines, workspaceForLedger(resolvedTarget));
+    const active = units.find((unit) => unit.state === "active")?.id ?? null;
+    const blocked = units.filter((unit) => unit.state === "blocked").map((unit) => unit.id);
+    const pending = units.filter((unit) => unit.state === "pending").map((unit) => unit.id);
+    const done = units.filter((unit) => unit.state === "done").map((unit) => unit.id);
+    const completionReady = validation.status === "active" && units.length > 0 && done.length === units.length;
+    return { workId: validation.workId, title: lines.find((line) => /^# /.test(line))?.slice(2) ?? validation.workId, status: validation.status, mode: validation.mode, completionReady, active, pending, blocked, done, units, checkpointRequired: validation.status === "blocked", checkpointUser: blocked.length ? getUnitField(lines, blocked[0], "Checkpoint User") ?? null : null, checkpointAt: blocked.length ? Number(getUnitField(lines, blocked[0], "Checkpoint At")) || null : null, blockedReason: units.find((unit) => unit.state === "blocked")?.blockedReason ?? null };
+}
+
+
 export async function runWorkUnitLifecycle(command, targetDir, unitArg, options = {}) {
   if (command === "status") return mutateWorkUnitLifecycle(command, targetDir, unitArg, options);
   return withLedgerLock(targetDir, () => mutateWorkUnitLifecycle(command, targetDir, unitArg, options));
@@ -332,22 +336,20 @@ async function mutateWorkUnitLifecycle(command, targetDir, unitArg, options = {}
     throw new Error(`Work-unit lifecycle may only mutate .andmar/work/<work-id>: ${resolvedTarget}`);
   }
 
+  for (const key of ["reason", "revision"]) {
+    const value = options[key];
+    if (value !== undefined && (typeof value !== "string" || !value.trim() || /[\r\n\0]/.test(value) || value.length > (key === "revision" ? 200 : 500))) throw new Error(`Invalid single-line ${key}`);
+  }
   if (options.checkpointUser !== undefined && (typeof options.checkpointUser !== "string" || !options.checkpointUser || /[\r\n\0]/.test(options.checkpointUser) || options.checkpointUser.length > 200)) throw new Error("Invalid checkpoint user message ID");
-  const validation = await validateOrThrow(resolvedTarget);
+  const documents = await readLedgerDocuments(resolvedTarget);
+  let validation = validateLedgerDocuments(resolvedTarget, documents);
+  if (!validation.valid) throw new Error(`Ledger validation failed: ${validation.errors.join("; ")}`);
   const workPath = resolve(resolvedTarget, "WORK.md");
-  const original = await readFile(workPath, "utf8");
+  const original = documents["WORK.md"];
   let lines = original.replace(/\r\n/g, "\n").split("\n");
   const unitsBefore = parseWorkUnits(lines);
 
-  const summary = () => {
-    const units = projectUnits(lines, workspaceForLedger(resolvedTarget));
-    const active = units.find((unit) => unit.state === "active")?.id ?? null;
-    const blocked = units.filter((unit) => unit.state === "blocked").map((unit) => unit.id);
-    const pending = units.filter((unit) => unit.state === "pending").map((unit) => unit.id);
-    const done = units.filter((unit) => unit.state === "done").map((unit) => unit.id);
-    const completionReady = validation.status === "active" && units.length > 0 && done.length === units.length;
-    return { workId: validation.workId, title: lines.find((line) => /^# /.test(line))?.slice(2) ?? validation.workId, status: validation.status, mode: validation.mode, completionReady, active, pending, blocked, done, units, checkpointRequired: validation.status === "blocked", checkpointUser: blocked.length ? getUnitField(lines, blocked[0], "Checkpoint User") ?? null : null, checkpointAt: blocked.length ? Number(getUnitField(lines, blocked[0], "Checkpoint At")) || null : null, blockedReason: units.find((unit) => unit.state === "blocked")?.blockedReason ?? null };
-  };
+  const summary = () => projectLedgerDocuments(resolvedTarget, { ...documents, "WORK.md": lines.join("\n") }, validation);
 
   if (command === "status") return { changed: false, ...summary() };
   if (validation.status === "completed") throw new Error("Completed Work Ledger cannot be mutated by work-unit lifecycle");
@@ -367,14 +369,7 @@ async function mutateWorkUnitLifecycle(command, targetDir, unitArg, options = {}
     setNext(lines, `Completed — final revision ${revision}`);
     appendLifecycleEvent(lines, `completion gate accepted revision ${revision}; ledger finalized`);
 
-    const updated = `${lines.join("\n").replace(/\n+$/g, "\n")}`;
-    await atomicWrite(workPath, updated);
-    const after = await validateWorkLedger(resolvedTarget);
-    if (after.invocationError || !after.valid) {
-      await atomicWrite(workPath, original);
-      const detail = after.invocationError ? after.error : after.errors.join("; ");
-      throw new Error(`Lifecycle mutation rolled back because ledger became invalid: ${detail}`);
-    }
+    const after = await saveValidated(resolvedTarget, workPath, lines, documents);
     return {
       changed: true,
       workId: after.workId,
@@ -417,8 +412,9 @@ async function mutateWorkUnitLifecycle(command, targetDir, unitArg, options = {}
       setLedgerStatus(lines, "blocked");
       setNext(lines, `${active.id} — checkpoint required; resolve exception before execution`);
     }
-    await saveValidated(resolvedTarget, workPath, lines, original);
-    return { changed: true, workId: validation.workId, unit: id, ...decision };
+    await saveValidated(resolvedTarget, workPath, lines, documents);
+    validation = validateLedgerDocuments(resolvedTarget, { ...documents, "WORK.md": lines.join("\n") });
+    return { changed: true, ...summary(), unit: id, ...decision };
   }
 
   const unitId = normalizeUnitId(unitArg);
@@ -503,16 +499,13 @@ async function mutateWorkUnitLifecycle(command, targetDir, unitArg, options = {}
     throw new Error(`Unknown command: ${command}`);
   }
 
-  const after = await saveValidated(resolvedTarget, workPath, lines, original);
+  const after = await saveValidated(resolvedTarget, workPath, lines, documents);
 
-  const finalContent = await readFile(workPath, "utf8");
-  lines = finalContent.replace(/\r\n/g, "\n").split("\n");
+  validation = after;
   const finalUnits = parseWorkUnits(lines).map((unit) => ({ id: unit.id, state: stateName(unit.state) }));
   return {
     changed: true,
-    workId: after.workId,
-    status: after.status,
-    mode: after.mode,
+    ...summary(),
     command,
     unit: unitId,
     active: finalUnits.find((unit) => unit.state === "active")?.id ?? null,

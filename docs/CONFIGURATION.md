@@ -187,7 +187,7 @@ ANDMAR_OBSERVABILITY_ENABLED=1
 ## Intake options (capability-local, fail open)
 
 The `intake` capability reads its own keys so model/timeout resolution stays
-capability-local: `src/capabilities/intake/jev-client.ts` holds only the
+capability-local: `src/integrations/jev/client.ts` holds only the
 Decisions transport (endpoint and payload shape) and no provider policy. These
 keys are **not** part of the validated
 `HarnessConfig`: unknown or malformed values fall back to defaults instead of

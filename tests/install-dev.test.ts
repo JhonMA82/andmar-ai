@@ -26,6 +26,9 @@ test("dev installer is idempotent and refuses to overwrite a modified global age
     const agentPath = join(configDir, "agents", "andmar.md")
     assert.equal(resolve(join(configDir, "plugins"), await readlink(pluginPath)), root)
     assert.match(await readFile(agentPath, "utf8"), /^---\n[\s\S]*?mode:\s*primary/m)
+    for (const name of ["andmar-work-ledger", "andmar-repo-navigation", "andmar-git-lifecycle", "andmar-verification", "andmar-acceptance"]) {
+      assert.equal(await readFile(join(configDir, "skills", name, "SKILL.md"), "utf8"), await readFile(join(root, "assets/skills", name, "SKILL.md"), "utf8"))
+    }
 
     const second = run("scripts/install-dev.mjs", configDir)
     assert.equal(second.status, 0, second.stderr || second.stdout)

@@ -158,3 +158,18 @@ collisions use `observed-<sha256(nativeId)>-<ordinal>` in the same namespace.
 Allocation checks durable entries after restart. Metadata writes are serialized
 within plugin setup; receipt binding never changes previous execution outcomes.
 No counter, duplicate Ledger or new persistent namespace is introduced.
+
+## Structured Ledger projections and recovery
+
+No new ctx.storage key is introduced. Lifecycle's binding retains only workId,
+directory, current activity/verification metadata, recovery diagnostic, trusted
+checkpoint boundary and a session-local compact projection. Four cheap
+inode/size/ctimeNs/mtimeNs stamps invalidate it. Changed state is read as a stable
+snapshot and validated; unchanged hooks do not parse full Markdown again.
+
+Portable creation, evidence and transitions use the shared structured helper.
+After mutation the response is derived from validated in-memory bytes; future
+hooks confirm current state against changed stamps. Recovery preserves native
+read/search/question and Ledger-only repair while product mutation/completion
+remain refused. Repair cannot silently clear a previously trusted checkpoint.
+Restart derives everything durable from the repository, not a Ledger mirror.

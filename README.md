@@ -243,3 +243,13 @@ Memory never replaces `.andmar/work`, Task Contract state, or Verification evide
 ## License
 
 MIT.
+
+### Native procedures and structured work
+
+The primary agent loads five packaged native OpenCode skills on demand. The dev
+installer installs them under the native config skills directory; assets/skills
+is canonical. Work Ledger creation/evidence/transitions use structured tools and
+compact projections; Markdown remains portable work truth. Invalid bound Ledgers
+retain inspection and Ledger-only repair without restarting the session.
+See [architecture](docs/ARCHITECTURE.md) and [Ledger API](docs/WORK-LEDGER.md).
+`bun run test:runtime` verifies the installed runtime with actual native tools.

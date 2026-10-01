@@ -1,223 +1,30 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { readFile } from "node:fs/promises"
-
+import { readFile, readdir } from "node:fs/promises"
 const agent = await readFile(new URL("../assets/agents/andmar.md", import.meta.url), "utf8")
-
-test("AndMar is a primary agent and does not pin a model", () => {
-  const frontmatter = agent.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? ""
-  assert.match(frontmatter, /^mode:\s*primary$/m)
-  assert.doesNotMatch(frontmatter, /^model:/m)
+const skillRoot = new URL("../assets/skills/", import.meta.url)
+const skills = await readdir(skillRoot)
+test("primary agent uses native skill discovery without model pinning", () => {
+  const fm = agent.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? ""
+  assert.match(fm, /^mode: primary$/m)
+  assert.doesNotMatch(fm, /^model:/m)
+  assert.match(agent, /native skill tool/)
+  for (const name of skills) assert.ok(agent.includes(name), `missing skill route ${name}`)
 })
-
-test("AndMar agent requires the existing verification and lifecycle primitives", () => {
-  for (const primitive of [
-    "andmar_status",
-    "andmar_suggest_checks",
-    "andmar_record_receipt",
-    "andmar_verify_revision",
-    "andmar_change_impact",
-    "andmar_completion_gate",
-  ]) {
-    assert.match(agent, new RegExp(`\\b${primitive}\\b`))
+test("procedures have one skill owner and are progressively disclosed", async () => {
+  assert.deepEqual(skills.sort(), ["andmar-acceptance", "andmar-git-lifecycle", "andmar-repo-navigation", "andmar-verification", "andmar-work-ledger"])
+  const bodies = await Promise.all(skills.map(name => readFile(new URL(`${name}/SKILL.md`, skillRoot), "utf8")))
+  for (let i = 0; i < skills.length; i++) {
+    assert.ok(bodies[i]!.includes(`name: ${skills[i]}`))
+    assert.match(bodies[i]!, /^description: .+/m)
+    assert.doesNotMatch(bodies[i]!, /TODO|placeholder skill/i)
   }
-  assert.match(agent, /Implementation success is not task completion/i)
-  assert.match(agent, /working-state revision fingerprint/i)
+  for (const recipe of ["--evidence", "--commit", "prepare <ledger-dir>", "record_receipt({"]) assert.ok(!agent.includes(recipe))
 })
-
-test("AndMar agent requires stronger evidence for migrations and integrations", () => {
-  assert.match(agent, /authoritative\/current sources/i)
-  assert.match(agent, /real runtime or integration boundary/i)
-  assert.match(agent, /tests that only validate mocks/i)
-})
-
-test("AndMar agent holds the reinforced migration/integration termination criteria", () => {
-  assert.match(agent, /installed API\/type shape/i)
-  assert.match(agent, /deprecated\/transitional API scan/i)
-  assert.match(agent, /migration notes\/changelog/i)
-  assert.match(agent, /explicitly.*limitation|limitation.*explicitly/i)
-  assert.match(agent, /executionId/i)
-})
-
-test("AndMar agent uses intake before non-trivial execution", () => {
-  assert.match(agent, /andmar_intake\b/)
-  assert.match(agent, /needsRefinement/i)
-  assert.match(agent, /Internal Task Brief/i)
-  assert.match(agent, /routeSignals/i)
-  assert.match(agent, /fallback.*never blocks|never blocks.*fallback/i)
-})
-
-test("AndMar agent preserves raw-request obligations through intake compression", () => {
-  assert.match(agent, /raw user request remains authoritative/i)
-  assert.match(agent, /brief.*never replace|never replace.*brief/i)
-  assert.match(agent, /never remove obligations/i)
-  assert.match(agent, /surface contradictions|contradictions.*surface/i)
-  assert.match(agent, /every explicit requirement and constraint/i)
-  assert.match(agent, /Never derive the contract solely from a compressed brief/i)
-})
-
-test("AndMar agent does not summarize requests before intake", () => {
-  assert.match(agent, /reads the authoritative raw user request directly from the current OpenCode session/i)
-  assert.match(agent, /Do not paraphrase, summarize, or pass the request as a tool argument/i)
-})
-
-test("AndMar agent works through a Task Contract and separates tests from completion", () => {
-  assert.match(agent, /andmar_task_contract\b/)
-  assert.match(agent, /Passing tests prove only what those tests cover/i)
-  assert.match(agent, /not only against the implementation plan you created yourself/i)
-  assert.match(agent, /Compaction does not end the task/i)
-  assert.match(agent, /steer.*active contract|active contract.*steer/i)
-})
-
-test("AndMar agent reports change, verification, requirements and limitations on completion", () => {
-  assert.match(agent, /what changed, how it was verified/i)
-  assert.match(agent, /which requirements were met|requirements.*met/i)
-  assert.match(agent, /which real limitations remain|limitations remain/i)
-})
-
-test("AndMar agent handles post-completion operational continuations proportionally", () => {
-  assert.match(agent, /continuation\.fastPath=true/)
-  assert.match(agent, /Do not call `andmar_completion_gate` again/)
-  assert.match(agent, /proportional checks/i)
-})
-
-test("AndMar agent passes taskKind through contract and completion boundaries", () => {
-  assert.match(agent, /Task Contract.*taskKind|taskKind.*Task Contract/i)
-  assert.match(agent, /completion_gate.*taskKind|taskKind.*completion_gate/i)
-  assert.match(agent, /runtime.*derived.*taskKind|taskKind.*runtime.*derived/i)
-})
-
-test("AndMar agent definition is clean of escaped literals and states its context rules", () => {
-  assert.doesNotMatch(agent, /\\x27/);
-  assert.match(agent, /OpenCode's/);
-  assert.match(agent, /No hidden context/i);
-  assert.match(agent, /AndMar may use available context but must never depend on invisible context/i);
-});
-
-test("AndMar agent uses intake workProjection and manages repository Work Ledger", () => {
-  assert.match(agent, /workProjection\.mode/i);
-  assert.match(agent, /lightweight/i);
-  assert.match(agent, /structured/i);
-  assert.match(agent, /\.andmar\/work/i);
-});
-
-test("AndMar agent preserves separation between Work Ledger and Task Contract", () => {
-  assert.match(agent, /Work Ledger is portable continuity;\s*Task Contract is runtime completion projection/i);
-});
-
-test("AndMar agent resumes from Work Ledger before restarting from scratch", () => {
-  assert.match(agent, /Consult `?\.andmar\/work\/\*\/WORK\.md`? before restarting from scratch/i);
-  assert.match(agent, /reconstruct the Task Contract from the Ledger's Goal, requirements, and constraints/i);
-  assert.match(agent, /Do not redo completed work units/i);
-});
-
-test("AndMar agent manipulates Work Ledger files with native OpenCode tools", () => {
-  assert.match(agent, /using native OpenCode tools \(`read`, `write`, `edit`\)/i);
-});
-
-test("AndMar agent forbids hidden context across all modes and ledger assertions", () => {
-  assert.match(agent, /invisible context/i);
-  assert.match(agent, /Every durable assertion must be traceable to the current user request, the repository, the Work Ledger itself/i);
-});
-
-test("AndMar agent retains andmar_completion_gate without introducing a second completion gate", () => {
-  assert.match(agent, /andmar_completion_gate\b/);
-  assert.doesNotMatch(agent, /andmar_work_completion\b/);
-});
-
-test("AndMar agent enforces 1:1 requirement identity and forbids requirement grouping", () => {
-  assert.match(agent, /Preserve one-to-one requirement identity between Work Ledger and Task Contract/i);
-  assert.match(agent, /Never merge independent user obligations merely to satisfy runtime capacity/i);
-  assert.match(agent, /report the projection limit instead of silently grouping or dropping requirements/i);
-  assert.doesNotMatch(agent, /group them into <=20|group them into up to 20/i);
-});
-
-test("AndMar agent resolves working-state revision helper from the installed plugin", () => {
-  assert.match(agent, /plugins\/andmar-ai\/scripts\/working-state-revision\.mjs/i);
-  assert.doesNotMatch(agent, /node scripts\/working-state-revision\.mjs/i);
-  assert.match(agent, /:!\.andmar\/work\/\*\*/);
-});
-
-test("AndMar agent resolves deterministic Work Ledger validation from the installed plugin", () => {
-  assert.match(agent, /plugins\/andmar-ai\/scripts\/validate-work-ledger\.mjs/i);
-  assert.doesNotMatch(agent, /node scripts\/validate-work-ledger\.mjs/i);
-  assert.match(agent, /Validate the structural integrity of the Work Ledger/i);
-});
-
-test("AndMar agent uses canonical REQ-1/REQ-2 IDs and avoids REQ-01 padding", () => {
-  assert.match(agent, /`REQ-1`/);
-  assert.match(agent, /`REQ-2`/);
-  assert.doesNotMatch(agent, /\bREQ-0\d\b/);
-});
-
-test("AndMar agent uses deterministic Work Unit lifecycle transitions from the installed plugin", () => {
-  assert.match(agent, /plugins\/andmar-ai\/scripts\/work-ledger-lifecycle\.mjs/i)
-  assert.match(agent, /activate \.andmar\/work\/<work-id> WU-N/i)
-  assert.match(agent, /complete .*--evidence EV-N/i)
-  assert.match(agent, /block .*--reason/i)
-  assert.match(agent, /resume .*--reason/i)
-  assert.match(agent, /reopen .*--reason/i)
-  assert.match(agent, /do not hand-edit those markers/i)
-  assert.match(agent, /rolls back a transition that would make the Ledger structurally invalid/i)
-})
-
-test("AndMar agent uses exact-revision Work Unit checkpoints without taking over Git delivery", () => {
-  assert.match(agent, /plugins\/andmar-ai\/scripts\/work-unit-checkpoint\.mjs/i)
-  assert.match(agent, /prepare .*--revision <verified-revision>/i)
-  assert.match(agent, /record .*--commit <HEAD>/i)
-  assert.match(agent, /delivery\.workUnitCommits/i)
-  assert.match(agent, /manual.*default/i)
-  assert.match(agent, /OpenCode performs staging\/commit through native Git tools/i)
-  assert.match(agent, /push.*PR.*merge.*tag.*publish.*release.*explicit authorization/i)
-})
-
-test("AndMar agent uses the simplified completion flow without a second close ceremony", () => {
-  assert.match(agent, /completionReady:true/i)
-  assert.match(agent, /accepts no caller-declared pass\/fail/i)
-  assert.match(agent, /contractClosed:true/i)
-  assert.match(agent, /`andmar_task_contract\(op=close\)` exists only to block an explicit cancellation with a reason, so never use it to complete work/i)
-  assert.match(agent, /work-ledger-lifecycle\.mjs finalize .*--revision <currentRevision>/i)
-})
-test("AndMar agent completes through contract obligations, exact-revision verification and docs/version only", () => {
-  assert.match(agent, /The gate enforces, in order: exact-revision verification, Task Contract requirements[\s\S]*?then docs\/version obligations\./)
-  assert.match(agent, /No second LLM judges completion\./)
-  // Risky work keeps stronger primary-agent verification discipline.
-  assert.match(agent, /adversarial final inspection/i)
-  assert.match(agent, /This is your own verification discipline, not another agent\./)
-  assert.match(agent, /installed API\/type shape/i)
-  assert.match(agent, /authoritative\/current sources/i)
-  assert.match(agent, /migration notes\/changelog/i)
-  assert.match(agent, /real runtime or integration boundary/i)
-})
-
-test("AndMar agent definition of done is contract + verification + gate, without extra ceremony", () => {
-  assert.match(agent, /user goal \/ Work Ledger[\s\S]*Task Contract obligations[\s\S]*exact working-state revision[\s\S]*record receipts[\s\S]*verify revision[\s\S]*record requirement evidence[\s\S]*change-impact docs\/version[\s\S]*completion gate[\s\S]*finalize Work Ledger/)
-})
-
-
-test("AndMar agent keeps development metrics diagnostic rather than ceremonial", () => {
-  assert.match(agent, /Do \*\*not\*\* call `andmar_report` on every task/i)
-  assert.match(agent, /diagnosing repeated AndMar friction|explicit harness-tuning work/i)
-  assert.match(agent, /never becomes a completion gate|metric thresholds never decide/i)
-})
-
-test("AndMar agent uses final Delivery gate without taking over Git/provider execution", () => {
-  assert.match(agent, /call `andmar_delivery` with exactly that operation/i)
-  assert.match(agent, /never pass or invent an authorization boolean/i)
-  assert.match(agent, /commit.*does not imply.*push/i)
-  assert.match(agent, /push.*does not imply.*PR/i)
-  assert.match(agent, /version.*does not imply.*tag\/publish\/release/i)
-  assert.match(agent, /only native OpenCode tools for the actual VCS\/provider action/i)
-  assert.match(agent, /Do not reopen a completed Task Contract or Work Ledger solely for delivery/i)
-})
-
-
-test("AndMar treats Engram as bounded advisory memory rather than a capability", () => {
-  assert.match(agent, /Engram advisory memory/i)
-  assert.match(agent, /not an AndMar capability/i)
-  assert.match(agent, /Cross-project retrieval is exceptional/i)
-  assert.match(agent, /Memory failure|Engram failure/i)
-  assert.match(agent, /never store current Work Unit status/i)
-  assert.match(agent, /topic_key/i)
-  assert.match(agent, /Engram > model memory/i)
+test("agent retains autonomy, obligation identity and completion authority", () => {
+  assert.match(agent, /Execute autonomously/)
+  assert.match(agent, /preserve their identity/)
+  assert.match(agent, /only\nnormal transition to completed/)
+  assert.match(agent, /invalid Ledger blocks product mutation\/completion/)
+  assert.match(agent, /never describe mocks as real runtime acceptance/)
 })

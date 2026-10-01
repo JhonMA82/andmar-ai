@@ -141,7 +141,7 @@ Do not add provider adapters to AndMar AI. OpenCode owns provider/model catalogs
 
 Do not encode methodologies in core. A methodology should call harness primitives.
 
-If execution semantics become repetitive, add one generic workflow capability and keep methodology definitions outside it.
+Keep procedures in native skills with deterministic scripts. Runtime hooks and gates belong to existing owners; do not add a generic workflow engine.
 
 ## Backwards compatibility
 

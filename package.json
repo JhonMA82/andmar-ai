@@ -1,6 +1,6 @@
 {
   "name": "andmar-ai",
-  "version": "0.16.1-rc.1",
+  "version": "0.17.0",
   "description": "A thin, deterministic-first harness for OpenCode V2.",
   "type": "module",
   "exports": {
@@ -31,7 +31,8 @@
     "engram:setup": "node scripts/setup-engram.mjs",
     "bench:configure": "bun bench/configure.ts",
     "bench": "bun bench/runner.ts",
-    "bench:compare": "bun bench/compare.ts"
+    "bench:compare": "bun bench/compare.ts",
+    "test:runtime": "node assets/skills/andmar-acceptance/scripts/runtime-acceptance.mjs"
   },
   "dependencies": {
     "@opencode/plugin": "2.0.4"

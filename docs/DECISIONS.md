@@ -150,13 +150,13 @@ dumping ground exists.
 
 ---
 
-## D-015 — No Workflow engine yet
+## D-015 — No generic Workflow engine
 
-**Decision:** AndMar AI ships no generic workflow capability (no DAG, sequence/parallel/gate DSL, or orchestration board), even though delegation, verification, and the completion gate already compose a linear request flow (see `ARCHITECTURE.md` 2.2).
+**Decision:** AndMar AI ships no generic workflow capability (no DAG, sequence/parallel/gate DSL, or orchestration board), even though delegation, verification, and the completion gate already compose a linear request flow (see `ARCHITECTURE.md`).
 
 **Why:** The observed friction so far is single-task completion with evidence, which explicit primitive calls plus the completion gate already solve. A workflow engine would add coordination machinery before repeated orchestration pain has been measured in real use.
 
-**Consequence:** Orchestration stays in the `AndMar` agent's completion policy and in methodology consumers. The first workflow slice, if ever triggered, is only `sequence / parallel / gate / repeat(maxRounds)` for the demonstrated problem — never a general DSL upfront. The `intake` pilot (D-013) is not a precedent for building engines without triggers.
+**Consequence:** Procedures stay in native skills and deterministic scripts; runtime guarantees stay in their owners. D-032 freezes these extension surfaces and excludes a general workflow engine. The `intake` pilot (D-013) is not a precedent for speculative engines.
 
 ---
 
@@ -166,7 +166,7 @@ dumping ground exists.
 
 **Why:** Real use showed correct code with green tests still missing the user's actual request. The missing piece is semantic (what was asked), so the primary model extracts obligations while code owns validation, transitions, and gating deterministically.
 
-**Consequence:** `src/core/task-contract.ts` holds pure types/transitions/evaluation; `src/capabilities/task-contract/` owns `task-contract/<sessionID>` persistence. No sibling imports; `lifecycle` reads through core key helpers only.
+**Consequence:** `src/core/task-contract.ts` holds the small shared read types/key; `src/capabilities/task-contract/contract.ts` owns transitions/evaluation; `src/capabilities/task-contract/` owns `task-contract/<sessionID>` persistence. No sibling imports; `lifecycle` reads through core key helpers only.
 
 ---
 
@@ -397,3 +397,18 @@ requires rebinding a repository work ID, not reconstructing a Plan from hidden
 storage. Task Contract, Verification, Completion, Delivery and Intake retain
 their current authorities. Projection and tracking gaps are diagnostic, not
 extra completion gates.
+
+## D-032 — Final modular surfaces and progressive Ledger API
+
+**Decision:** Freeze core around actual shared primitives. Keep Task Contract
+transitions/completion and impact logic with their owners; keep Jev transport in
+an optional integration. Canonical native skills carry procedures; the primary
+agent carries policy. No registries/frameworks or future empty subsystems.
+
+**Consequence:** Markdown remains portable work truth but routine machine access
+uses one structured facade reused directly by lifecycle. Validate before atomic
+publication, replace pending evidence, cache only projections and invalidate by
+cheap stamps. Invalid state blocks product mutation/completion while repair stays
+possible. Known material checkpoints survive recovery. Exact-revision native
+Verification and one Completion Gate remain unchanged. Native acceptance uses
+real tools/hooks/storage with a deterministic model driver, not synthetic events.

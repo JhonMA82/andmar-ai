@@ -18,7 +18,7 @@ Intake -> Work Ledger -> work-unit lifecycle -> work-unit checkpoints
 ```
 
 There is no Step 9. See [CAPABILITIES.md](CAPABILITIES.md) for the generated
-id/version/tool inventory (9 capabilities, 17 tools) and
+id/version/tool inventory (generated counts) and
 [ANDMAR-AI-CAPABILITIES.md](ANDMAR-AI-CAPABILITIES.md) for behavior. The
 distinctive pieces are:
 
@@ -30,7 +30,7 @@ distinctive pieces are:
 - intake request-refinement pilot (deterministic-first, one typed Jev
   decision, explicit non-blocking fallback);
 - repository-native Work Ledger with deterministic Work Unit lifecycle and
-  two-phase checkpoint gate;
+  two-phase checkpoint gate, structured machine interface and progressive context;
 - evidence-derived completion: `andmar_completion_gate` derives
   verification truth from stored evidence and closes the Task Contract in the
   same operation;
@@ -58,25 +58,11 @@ isolated capability   (only when a runtime guarantee requires it)
 Nothing is scheduled by appearing in this file; each candidate below still
 needs its trigger to fire in real use.
 
-## Candidate: workflow capability
+## Stable procedure surfaces
 
-**Trigger:** repeated manual orchestration in ODD or other methodologies.
-
-The session-scoped Task Contract (implemented, see DECISIONS D-016) covers
-per-session obligations, steering and post-compaction recovery; it is
-deliberately not a workflow engine and does not by itself trigger this
-candidate.
-
-First implementation should expose only:
-
-```text
-sequence
-parallel
-gate
-repeat(maxRounds)
-```
-
-No nested workflow language, arbitrary scripting or swarm mesh.
+Methodologies evolve through native skills and shared deterministic scripts.
+Repeated orchestration is not a trigger for a generic workflow engine. Runtime
+guarantees remain with their capability owner; core stays frozen for normal work.
 
 ## Candidate: context projection
 

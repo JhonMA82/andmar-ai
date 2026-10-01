@@ -38,7 +38,7 @@ Start OpenCode in the project you want to test and use **Tab** to select the `An
 
 ## What the first tests should answer
 
-Do not add Workflow, context projection, or more agents before these tests produce evidence that they are needed. Do not add an AndMar memory subsystem or memory capability: Engram is the existing optional external memory integration (see [ENGRAM.md](ENGRAM.md)), and it never becomes work state or completion evidence. (The narrow `intake` Jev pilot is already implemented; broader semantic uses still wait for evidence.)
+Keep new procedures in native skills and scripts; add a capability only for a demonstrated runtime guarantee. Do not add a generic workflow engine. Do not add an AndMar memory subsystem or memory capability: Engram is the existing optional external memory integration (see [ENGRAM.md](ENGRAM.md)), and it never becomes work state or completion evidence. (The narrow `intake` Jev pilot is already implemented; broader semantic uses still wait for evidence.)
 
 | Scenario | Example | What to observe |
 |---|---|---|
@@ -46,7 +46,7 @@ Do not add Workflow, context projection, or more agents before these tests produ
 | Bug fix | Fix a known failing test | Relevant checks run and evidence is tied to final working state |
 | Feature | Small bounded feature | Routing/delegation add value only when useful |
 | Migration/integration | Port a plugin to current OpenCode V2 | Upstream contract + runtime boundary + CI are checked, not only mocks |
-| Restart | Stop OpenCode during a real task and return | Measure exactly what continuity is missing before implementing Workflow |
+| Restart | Stop OpenCode during a real task and return | Recover active work through structured status/context |
 
 For every scenario record:
 
@@ -68,23 +68,14 @@ The session-scoped Task Contract (`andmar_task_contract`) now covers the
 active-task part for the current session: goal, requirements, constraints,
 blockers and requirement evidence survive restarts via plugin storage, and
 `status` re-projects them compactly after compaction. Work Ledger recovery
-covers the portable side: `WORK.md` is read before restarting from scratch,
-and the deterministic lifecycle helper restores unit state. What is still
+covers the portable side: structured status/context restores active unit state
+without injecting full Markdown into the model. What is still
 deliberately missing is cross-session takeover: `andmar_resume` intentionally
 enforces parent-session ownership for delegated child sessions. A brand-new
 parent session therefore must not silently take ownership of an old child.
 
-If restart/session continuity becomes a repeated real-world friction, that is evidence for the first minimal `workflow` capability:
-
-```text
-active task
-completion contract
-status
-resume
-completion gate
-```
-
-Do not implement a general DAG/DSL merely to solve continuity.
+Continuity improvements stay within the existing repository state, session binding
+and native skill surfaces; they do not require another workflow subsystem.
 
 ## Completion expectations while testing
 
@@ -239,3 +230,27 @@ write child under a blocked outer execute must be refused.
 
 Stable promotion is a decision taken on a real session; it is not recorded as a
 procedure in this repository.
+
+## Final modular native acceptance
+
+Run `bun run check`, then `bun run test:runtime` with an installed OpenCode V2
+binary (`OPENCODE_BIN` selects a specific binary). The script creates an isolated
+Git project/config/data directory, starts the actual server and drives native
+shell, write/read, skill and Code Mode tools with a deterministic model fixture.
+No external model credential or new repository dependency is needed. Nothing is
+mocked at the tool/hook/storage/receipt boundary. Temporary state is removed by
+default; `ANDMAR_KEEP_ACCEPTANCE=1` retains it for diagnostics. An optional first
+script argument selects the JSON report path; default `.andmar/runtime-acceptance.json`.
+
+Assertions require native exit 0, stored same-session receipt referencing the
+real call ID, successful Verification and Gate, native exit 7 with passed-receipt
+refusal, product-state mutation with stale Verification/Gate rejection, and read/
+Ledger repair/product-shell refusal/recovery for duplicate EV, invalid WU and
+unknown REQ. All three recover in one session without restart. requiredChecks
+contains `custom`; an empty set never hides association failures.
+
+Verified on installed OpenCode 2.0.21. The fixture validates mechanical runtime
+contracts, not model judgment, semantic skill adoption on arbitrary tasks or
+unhooked global fetch sandboxing. Unit tests independently cover serialization,
+parallel evidence allocation, compact context/status, stamp invalidation and
+checkpoint boundaries. Do not treat test counts alone as semantic acceptance.

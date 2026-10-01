@@ -1,5 +1,5 @@
 import type { Capability, ChangeKind, StateStore } from "../../core/contracts.ts"
-import { evaluateCompletion, type CompletionObligations } from "../../core/lifecycle.ts"
+import { evaluateCompletion, type CompletionObligations } from "./completion.ts"
 import { readVerificationState } from "../../core/verification-state.ts"
 import type { SemanticObservability } from "../../core/observability.ts"
 import {
@@ -15,7 +15,7 @@ import {
   type EvidenceType,
   type RequirementStatus,
   type TaskContract,
-} from "../../core/task-contract.ts"
+} from "./contract.ts"
 
 const CHECKS = ["tests", "lint", "typecheck", "build", "custom"] as const
 const DEFAULT_GATE_CHECKS: readonly string[] = ["tests", "typecheck"]

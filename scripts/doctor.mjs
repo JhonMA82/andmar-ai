@@ -1,4 +1,4 @@
-import { lstat, readFile, readlink, realpath } from "node:fs/promises"
+import { lstat, readdir, readFile, readlink, realpath } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -48,6 +48,17 @@ try {
   record("agent", installed === source, installed === source ? agentPath : `${agentPath} differs from this checkout`)
 } catch (error) {
   record("agent", false, error?.code === "ENOENT" ? `${agentPath} is not installed` : String(error))
+}
+
+for (const entry of await readdir(join(root, "assets/skills"), { withFileTypes: true })) {
+  if (!entry.isDirectory()) continue
+  const source = join(root, "assets/skills", entry.name, "SKILL.md")
+  const installed = join(configDir, "skills", entry.name, "SKILL.md")
+  try {
+    record(`skill:${entry.name}`, await realpath(installed) === await realpath(source), installed)
+  } catch (error) {
+    record(`skill:${entry.name}`, false, error?.code === "ENOENT" ? `${installed} is not installed` : String(error))
+  }
 }
 
 const engramVersion = spawnSync("engram", ["version"], { encoding: "utf8", timeout: 3000 })

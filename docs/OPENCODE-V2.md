@@ -262,3 +262,26 @@ These boundaries constrain what a checkpoint can guarantee: it controls
 subsequent observed tools, not a universal HTTP or security sandbox. Promotion
 to a stable release remains an explicit decision after validating the
 operational flow on a real OpenCode session.
+
+## Native skills — installed OpenCode 2.0.21 audit
+
+Verified binary `opencode v2.0.21` and official tag `v2.0.21` (8a8bd622).
+`packages/core/src/config/plugin/skill.ts` scans `skill` and `skills` under native
+configuration directories using `{*.md,**/SKILL.md}` with symlink traversal.
+`skill-file.ts` accepts YAML name/description and Markdown body; directory basename
+is the native ID. AndMar packages `<name>/SKILL.md`, installing into
+`${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/skills/<name>` through dev links.
+
+Configuration discovery/load orders lower to higher: wellknown, global directory,
+explicit file, direct project config, project `.opencode` directories, then config
+content. Skill sources follow directory entries, then explicit configured skills;
+later sources replace earlier identical IDs. AndMar does not override this native
+precedence. The model loads with native `skill({name})`; no AndMar skill tool.
+Native discovery/activation is asynchronous, so acceptance waits boundedly for
+registration rather than treating an initial empty inventory as missing skills.
+
+The shipped acceptance script exercises this real scanner and native skill
+loading, shell execution, Code Mode calls, receipt association, nonzero rejection,
+stale-revision verification/gate and corrupt-Ledger recovery. Its deterministic
+model fixture selects calls only; it does not fake hooks, storage, tool results or
+permissions. See TESTING.md for invocation and evidence limits.
