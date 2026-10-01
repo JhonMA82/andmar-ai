@@ -247,6 +247,7 @@ export async function validateWorkLedger(targetDir, options = {}) {
   const unitEvidenceRefs = new Map();
   const unitCheckpointRefs = new Map();
   const checkpointOwners = new Map();
+  const boundaryFields = new Set();
 
   for (const [secName, lines] of workSections) {
     if (secName.includes("WORK UNIT") || secName.includes("UNITS")) {
@@ -292,6 +293,18 @@ export async function validateWorkLedger(targetDir, options = {}) {
             for (const id of ids) referencedEvsInWUs.push(id.toUpperCase());
             if (currentWuId) unitEvidenceRefs.set(currentWuId, ids.map((id) => id.toUpperCase()));
           }
+        }
+
+        const boundaryMatch = line.match(/^\s*- (Checkpoint User|Checkpoint At):\s*(.*)$/i);
+        if (boundaryMatch && currentWuId) {
+          const field = boundaryMatch[1].toLowerCase();
+          const value = boundaryMatch[2].trim();
+          const key = `${currentWuId}:${field}`;
+          if (boundaryFields.has(key)) errors.push(`Duplicate checkpoint boundary ${boundaryMatch[1]} on ${currentWuId}`);
+          boundaryFields.add(key);
+          if (unitStates.get(currentWuId) !== "!") errors.push(`Non-blocked Work Unit ${currentWuId} cannot retain ${boundaryMatch[1]}`);
+          if (field === "checkpoint at" && (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) <= 0)) errors.push(`Invalid Checkpoint At on ${currentWuId}`);
+          if (field === "checkpoint user" && (!value || /[\r\n\0]/.test(value) || value.length > 200)) errors.push(`Invalid Checkpoint User on ${currentWuId}`);
         }
 
         const checkpointMatch = line.match(/Checkpoint:\s*(.+)$/i);

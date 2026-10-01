@@ -573,15 +573,51 @@ whether to approve every step. `andmar_work_resume({reason})` requires a new
 user message after the observed checkpoint; the primary agent must interpret
 that response and only resume when it resolves the exception. After resolution,
 apply any authorized obligation change to the durable Ledger and Task Contract
-before product execution. A new message by itself is not approval. An observed checkpoint stores only its native user-message ID (`Checkpoint User`)
-with the blocked WU, so restart does not require asking again after an already
-received response. For legacy/unobserved checkpoints with no ID, binding
-establishes a fresh baseline. In both cases the primary agent must confirm the
-response resolves the exception before explicit resume.
-If the user declines newly proposed scope, remove only that unaccepted pending
-discovery through native Ledger editing and retain all accepted requirements.
-Existing native CLI resume remains a recovery operation requiring an explicit
-reason; it is not an automatic approval mechanism.
+before product execution. A new message by itself is not approval.
+
+**Creation owns the boundary; normal recovery only reads it.** Both `amend`
+and CLI `block` atomically store `Checkpoint At` (positive epoch milliseconds)
+when they change the WU to blocked. `amend` also preserves the native
+`Checkpoint User` ID when available. Neither bind/rebind, status, reads, RPC,
+nor tool observation can move either marker. There is no runtime approval
+baseline. `work_resume` compares the last native `type: user` message's
+creation time against that durable boundary and rechecks the exact boundary
+under the existing write lock before transitioning. Equal/older times fail
+closed. A successful resume removes `Blocker`, `Checkpoint At` and
+`Checkpoint User`; a duplicate returns `no blocked Work Unit`.
+
+ID-only legacy Ledgers remain readable: when the origin is in the native
+context, a later user message must follow it. Across sessions/compaction the
+verified V2 ascending native message-ID prefix supplies ordering. Arbitrary
+unequal IDs are never proof. If an old Ledger has no provable boundary, the
+first explicit `work_resume` establishes a durable recovery boundary once,
+keeps the WU blocked and explains that a decision after this boundary is
+needed. This is explicit legacy reconciliation, not approval. Status/reads
+never initialize it, and restarting cannot re-arm it. Clock rollback or
+missing native timestamps produce an actionable refusal, not a heuristic.
+
+For an already-bound blocked session, the native Code Mode `execute` wrapper
+is transport. Its child hooks apply the same read/control vs product-tool
+policy, with one namespace normalization for local/`andmar_`/`andmar.`/
+`andmar/` names. Reads, search, status, intake, route, Task Contract and resume
+remain available; edit/write/patch/shell/delegation/amend/completion remain
+blocked. The wrapper's after event never consumes a child's attribution:
+V2.0.20 reuses its outer call ID for children.
+
+**Boundary of the guarantee:** this is a native tool gate, not a JavaScript or
+network sandbox. V2.0.20 exposes global Code Mode `fetch` without tool or
+permission hooks; direct HTTP effects are not deterministically stopped by
+this gate. Already-running calls and external processes are not cancelled.
+The strict all-product-effects acceptance criterion remains open; do not
+claim it or release based only on green hook fixtures. Use native gated tools
+for product execution. See the live audit in [TESTING.md](TESTING.md).
+
+If the user declines newly proposed scope, retain all accepted requirements
+and reconcile that unaccepted proposal after explicitly resolving the decision.
+Native CLI `resume` remains a trusted operator/offline recovery command with
+an explicit reason; a blocked agent uses `andmar_work_resume`, since shell
+is deliberately unavailable while blocked. No normal manual WORK.md editing
+is required for checkpoint recovery.
 
 There is no checkpoint after ordinary WU completion. Verification continues to
 block unproven Completion; locally recoverable check failures may be corrected

@@ -534,6 +534,13 @@ or second LLM evaluation. The shared glob primitive is plain ESM so installed
 native CLI helpers and TypeScript capabilities use the same rules without a
 loader or new dependency.
 
+Checkpoint creation atomically records its temporal boundary in the existing
+WU; recovery reads that boundary, never a baseline recalculated by bind or
+observation. Native Code Mode transport may enter, while its child tools are
+gated independently. This is a tool boundary, not a replacement for the
+runtime's sandbox: unhooked global HTTP access in V2.0.20 remains outside the
+guarantee. See the live checkpoint audit in [TESTING.md](TESTING.md).
+
 A derived read-only native RPC projection prepares future presentation.
 Activity is ephemeral, work is repository-native, and RPC availability is
 advisory. Intake is the sole entry classifier and trivial unbound work skips

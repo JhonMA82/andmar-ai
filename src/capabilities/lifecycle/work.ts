@@ -55,6 +55,29 @@ export function editedFiles(output: unknown): string[] {
   return [...new Set(files)]
 }
 
+type UserMessage = { id: string; time?: { created: number | { epochMilliseconds: number } } }
+const nativeMessageOrder = (id: string | null | undefined) => /^msg_[a-f0-9]{12}[0-9A-Za-z]{14}$/.test(id ?? "") ? id!.slice(4, 16) : null
+function checkpointOriginKnown(origin: string | null, messages: UserMessage[]) {
+  return !!origin && (messages.some((message) => message.id === origin) || nativeMessageOrder(origin) !== null)
+}
+
+// ctx.session.context returns DateTime.Utc; encoded clients expose millis.
+// ID-only legacy Ledgers use context order or V2's ascending native ID prefix.
+export function checkpointResponseAfter(ledger: Pick<LedgerResult, "checkpointAt" | "checkpointUser">, messages: UserMessage[]): boolean {
+  const latest = messages.at(-1)
+  if (!latest || latest.id === ledger.checkpointUser) return false
+  if (ledger.checkpointAt) {
+    const created = latest.time?.created
+    const millis = typeof created === "number" ? created : created?.epochMilliseconds
+    return typeof millis === "number" && Number.isFinite(millis) && millis > ledger.checkpointAt
+  }
+  const origin = messages.findIndex((message) => message.id === ledger.checkpointUser)
+  if (origin >= 0) return origin < messages.length - 1
+  const before = nativeMessageOrder(ledger.checkpointUser)
+  const after = nativeMessageOrder(latest.id)
+  return before !== null && after !== null && after > before
+}
+
 interface Binding {
   workId: string
   directory: string
@@ -62,7 +85,6 @@ interface Binding {
   lastVerification: Record<string, unknown> | null
   trackingError: string | null
   closed?: boolean
-  checkpointUserID?: string | undefined
 }
 
 export function projectWork(ledger: LedgerResult, runtime?: Pick<Binding, "currentActivity" | "lastVerification" | "trackingError">) {
@@ -93,10 +115,7 @@ export async function setupWorkTracking({ ctx, observability }: CapabilityRuntim
   const calls = new Map<string, { binding: Binding; unit?: string; before: LedgerResult; activity: string; filesBefore?: Map<string, string> | undefined }>()
   const disposers: Array<() => void> = []
   let rpc: any
-  const latestUserID = async (sessionID: string): Promise<string | undefined> => {
-    const messages = await ctx.session.context({ sessionID })
-    return messages.filter((message: any) => message.type === "user").at(-1)?.id
-  }
+  const users = async (sessionID: string) => (await ctx.session.context({ sessionID })).filter((message: any) => message.type === "user")
   const notify = (sessionID: string, binding: Binding, reason: string) => {
     if (reason !== "work.activity" && !reason.startsWith("verification.")) {
       observability?.emit({ type: "andmar.work", sessionID, payload: { workId: binding.workId, action: reason } })
@@ -118,7 +137,6 @@ export async function setupWorkTracking({ ctx, observability }: CapabilityRuntim
     const binding = prior?.workId === workId ? prior : { workId, directory, currentActivity: null, lastVerification: null, trackingError: null }
     const ledger = await status(binding)
     binding.closed = ledger.status === "completed"
-    if (ledger.checkpointRequired && binding.checkpointUserID === undefined) binding.checkpointUserID = ledger.checkpointUser ?? await latestUserID(sessionID)
     bindings.set(sessionID, binding)
     notify(sessionID, binding, ledger.status === "completed" ? "work.completed" : "work.started")
     return binding
@@ -146,9 +164,8 @@ export async function setupWorkTracking({ ctx, observability }: CapabilityRuntim
         const binding = bindings.get(context.sessionID)
         if (!binding) return { content: "refused: bind an existing Ledger with work_status first" }
         try {
-          const checkpointUser = await latestUserID(context.sessionID)
+          const checkpointUser = (await users(context.sessionID)).at(-1)?.id
           const result = await runWorkUnitLifecycle("amend", binding.directory, undefined, { discovery: input, ...(checkpointUser ? { checkpointUser } : {}) })
-          if (result.checkpointRequired) binding.checkpointUserID = checkpointUser
           notify(context.sessionID, binding, result.checkpointRequired ? "checkpoint.required" : "work.amended")
           return { content: JSON.stringify(result) }
         } catch (error) { return { content: `refused: ${String(error)}` } }
@@ -161,15 +178,23 @@ export async function setupWorkTracking({ ctx, observability }: CapabilityRuntim
       options: { namespace: "andmar", codemode: true },
       execute: async (input: { reason: string }, context: any) => {
         const binding = bindings.get(context.sessionID)
-        if (!binding) return { content: "refused: bind the blocked Ledger first" }
+        if (!binding) return { content: "refused: bind the blocked Ledger with work_status({workId}) first" }
         try {
           const ledger = await status(binding)
-          const latest = await latestUserID(context.sessionID)
-          if (!latest || !binding.checkpointUserID || latest === binding.checkpointUserID) return { content: "refused: waiting for the user's checkpoint response" }
           const unit = ledger.units?.find((candidate) => candidate.state === "blocked")
           if (!unit) return { content: "refused: no blocked Work Unit" }
-          const result = await runWorkUnitLifecycle("resume", binding.directory, unit.id, input)
-          binding.checkpointUserID = undefined
+          const messages = await users(context.sessionID)
+          const boundary = { user: ledger.checkpointUser ?? null, at: ledger.checkpointAt ?? null }
+          if (!checkpointResponseAfter(ledger, messages)) {
+            if (!boundary.at && !checkpointOriginKnown(boundary.user, messages)) {
+              // Only explicit legacy recovery (never bind/read) establishes
+              // the missing temporal boundary, once. This does not resume.
+              await runWorkUnitLifecycle("resume", binding.directory, unit.id, { ...input, expectedCheckpoint: boundary, establishBoundary: true, ...(messages.at(-1)?.id ? { checkpointUser: messages.at(-1).id } : {}) })
+              return { content: "refused: legacy checkpoint had no provable boundary; recovery boundary recorded once. Ask the user to resolve the displayed blocker now, then call work_resume. Reads and restart do not reset this boundary." }
+            }
+            return { content: `refused: checkpoint is waiting for a user response created after ${boundary.at ? `checkpoint time ${boundary.at}` : `message ${boundary.user}`}; ask about the displayed blocker, then call work_resume with the decision` }
+          }
+          const result = await runWorkUnitLifecycle("resume", binding.directory, unit.id, { ...input, expectedCheckpoint: boundary })
           notify(context.sessionID, binding, "work.resumed")
           return { content: JSON.stringify(result) }
         } catch (error) { return { content: `refused: ${String(error)}` } }
@@ -209,11 +234,13 @@ export async function setupWorkTracking({ ctx, observability }: CapabilityRuntim
     const rawTool = String(event.tool ?? "")
     const tool = localToolName(rawTool)
     const checkpointControl = CHECKPOINT_CONTROL_TOOLS.has(tool)
+    // Transport only; every native child re-enters with its own tool name.
+    // V2.0.20 shares the outer call ID with those child hooks.
+    if (tool === "execute") return
     if (ledger.checkpointRequired && !CHECKPOINT_READ_TOOLS.has(tool) && !checkpointControl) {
       // Fail closed only for a real exception, never for an unlisted file.
-      if (binding.checkpointUserID === undefined) binding.checkpointUserID = ledger.checkpointUser ?? await latestUserID(event.sessionID)
       notify(event.sessionID, binding, "checkpoint.required")
-      throw new Error("AndMar checkpoint required: execution paused until resolved")
+      throw new Error("AndMar checkpoint required: execution paused; inspect work_status and resolve the displayed blocker with work_resume after the user decision")
     }
     // OpenCode may expose AndMar tools to hooks either namespaced
     // (andmar.work_resume) or by their local registered name (work_resume).
@@ -228,6 +255,7 @@ export async function setupWorkTracking({ ctx, observability }: CapabilityRuntim
   })
   if (before?.dispose) disposers.push(() => void before.dispose())
   const after = await ctx.tool.hook("execute.after", async (event: any) => {
+    if (localToolName(String(event.tool ?? "")) === "execute") return
     const call = calls.get(event.id)
     calls.delete(event.id)
     if (!call) return
@@ -256,12 +284,7 @@ export async function setupWorkTracking({ ctx, observability }: CapabilityRuntim
       const oldDrift = call.before.units?.find((candidate) => candidate.id === unit)?.drift ?? []
       if (JSON.stringify(drift) !== JSON.stringify(oldDrift)) notify(event.sessionID, binding, "work.drift")
       if (ledger.checkpointRequired) {
-        if (binding.checkpointUserID === undefined) binding.checkpointUserID = ledger.checkpointUser ?? await latestUserID(event.sessionID)
-        const blocked = ledger.units?.find((candidate) => candidate.state === "blocked")
-        if (blocked && !ledger.checkpointUser && binding.checkpointUserID) {
-          await runWorkUnitLifecycle("touch", binding.directory, blocked.id, { checkpointUser: binding.checkpointUserID })
-        }
-        notify(event.sessionID, binding, "checkpoint.required")
+          notify(event.sessionID, binding, "checkpoint.required")
       } else if (ledger.status === "completed") notify(event.sessionID, binding, "work.completed")
       else if (ledger.active !== call.before.active) notify(event.sessionID, binding, "work.unit.started")
       if ((ledger.units?.filter((candidate) => candidate.state === "done").length ?? 0) > (call.before.units?.filter((candidate) => candidate.state === "done").length ?? 0)) notify(event.sessionID, binding, "work.unit.completed")

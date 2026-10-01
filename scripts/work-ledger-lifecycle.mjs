@@ -346,7 +346,7 @@ async function mutateWorkUnitLifecycle(command, targetDir, unitArg, options = {}
     const pending = units.filter((unit) => unit.state === "pending").map((unit) => unit.id);
     const done = units.filter((unit) => unit.state === "done").map((unit) => unit.id);
     const completionReady = validation.status === "active" && units.length > 0 && done.length === units.length;
-    return { workId: validation.workId, title: lines.find((line) => /^# /.test(line))?.slice(2) ?? validation.workId, status: validation.status, mode: validation.mode, completionReady, active, pending, blocked, done, units, checkpointRequired: validation.status === "blocked", checkpointUser: blocked.length ? getUnitField(lines, blocked[0], "Checkpoint User") ?? null : null, blockedReason: units.find((unit) => unit.state === "blocked")?.blockedReason ?? null };
+    return { workId: validation.workId, title: lines.find((line) => /^# /.test(line))?.slice(2) ?? validation.workId, status: validation.status, mode: validation.mode, completionReady, active, pending, blocked, done, units, checkpointRequired: validation.status === "blocked", checkpointUser: blocked.length ? getUnitField(lines, blocked[0], "Checkpoint User") ?? null : null, checkpointAt: blocked.length ? Number(getUnitField(lines, blocked[0], "Checkpoint At")) || null : null, blockedReason: units.find((unit) => unit.state === "blocked")?.blockedReason ?? null };
   };
 
   if (command === "status") return { changed: false, ...summary() };
@@ -412,6 +412,7 @@ async function mutateWorkUnitLifecycle(command, targetDir, unitArg, options = {}
     if (decision.checkpointRequired) {
       setUnitState(lines, active.id, "blocked");
       setUnitField(lines, active.id, "Blocker", decision.reasons.join(", "));
+      setUnitField(lines, active.id, "Checkpoint At", String(Date.now()));
       if (options.checkpointUser) setUnitField(lines, active.id, "Checkpoint User", options.checkpointUser);
       setLedgerStatus(lines, "blocked");
       setNext(lines, `${active.id} — checkpoint required; resolve exception before execution`);
@@ -435,9 +436,7 @@ async function mutateWorkUnitLifecycle(command, targetDir, unitArg, options = {}
     const files = normalizeFiles(options.files ?? [], workspaceForLedger(resolvedTarget)).filter((file) => !file.startsWith(".andmar/work/"));
     const previous = parseFileField(getUnitField(lines, unitId, "Touched Files"));
     const touched = [...new Set([...previous, ...files])].sort();
-    const recordUser = current === "blocked" && options.checkpointUser && !getUnitField(lines, unitId, "Checkpoint User");
-    if (JSON.stringify(touched) === JSON.stringify(previous) && !recordUser) return { changed: false, ...summary() };
-    if (recordUser) setUnitField(lines, unitId, "Checkpoint User", options.checkpointUser);
+    if (JSON.stringify(touched) === JSON.stringify(previous)) return { changed: false, ...summary() };
     setUnitField(lines, unitId, "Touched Files", JSON.stringify(touched));
   } else if (command === "activate") {
     if (current !== "pending") throw new Error(`activate requires pending Work Unit; ${unitId} is ${current}`);
@@ -468,16 +467,28 @@ async function mutateWorkUnitLifecycle(command, targetDir, unitArg, options = {}
     if (!options.reason?.trim()) throw new Error("block requires --reason");
     setUnitState(lines, unitId, "blocked");
     setUnitField(lines, unitId, "Blocker", options.reason.trim());
+    setUnitField(lines, unitId, "Checkpoint At", String(Date.now()));
+    if (options.checkpointUser) setUnitField(lines, unitId, "Checkpoint User", options.checkpointUser);
     setLedgerStatus(lines, "blocked");
     setNext(lines, `${unitId} — blocked; resolve blocker`);
     appendLifecycleEvent(lines, `${unitId}: active → blocked — ${options.reason.trim()}`);
   } else if (command === "resume") {
     if (current !== "blocked") throw new Error(`resume requires blocked Work Unit; ${unitId} is ${current}`);
-    if (!options.reason?.trim()) throw new Error("resume requires --reason describing why the blocker is resolved");
+    if (!options.reason?.trim() || /[\r\n\0]/.test(options.reason) || options.reason.length > 500) throw new Error("resume requires --reason describing why the blocker is resolved (single line, max 500)");
+    const boundary = { user: getUnitField(lines, unitId, "Checkpoint User") ?? null, at: Number(getUnitField(lines, unitId, "Checkpoint At")) || null };
+    if (options.expectedCheckpoint && (boundary.user !== options.expectedCheckpoint.user || boundary.at !== options.expectedCheckpoint.at)) throw new Error("Checkpoint changed; inspect the current decision before resume");
+    if (options.establishBoundary) {
+      if (boundary.at) throw new Error("Checkpoint boundary already exists; recovery cannot move it");
+      setUnitField(lines, unitId, "Checkpoint At", String(Date.now()));
+      if (options.checkpointUser) setUnitField(lines, unitId, "Checkpoint User", options.checkpointUser);
+      await saveValidated(resolvedTarget, workPath, lines, original);
+      return { changed: true, ...summary() };
+    }
     if (activeOther) throw new Error(`Cannot resume ${unitId}; ${activeOther.id} is already active`);
     setUnitState(lines, unitId, "active");
     setUnitField(lines, unitId, "Blocker", null);
     setUnitField(lines, unitId, "Checkpoint User", null);
+    setUnitField(lines, unitId, "Checkpoint At", null);
     setLedgerStatus(lines, "active");
     setNext(lines, `${unitId} — resumed outcome`);
     appendLifecycleEvent(lines, `${unitId}: blocked → active — ${options.reason.trim()}`);

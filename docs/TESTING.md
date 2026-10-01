@@ -188,3 +188,91 @@ Completion gate, then finalize. Separately flag a material discovery, confirm
 native mutation/execution cannot continue while blocked, resolve only after
 an actual user decision, and resume. Finally try `Login` -> `Entrar` unbound:
 no Ledger/contract, no VCS tracking, no question, no mandatory TUI.
+
+
+## Checkpoint/Resume audit — 0.16.0 base, 2026-10-01 UTC
+
+Base: `44a24f0` (`main`, 0.16.0). The first regression commit ran against
+unchanged production code: **37 tests, 29 pass, 8 fail**. It reproduced outer
+Code Mode deadlock, response/rebind ordering, missing block boundary and
+ambiguous legacy recovery. After the minimal fix, the focused suite is
+**41/41** and the full `bun run check` is **295/295**, including real installed
+plugin typechecking. No dependency, Review, Task Contract/Verification/Gate
+change, version bump or publication was made.
+
+| Scenario | Deterministic regression | Native CLI evidence |
+|---|---|---|
+| A amendment human decision | PASS | PASS, real amendment to blocked |
+| B material scope | PASS | Same classification; fixture |
+| C CLI block | PASS | PASS, native shell invokes real helper |
+| D response before bind | PASS | PASS after server restart |
+| E response after bind | PASS | Fixture |
+| F interleaved reads/status/RPC | PASS | Reads and repeated status before resume |
+| G outer execute → work_resume | PASS | PASS, real Code Mode child |
+| H outer execute → mutation | PASS | Native write child refused; no forbidden file |
+| I local/namespaced aliases | PASS | Native canonical andmar.work_resume observed |
+| J restart/rehydration | PASS | Server restarted, durable Ledger retained |
+| K repeated status | PASS | PASS, no second confirmation |
+| L resume → shell/edit | PASS | PASS, touched result.txt attributed to WU-1 |
+| M verification/completion/finalize | PASS | PASS, exact-revision receipt, gate ok, completed |
+| N trivial fast path | PASS, zero checkpoint/VCS IO | Fixture counters |
+| O separate Ledgers/session bindings | PASS | Real files, runtime fixture |
+
+Pure tests additionally reject older/equal/unknown temporal evidence, validate
+encoded/native DateTime and ID-only legacy order, reject stale/duplicate
+boundary fields and compare an exact boundary under the write lock. A duplicate
+resume cannot emit another state transition. Existing trivial Intake and
+Verification/Completion authority tests remain green.
+
+### Live runtime method and results
+
+Installed `@opencode/cli-linux-x64@2.0.20`; `opencode --version` returned
+`opencode v2.0.20`. With an isolated `OPENCODE_CONFIG_DIR`, ran
+`bun run install:dev` and `bun run doctor`: plugin/agent/API/CLI checks passed;
+Engram absent and optional. Actual `opencode serve` plus `opencode run --server`
+used a local OpenAI-compatible provider with scripted responses. This replaces
+only model generation: the plugin host, interpreter, permissions, hooks,
+sessions/user messages, storage, native filesystem/Git and helpers were real.
+No paid tokens or reviewer were used. It does not test an LLM's interpretation
+of ambiguous human text or the interactive TUI.
+
+A temporary Git repository held a real Ledger and Task Contract. Tested an
+amendment human checkpoint, then a native CLI block checkpoint, with and without
+a native server restart. A later CLI user prompt authorized local delivery.
+The runtime bound the blocked Ledger, read it, inspected status repeatedly,
+resumed once, refused a duplicate, ran native shell/edit, made a local Git
+commit, computed the real working-state revision, ran an actual assertion,
+stored an observed exact-command receipt, verified, satisfied the obligation,
+completed all WUs, passed Completion Gate with `contractClosed:true`, and
+finalized to `Status: completed`. No push, remote delivery, manual repair,
+second authorization, retry or release was needed.
+
+To test concrete child mutators, a **smoke-only** native tool transform set
+edit/write/read to `codemode:true`; production defaults were unchanged.
+A write child under a blocked outer execute was refused and `forbidden.txt`
+was not created. The successful final flows retained default direct shell,
+so each native check had its own call ID.
+
+### Remaining boundary and candidate validation
+
+Global Code Mode HTTP bypasses native tool hooks in OpenCode 2.0.20, as proved
+against a harmless local endpoint while the Ledger remained blocked. Checkpoints
+control subsequent observed tools; they do not cancel running effects or provide
+a security/network sandbox. No source rewriting or duplicated permissions were
+added to claim otherwise.
+
+The shared-child evidence regression is fixed in 0.16.1-rc.1. New tests exercise
+parallel children, wrapper exclusion, retained revision-bound receipts, restart,
+a later failed execution and a fresh rerun for a new revision. Local OpenCode
+acceptance and stable promotion are described in
+[OPENCODE-ACCEPTANCE.md](OPENCODE-ACCEPTANCE.md).
+
+Candidate 0.16.1-rc.1 validation: `bun run check` passed 296/296 tests against
+installed plugin types. `install:dev` and doctor passed after backing up the
+previous agent (the installer deliberately refuses to overwrite a different
+agent). Real 2.0.20 completion passed for both direct shell/helper block and
+multiple shell children in one execute/amendment, with server restart before
+response and rebind. Shared-child receipts were distinct, Verification and
+Completion Gate passed, Ledger finalized, and blocked write stayed absent.
+The local provider supplied scripted model responses; this proves native
+integration, not free-form LLM interpretation or interactive TUI behavior.

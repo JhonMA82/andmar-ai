@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { classifyDiscovery, normalizeFiles, runWorkUnitLifecycle, scopeDrift } from "../scripts/work-ledger-lifecycle.mjs"
-import { editedFiles, projectWork, setupWorkTracking } from "../src/capabilities/lifecycle/work.ts"
+import { checkpointResponseAfter, editedFiles, projectWork, setupWorkTracking } from "../src/capabilities/lifecycle/work.ts"
 import { decisionDeterministic, isTrivialBypass } from "../src/capabilities/intake/decide.ts"
 import { verificationCapability } from "../src/capabilities/verification/index.ts"
 import { taskContractCapability } from "../src/capabilities/task-contract/index.ts"
@@ -47,7 +47,7 @@ function mock(root: string, rpcFailure = false) {
   const hooks: Record<string, (event: any) => Promise<void>> = {}
   const tools: Record<string, any> = {}
   const notifications: any[] = []
-  let messages = [{ id: "u1", type: "user", text: "Original task" }]
+  let messages = [{ id: "u1", type: "user", text: "Original task", time: { created: 0 } }]
   let vcsPaths: string[] = []
   let vcsCalls = 0
   let rpcHandlers: any
@@ -66,7 +66,7 @@ function mock(root: string, rpcFailure = false) {
       return { events: { emit: async (_name: string, event: any) => notifications.push(event) }, dispose: () => disposals++ }
     } },
   }
-  return { ctx, hooks, tools, notifications, user: (id: string) => { messages = [...messages, { id, type: "user", text: "Resolve checkpoint" }] }, paths: (paths: string[]) => { vcsPaths = paths }, vcsCalls: () => vcsCalls, rpc: () => rpcHandlers, disposals: () => disposals }
+  return { ctx, hooks, tools, notifications, user: (id: string, created = Date.now() + 100) => { messages = [...messages, { id, type: "user", text: "Resolve checkpoint", time: { created } }] }, paths: (paths: string[]) => { vcsPaths = paths }, vcsCalls: () => vcsCalls, rpc: () => rpcHandlers, disposals: () => disposals }
 }
 
 const context = { sessionID: "s" }
@@ -371,6 +371,12 @@ test("representative flow: Intake, durable Ledger, Task Contract, amendment, tou
     await m.tools.work_status.execute({ workId: "task" }, context)
     const contract = tools.task_contract
     await contract.execute({ op: "create", taskKind: "feature", goal: request, requirements: ["Implement and test the requested change"], constraints: ["Preserve existing API"] }, context)
+    await runWorkUnitLifecycle("block", dir, "WU-1", { reason: "Hard-to-reverse delivery requires the user decision" })
+    await assert.rejects(() => m.hooks["execute.before"]!(event("shell", "delivery-before-decision")), /execution paused/)
+    m.user("authorized-delivery")
+    assert.equal(content(await m.tools.work_resume.execute({ reason: "User authorized the delivery" }, context)).status, "active")
+    await m.hooks["execute.before"]!(event("shell", "authorized-delivery"))
+    await m.hooks["execute.after"]!(event("shell", "authorized-delivery", { status: "completed", result: {} }))
     await m.hooks["execute.before"]!(event("write", "code"))
     await writeFile(join(root, "src/validate.ts"), "export const validate = (s: string) => s.length > 0\n")
     await m.hooks["execute.after"]!(event("write", "code", { status: "completed", result: { output: { resource: "src/validate.ts" } } }))
@@ -487,4 +493,171 @@ test("observed checkpoint survives restart without asking again for an already-r
       assert.equal(resumed.status, "active")
     } finally { cleanup() }
   } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+// A–M: native Code Mode uses the SAME outer call ID for its child hooks
+// (v2.0.20 packages/core/src/tool.ts and codemode/tool.ts).
+for (const creation of ["humanDecision", "materialScope", "block"] as const) {
+  for (const responseBeforeBind of [true, false]) {
+    test(`checkpoint regression ${creation}: response ${responseBeforeBind ? "before" : "after"} restart/bind is order independent`, async () => {
+      const { root, dir } = await fixture()
+      const first = mock(root)
+      const dispose = await setup(first)
+      await first.tools.work_status.execute({ workId: "task" }, context)
+      if (creation === "block") {
+        await first.hooks["execute.before"]!(event("shell", "create", { input: { command: "lifecycle block" } }))
+        await runWorkUnitLifecycle("block", dir, "WU-1", { reason: "User decision required" })
+        // Decision arrives after the helper committed, BEFORE execute.after.
+        first.user("decision-during-after")
+        await first.hooks["execute.after"]!(event("shell", "create", { status: "completed", result: {} }))
+      } else await first.tools.work_amend.execute({ ...routine, [creation]: true }, context)
+      dispose()
+      const blocked = await readFile(join(dir, "WORK.md"), "utf8")
+      const second = mock(root)
+      const cleanup = await setup(second)
+      try {
+        if (responseBeforeBind) second.user("u2")
+        await second.tools.work_status.execute({ workId: "task" }, context)
+        if (!responseBeforeBind) second.user("u2")
+        for (const tool of ["work_status", "read", "search", "work_status", "grep", "glob", "list", "question", "status", "intake", "route", "task_contract"]) {
+          await second.hooks["execute.before"]!(event(tool, `inspect-${tool}`))
+          await second.tools.work_status.execute({}, context)
+          await second.rpc().get(context)
+          await second.hooks["execute.after"]!(event(tool, `inspect-${tool}`, { status: "completed", result: {} }))
+        }
+        assert.equal(await readFile(join(dir, "WORK.md"), "utf8"), blocked, "reads, bind and RPC are authorization-read-only")
+        await second.hooks["execute.before"]!(event("execute", "outer"))
+        for (const tool of ["edit", "write", "patch", "apply_patch", "shell", "bash", "delegate", "work_amend", "completion_gate"]) {
+          await assert.rejects(() => second.hooks["execute.before"]!(event(tool, "outer")), /execution paused/)
+        }
+        for (const tool of ["work_resume", "andmar_work_resume", "andmar.work_resume", "andmar/work_resume"]) {
+          await second.hooks["execute.before"]!(event(tool, "outer"))
+        }
+        const resumed = content(await second.tools.work_resume.execute({ reason: "User approved the decision" }, context))
+        assert.equal(resumed.status, "active")
+        await second.hooks["execute.after"]!(event("andmar.work_resume", "outer", { status: "completed", result: {} }))
+        await second.hooks["execute.after"]!(event("execute", "outer", { status: "completed", result: {} }))
+        assert.match((await second.tools.work_resume.execute({ reason: "Duplicate" }, context)).content, /no blocked Work Unit/)
+        const resolved = await readFile(join(dir, "WORK.md"), "utf8")
+        assert(!/Checkpoint User:|Checkpoint At:|Blocker:/.test(resolved))
+        for (const tool of ["shell", "edit"]) {
+          await second.hooks["execute.before"]!(event(tool, `post-${tool}`))
+          await second.hooks["execute.after"]!(event(tool, `post-${tool}`, { status: "completed", result: { output: { resource: "src/resumed.ts" } } }))
+        }
+        assert.equal((await runWorkUnitLifecycle("status", dir)).checkpointRequired, false)
+      } finally { cleanup(); await rm(root, { recursive: true, force: true }) }
+    })
+  }
+}
+
+test("checkpoint creation persists one boundary for both helper block and amendment", async () => {
+  const { root, dir } = await fixture()
+  try {
+    await runWorkUnitLifecycle("block", dir, "WU-1", { reason: "Decision", checkpointUser: "u1" })
+    assert.match(await readFile(join(dir, "WORK.md"), "utf8"), /Checkpoint User: u1/)
+    assert.match(await readFile(join(dir, "WORK.md"), "utf8"), /Checkpoint At: \d+/)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test("checkpoint cannot resume from an older unrelated message or synthetic input", async () => {
+  const { root, dir } = await fixture()
+  const m = mock(root)
+  const cleanup = await setup(m)
+  try {
+    await runWorkUnitLifecycle("block", dir, "WU-1", { reason: "Decision" })
+    m.user("older-unrelated", 1)
+    await m.tools.work_status.execute({ workId: "task" }, context)
+    assert.match((await m.tools.work_resume.execute({ reason: "Not a posterior response" }, context)).content, /waiting for/)
+    m.user("posterior")
+    assert.equal(content(await m.tools.work_resume.execute({ reason: "Human resolved decision" }, context)).status, "active")
+  } finally { cleanup(); await rm(root, { recursive: true, force: true }) }
+})
+
+test("legacy boundary missing: explicit one-time recovery persists across reads and restart", async () => {
+  const { root, dir } = await fixture()
+  const first = mock(root)
+  const dispose = await setup(first)
+  try {
+    await runWorkUnitLifecycle("block", dir, "WU-1", { reason: "Legacy decision" })
+    const path = join(dir, "WORK.md")
+    await writeFile(path, (await readFile(path, "utf8")).replace(/^.*Checkpoint (?:At|User):.*\n/gm, ""))
+    first.user("cannot-prove")
+    await first.tools.work_status.execute({ workId: "task" }, context)
+    const refused = await first.tools.work_resume.execute({ reason: "Legacy recovery" }, context)
+    assert.match(refused.content, /legacy checkpoint.*boundary.*ask/i)
+    const established = await readFile(path, "utf8")
+    assert.match(established, /Checkpoint At:/)
+    await first.tools.work_status.execute({ workId: "task" }, context)
+    assert.equal(await readFile(path, "utf8"), established)
+    dispose()
+    const second = mock(root)
+    const cleanup = await setup(second)
+    try {
+      second.user("new-human-decision")
+      await second.tools.work_status.execute({ workId: "task" }, context)
+      assert.equal(content(await second.tools.work_resume.execute({ reason: "Confirmed after recovery boundary" }, context)).status, "active")
+    } finally { cleanup() }
+  } finally { dispose(); await rm(root, { recursive: true, force: true }) }
+})
+
+
+test("pure checkpoint ordering: durable millis, DateTime, legacy context/native IDs, no != shortcut", () => {
+  assert.equal(checkpointResponseAfter({ checkpointAt: 100, checkpointUser: "origin" }, [{ id: "reply", time: { created: { epochMilliseconds: 101 } } }]), true)
+  for (const created of [99, 100, NaN]) assert.equal(checkpointResponseAfter({ checkpointAt: 100 }, [{ id: "reply", time: { created } }]), false)
+  assert.equal(checkpointResponseAfter({ checkpointAt: 100, checkpointUser: "origin" }, [{ id: "origin", time: { created: 101 } }]), false)
+  assert.equal(checkpointResponseAfter({ checkpointUser: "origin" }, [{ id: "origin" }, { id: "reply" }]), true)
+  assert.equal(checkpointResponseAfter({ checkpointUser: "origin" }, [{ id: "unrelated" }]), false)
+  const native = (prefix: string) => `msg_${prefix}${"A".repeat(14)}`
+  assert.equal(checkpointResponseAfter({ checkpointUser: native("0123456789ab") }, [{ id: native("0123456789ac") }]), true)
+  assert.equal(checkpointResponseAfter({ checkpointUser: native("0123456789ab") }, [{ id: native("0123456789aa") }]), false)
+})
+
+test("resume compares exact boundary under the Ledger lock and never resumes a newer checkpoint", async () => {
+  const { root, dir } = await fixture()
+  try {
+    await runWorkUnitLifecycle("block", dir, "WU-1", { reason: "Decision", checkpointUser: "u1" })
+    await assert.rejects(() => runWorkUnitLifecycle("resume", dir, "WU-1", { reason: "Stale response", expectedCheckpoint: { user: "wrong", at: null } }), /Checkpoint changed/)
+    const view = await runWorkUnitLifecycle("status", dir)
+    assert.equal(view.status, "blocked")
+    await runWorkUnitLifecycle("resume", dir, "WU-1", { reason: "Resolved", expectedCheckpoint: { user: view.checkpointUser!, at: view.checkpointAt! } })
+    await assert.rejects(() => runWorkUnitLifecycle("resume", dir, "WU-1", { reason: "Duplicate" }), /requires blocked/)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test("invalid and stale durable checkpoint boundaries are rejected", async () => {
+  const { root, dir } = await fixture()
+  try {
+    const path = join(dir, "WORK.md")
+    const active = await readFile(path, "utf8")
+    await writeFile(path, active.replace("  - Expected Files:", "  - Checkpoint At: 42\n  - Expected Files:"))
+    await assert.rejects(() => runWorkUnitLifecycle("status", dir), /Non-blocked/)
+    await writeFile(path, active)
+    await runWorkUnitLifecycle("block", dir, "WU-1", { reason: "Decision" })
+    const blocked = await readFile(path, "utf8")
+    await writeFile(path, blocked.replace(/Checkpoint At: \d+/, "Checkpoint At: NaN"))
+    await assert.rejects(() => runWorkUnitLifecycle("status", dir), /Invalid Checkpoint At/)
+    await writeFile(path, blocked.replace(/(Checkpoint At: \d+)/, "$1\n  - $1"))
+    await assert.rejects(() => runWorkUnitLifecycle("status", dir), /Duplicate checkpoint boundary/)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+
+test("O: two session bindings enforce only the selected Ledger", async () => {
+  const { root, dir } = await fixture()
+  const m = mock(root)
+  const dispose = await setup(m)
+  try {
+    const other = join(root, ".andmar/work/other")
+    await mkdir(other)
+    await writeFile(join(other, "WORK.md"), (await readFile(join(dir, "WORK.md"), "utf8")).replace("Work ID: task", "Work ID: other"))
+    await m.tools.work_status.execute({ workId: "task" }, context)
+    const second = { sessionID: "second" }
+    await m.tools.work_status.execute({ workId: "other" }, second)
+    const untouched = await readFile(join(other, "WORK.md"), "utf8")
+    await m.tools.work_amend.execute({ ...routine, humanDecision: true }, context)
+    await assert.rejects(() => m.hooks["execute.before"]!(event("edit", "blocked-selected")), /execution paused/)
+    await m.hooks["execute.before"]!(event("edit", "other-selected", second))
+    assert.equal(await readFile(join(other, "WORK.md"), "utf8"), untouched)
+    assert.equal(content(await m.tools.work_status.execute({}, second)).checkpointRequired, false)
+  } finally { dispose(); await rm(root, { recursive: true, force: true }) }
 })

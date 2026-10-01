@@ -131,6 +131,9 @@ and full tool inputs/outputs never go into these keys.
 `lifecycle` adds no `ctx.storage` keys. A setup-local session-to-work binding,
 in-flight call-to-WU attribution, transient dirty-file hashes, activity and a
 compact last-observed verification summary are dropped at cleanup/restart.
+Checkpoint authorization has no setup-local baseline: `Checkpoint At` and
+optional `Checkpoint User` belong only to the blocked WU in `WORK.md`.
+Readers never reconstruct or update this boundary from the latest response.
 Optional WU file metadata and discovered work are written only to repository
 `WORK.md` through the existing lifecycle helper. Its projection is computed
 on demand; RPC/event consumers cannot write it back or decide execution.
@@ -159,3 +162,9 @@ affected records. Never enforce a hard cap by deleting protected evidence; repor
 remaining over-budget state instead. Coordinating references and active sessions
 crosses several state owners, so implementation is deferred rather than forcing
 a core migration into the lateral benchmark.
+
+Verification evidence identity: the first observation retains the native ID;
+collisions use `observed-<sha256(nativeId)>-<ordinal>` in the same namespace.
+Allocation checks durable entries after restart. Metadata writes are serialized
+within plugin setup; receipt binding never changes previous execution outcomes.
+No counter, duplicate Ledger or new persistent namespace is introduced.
