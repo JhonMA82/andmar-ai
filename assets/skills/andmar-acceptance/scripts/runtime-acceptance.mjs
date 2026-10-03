@@ -23,7 +23,9 @@ try {
   await mkdir(project); await mkdir(config);
   const git = args => execFileSync("git", args, { cwd: project, stdio: "pipe" });
   git(["init"]); git(["config", "user.name", "Acceptance"]); git(["config", "user.email", "acceptance@example.test"]);
-  await writeFile(join(project, "product.txt"), "before\n"); git(["add", "."]); git(["commit", "-m", "baseline"]);
+  await writeFile(join(project, "product.txt"), "before\n");
+  await writeFile(join(project, "package.json"), JSON.stringify({ scripts: { test: "node -e \"process.exit(require('fs').readFileSync('product.txt','utf8').includes('after') ? 0 : 1)\"" } }));
+  git(["add", "."]); git(["commit", "-m", "baseline"]);
   const revision = () => execFileSync(process.execPath, [join(root, "scripts/working-state-revision.mjs")], { cwd: project, encoding: "utf8" }).trim();
   const firstRevision = revision();
   await writeFile(join(project, "product.txt"), "after\n"); const nextRevision = revision(); await writeFile(join(project, "product.txt"), "before\n");
@@ -38,7 +40,11 @@ try {
   tool("completion_gate", { currentRevision: firstRevision, taskKind: "internal", docsStatus: "clean", versionStatus: "clean", requiredChecks: ["custom"] });
   native("shell", { command: "exit 7" });
   tool("record_receipt", { revision: firstRevision, check: "custom", passed: true, command: "exit 7" });
+  native("shell", { command: "npm test" });
   native("write", { path: "product.txt", content: "after\n" });
+  native("shell", { command: "npm test" });
+  tool("learning", { op: "pending" });
+  tool("incident", { op: "list" });
   tool("verify_revision", { currentRevision: nextRevision, requiredChecks: ["custom"] });
   tool("completion_gate", { currentRevision: nextRevision, taskKind: "internal", docsStatus: "clean", versionStatus: "clean", requiredChecks: ["custom"] });
   for (const [index, corruption] of ["duplicate EV", "invalid WU state", "dangling REQ"].entries()) {
@@ -58,6 +64,7 @@ try {
     native("read", { path });
     native("write", { path, content: valid });
     tool("work_status", {});
+    native("execute", { code: `const records = await tools.andmar.incident({op:"list"}); const data = typeof records === "string" ? JSON.parse(records) : records; const incident = data.incidents.find(x => x.workId === ${JSON.stringify(workId)} && x.status === "open"); return await tools.andmar.incident({op:"resolve",id:incident.id,recovery:"Repaired owning Ledger with native write",evidence:"Owning work_status confirms valid state"});` });
     native("shell", { command: `printf recovered-${index}` });
     tool("work", { op: "record-evidence", payload: { description: "Recovered session with native tools" } });
     tool("work", { op: "complete", payload: { unit: "WU-1", evidence: "EV-1" } });
@@ -89,6 +96,7 @@ try {
   const continued = phase("continuation");
   continued.tool("work_status", { workId: "continuity" });
   continued.tool("work_context", {});
+  continued.tool("incident", { op: "list" });
   continued.native("skill", { id: "andmar-work-ledger" });
   continued.native("shell", { command: "printf portable-continued" });
   continued.tool("work", { op: "record-evidence", payload: { description: "Second outcome observed after actual server restart" } });
@@ -114,6 +122,11 @@ try {
   after.native("write", { path: "checkpoint-product.txt", content: "authorized" });
   after.native("shell", { command: "printf checkpoint-continued" });
   after.tool("work_status", {});
+  const learningPhase = phase("learning-promotion");
+  learningPhase.native("execute", { code: 'const pending = await tools.andmar.learning({op:"pending"}); const data = typeof pending === "string" ? JSON.parse(pending) : pending; return await tools.andmar.learning({op:"promote",id:data.pending[0].id,name:"native-test-recovery",description:"Recover a failing npm source check",procedure:"Repair the source condition reported by the project check, then rerun npm test and confirm exit zero before accepting the recovery.",evidence:"Native npm test failed, native source write corrected the condition, and the same command exited zero",validated:true,source:"foreground-validated"});' });
+  learningPhase.tool("learning", { op: "status" });
+  const learnedInvocation = phase("learned-skill");
+  learnedInvocation.native("skill", { id: "native-test-recovery" });
   await writeFile(join(base, "frames.json"), JSON.stringify(phases));
   await mkdir(join(config, "plugins")); await symlink(root, join(config, "plugins/andmar-ai"));
   await mkdir(join(config, "agents")); await cp(join(root, "assets/agents/andmar.md"), join(config, "agents/andmar.md"));
@@ -131,6 +144,11 @@ try {
   // Preserve filesystem/config/data across a real server restart. Isolate host
   // configuration so an optional host integration cannot become a prerequisite.
   const env = { ...process.env, HOME: join(base, "home"), OPENCODE_CONFIG_DIR: config, XDG_CONFIG_HOME: join(base, "home/.config"), XDG_DATA_HOME: join(base, "data"), XDG_STATE_HOME: join(base, "state"), XDG_CACHE_HOME: join(base, "cache") };
+  // CLI 2.0.22 maps this flag directly to models.fetch:false. The fixture
+  // provides its only model locally; catalogue HTTP is unnecessary.
+  env.OPENCODE_DISABLE_MODELS_FETCH = "1";
+  env.OPENCODE_DISABLE_AUTOUPDATE = "1";
+  env.ANDMAR_OBSERVABILITY_ENABLED = "0";
   delete env.OPENCODE_CONFIG_CONTENT;
   delete env.OPENCODE_CONFIG;
   let api;
@@ -222,6 +240,14 @@ try {
   assert.equal(accepted.receipt.sessionID, sessionID);
   assert.equal(accepted.receipt.executionId, shells.find(call => call.state.input.command === "exit 0").id);
   assert.match(output(receipts[1]), /non-zero exit/);
+  const pending = json(owned("learning")[0]).pending;
+  assert.equal(pending.length, 1); assert.equal(pending[0].kind, "RECOVERED_FAILURE");
+  assert.equal(json(owned("incident")[0]).incidents.length, 0, "normal project failure must not create internal incidents");
+  const incidentRegistry = JSON.parse(await readFile(join(project, ".andmar/incidents/records.json"), "utf8"));
+  assert.ok(incidentRegistry.incidents.length >= 1 && incidentRegistry.incidents.length <= 3);
+  assert.ok(incidentRegistry.incidents.every(x => x.status === "resolved" && x.recoveryEvidence));
+  report.checks.push({ name: "native project failure/correction/success yields one candidate and no incident", ok: true, candidate: pending[0] });
+  report.checks.push({ name: "native invalid Ledger records incident and repair resolves same record", ok: true, incidents: incidentRegistry.incidents });
   const verification = owned("verify_revision").map(json);
   assert.equal(verification[0].ok, true);
   assert.equal(verification[1].ok, false);
@@ -269,6 +295,9 @@ try {
   assert.equal(json(ownedIn(continuation.batch, "work_context")[0]).unit.id, "WU-2");
   assert.equal(json(ownedIn(continuation.batch, "completion_gate")[0]).ok, true);
   assert.equal(json(ownedIn(continuation.batch, "work_status").at(-1)).status, "completed");
+  const interrupted = json(ownedIn(continuation.batch, "incident")[0]).incidents.find(x => x.category === "interrupted-run");
+  assert.ok(interrupted); assert.equal(interrupted.workId, "continuity"); assert.equal(interrupted.workUnit, "WU-2");
+  report.checks.push({ name: "real restart explains unfinished work with last/next references", ok: true, incident: interrupted });
   const durableAfter = await readFile(durablePath, "utf8");
   assert.equal(durableAfter.match(/WU-1: active → done/g)?.length, 1, "done WU must not repeat");
   report.checks.push({ name: "server restart/new session rebind preserves done WU and continues active WU", ok: true, previousSession: sessionID, newSession: nextSession, activeRecovered: "WU-2", doneRecovered: ["WU-1"] });
@@ -293,6 +322,21 @@ try {
   assert.equal(responded.batch.find(call => call.name === "shell").state.metadata.exit, 0);
   assert.equal(json(ownedIn(responded.batch, "work_status")[0]).checkpointRequired, false);
   report.checks.push({ name: "material checkpoint refuses old-message/read/status consent; new later user response resumes", ok: true, checkpointAt, previousUserAt: previousUser.time.created, responseAt: newUser.time.created });
+  const promoted = await runPhase("learning-promotion", nextSession);
+  const promotedResult = output(promoted.batch[0]);
+  assert.doesNotMatch(promotedResult, /TypeError|SyntaxError|"ok":false/);
+  const discoveryDeadline = Date.now() + 30000;
+  let learnedCatalog = await api(`/api/skill?location[directory]=${encodeURIComponent(project)}`);
+  while (!skillsOf(learnedCatalog).includes("native-test-recovery") && Date.now() < discoveryDeadline) {
+    await new Promise(done => setTimeout(done, 200));
+    learnedCatalog = await api(`/api/skill?location[directory]=${encodeURIComponent(project)}`);
+  }
+  assert.ok(skillsOf(learnedCatalog).includes("native-test-recovery"), "promoted normal project skill is discoverable natively");
+  const invokedSkill = await runPhase("learned-skill", nextSession);
+  assert.equal(invokedSkill.batch[0].state.status, "completed");
+  const promotedContent = await readFile(join(project, ".opencode/skills/native-test-recovery/SKILL.md"), "utf8");
+  assert.match(promotedContent, /^---\nname: native-test-recovery/);
+  report.checks.push({ name: "explicit foreground promotion creates a natively discoverable ordinary project skill", ok: true });
   report.calls = calls.map(call => ({ id: call.id, tool: call.name, status: call.state.status, ...(call.state.metadata?.exit === undefined ? {} : { exit: call.state.metadata.exit }), ...(call.state.metadata?.toolCalls ? { children: call.state.metadata.toolCalls.map(child => child.tool) } : {}) }));
   await stop();
   report.ok = true;

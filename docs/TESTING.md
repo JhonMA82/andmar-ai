@@ -299,3 +299,15 @@ The acceptance report is revision-local operational evidence under .andmar,
 not packaged historical state. Output announces each native phase. The fixture
 validates machine/runtime boundaries, not semantic LLM judgment, interactive TUI
 quality or upstream global-fetch permission isolation.
+
+## Learning and Runtime Incident acceptance
+
+The native driver also executes npm test failure → source correction → same-command
+success, checks one pending lesson and zero project-failure incidents, records and
+resolves each corrupt Ledger incident before continuing Verification/Completion,
+explains a real server restart with last/next WU references, and explicitly
+promotes/invokes an ordinary project skill through the native scanner. Catalog
+fetch and updates are disabled; the only model is the local deterministic fixture.
+`tests/learning-incidents.test.ts` additionally covers sanitation, recurrence,
+explicit cancellation/external outcomes, recorder failure, atomic publication
+reconciliation, ownership and a stalled catalog refresh without a tool deadlock.

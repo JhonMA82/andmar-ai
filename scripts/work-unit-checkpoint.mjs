@@ -143,10 +143,10 @@ function sortedUnique(values) {
 }
 
 function productGitState(root) {
-  const conflicts = splitNull(git(root, ["diff", "--name-only", "--diff-filter=U", "-z", "--", ".", ":!.andmar/work/**"], { encoding: "buffer" }));
-  const staged = splitNull(git(root, ["diff", "--cached", "--name-only", "-z", "--", ".", ":!.andmar/work/**"], { encoding: "buffer" }));
-  const unstaged = splitNull(git(root, ["diff", "--name-only", "-z", "--", ".", ":!.andmar/work/**"], { encoding: "buffer" }));
-  const untracked = splitNull(git(root, ["ls-files", "--others", "--exclude-standard", "-z", "--", ":!.andmar/work/**"], { encoding: "buffer" }));
+  const conflicts = splitNull(git(root, ["diff", "--name-only", "--diff-filter=U", "-z", "--", ".", ":!.andmar/work/**", ":!.andmar/learning/**", ":!.andmar/incidents/**"], { encoding: "buffer" }));
+  const staged = splitNull(git(root, ["diff", "--cached", "--name-only", "-z", "--", ".", ":!.andmar/work/**", ":!.andmar/learning/**", ":!.andmar/incidents/**"], { encoding: "buffer" }));
+  const unstaged = splitNull(git(root, ["diff", "--name-only", "-z", "--", ".", ":!.andmar/work/**", ":!.andmar/learning/**", ":!.andmar/incidents/**"], { encoding: "buffer" }));
+  const untracked = splitNull(git(root, ["ls-files", "--others", "--exclude-standard", "-z", "--", ":!.andmar/work/**", ":!.andmar/learning/**", ":!.andmar/incidents/**"], { encoding: "buffer" }));
   return {
     conflicts: sortedUnique(conflicts),
     staged: sortedUnique(staged),
@@ -161,7 +161,7 @@ function commitChangedPaths(root, commit) {
   const args = parents.length === 1
     ? ["diff-tree", "--root", "--no-commit-id", "--name-only", "-r", "-z", commit]
     : ["diff-tree", "--no-commit-id", "--name-only", "-r", "-z", commit];
-  return sortedUnique(splitNull(git(root, args, { encoding: "buffer" })).filter((path) => !path.startsWith(".andmar/work/")));
+  return sortedUnique(splitNull(git(root, args, { encoding: "buffer" })).filter((path) => !/^\.andmar\/(?:work|learning|incidents)\//.test(path)));
 }
 
 function parseTrailers(message) {

@@ -171,6 +171,16 @@ export const verificationCapability: Capability = {
         ) => {
           const required = input.requiredChecks ?? DEFAULT_REQUIRED_CHECKS
           const summary = await readVerificationState(state, input.currentRevision, required)
+          // Distinguish lost backing evidence from normal missing receipts or
+          // failed/stale project checks. Only Verification knows this boundary.
+          if (summary.unverified.length) {
+            const evidences = await readEvidenceList(state)
+            const receipts = await state.scan<VerificationReceipt>(`verification/${encodeURIComponent(input.currentRevision)}/`)
+            const lost = receipts.some(({ value }) => value.passed && value.executionId && !evidences.some(e => e.executionId === value.executionId))
+            if (lost) observability?.emit({ type: "andmar.runtime", sessionID: sessionIDFrom(toolContext), payload: {
+              action: "internal_failure", component: "verification", transition: "verify", category: "lost-execution-evidence", error: "Stored passed receipt lost its backing execution evidence",
+            } })
+          }
           observability?.emit({
             type: "andmar.verification",
             sessionID: sessionIDFrom(toolContext),

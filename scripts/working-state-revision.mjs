@@ -30,14 +30,14 @@ export async function computeWorkingStateRevision(cwd = process.cwd()) {
     head = "EMPTY_TREE";
   }
 
-  const diffBuffer = execFileSync("git", ["diff", "--binary", "HEAD", "--", ".", ":!.andmar/work/**"], {
+  const diffBuffer = execFileSync("git", ["diff", "--binary", "HEAD", "--", ".", ":!.andmar/work/**", ":!.andmar/learning/**", ":!.andmar/incidents/**"], {
     cwd: root,
     stdio: ["ignore", "pipe", "pipe"],
   });
 
   const lsFilesRaw = execFileSync(
     "git",
-    ["ls-files", "--others", "--exclude-standard", "-z", "--", ":!.andmar/work/**"],
+    ["ls-files", "--others", "--exclude-standard", "-z", "--", ":!.andmar/work/**", ":!.andmar/learning/**", ":!.andmar/incidents/**"],
     {
       cwd: root,
       stdio: ["ignore", "pipe", "pipe"],
@@ -70,7 +70,7 @@ export async function computeWorkingStateRevision(cwd = process.cwd()) {
   const revision = hasher.digest("hex");
   return {
     revision,
-    excluded: [".andmar/work/**"],
+    excluded: [".andmar/work/**", ".andmar/learning/**", ".andmar/incidents/**"],
   };
 }
 

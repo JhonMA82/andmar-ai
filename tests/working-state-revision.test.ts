@@ -23,7 +23,7 @@ test("working-state revision: baseline clean repo produces deterministic hash", 
     const res1 = await computeWorkingStateRevision(dir);
     const res2 = await computeWorkingStateRevision(dir);
     assert.equal(res1.revision, res2.revision);
-    assert.deepEqual(res1.excluded, [".andmar/work/**"]);
+    assert.deepEqual(res1.excluded, [".andmar/work/**", ".andmar/learning/**", ".andmar/incidents/**"]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -13,6 +13,7 @@ For purpose, boundaries, state ownership and failure behavior see the canonical
 | `delivery` | 1 | Gate delivery intent with traceable user authorization and completion readiness while leaving Git, PR, publish and release execution to native OpenCode tools. | `andmar_delivery` |
 | `development-metrics` | 1 | Bounded local metrics for AndMar intervention, friction, value and recovery during development. | `andmar_report` |
 | `intake` | 2 | Request refinement intake: deterministic-first classification into direct, enrich, or structure with a single structured Jev decision and explicit fallback. | `andmar_intake`<br>`andmar_intake_trace` |
+| `learning` | 1 | Bounded project lesson candidates and separate non-blocking AndMar runtime incident records. | `andmar_learning`<br>`andmar_incident` |
 | `lifecycle` | 5 | Deterministic documentation/version impact and portable Work Unit tracking. | `andmar_change_impact`<br>`andmar_work_status`<br>`andmar_work_context`<br>`andmar_work`<br>`andmar_work_amend`<br>`andmar_work_resume` |
 | `routing` | 1 | Deterministic minimum-sufficient model profile selection. | `andmar_route` |
 | `system` | 1 | Core safety rails, status and lightweight execution journaling. | `andmar_status` |

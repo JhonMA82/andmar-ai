@@ -80,6 +80,8 @@ interface Binding {
   invalid?: boolean
   checkpoint?: { at: number | null; user: string | null }
   closed?: boolean
+  lastValid?: { workUnit: string; status: string; next: string }
+  lastTransition?: string
 }
 
 export function projectWork(ledger: LedgerResult, runtime?: Pick<Binding, "currentActivity" | "lastVerification" | "trackingError">) {
@@ -112,10 +114,14 @@ export async function setupWorkTracking({ ctx, observability }: CapabilityRuntim
   const calls = new Map<string, { binding: Binding; unit?: string; before: LedgerResult; activity: string; filesBefore?: Map<string, string> | undefined }>()
   const disposers: Array<() => void> = []
   let rpc: any
+  const retainBoundary = (binding: Binding, result: LedgerResult) => {
+    binding.lastValid = { workUnit: result.active ?? "", status: result.status ?? "unknown", next: result.completionReady ? "verify → completion → finalize" : "execute → verify → completion → finalize" }
+  }
   const users = async (sessionID: string) => (await ctx.session.context({ sessionID })).filter((message: any) => message.type === "user")
   const notify = (sessionID: string, binding: Binding, reason: string) => {
+    if (reason !== "work.activity" && reason !== "work.tracking.failed" && reason !== "checkpoint.required") binding.lastTransition = reason
     if (reason !== "work.activity" && !reason.startsWith("verification.")) {
-      observability?.emit({ type: "andmar.work", sessionID, payload: { workId: binding.workId, action: reason } })
+      observability?.emit({ type: "andmar.work", sessionID, payload: { workId: binding.workId, action: reason, workUnit: binding.lastValid?.workUnit ?? "", next: binding.lastValid?.next ?? "validate → resume" } })
     }
     // Presentation transport is best-effort and never becomes a health gate.
     try { void Promise.resolve(rpc?.events.emit("changed", { sessionID, workId: binding.workId, reason })).catch(() => {}) } catch {}
@@ -126,10 +132,15 @@ export async function setupWorkTracking({ ctx, observability }: CapabilityRuntim
       if (binding.invalid && binding.checkpoint && (!result.checkpointRequired || result.checkpointAt !== binding.checkpoint.at || result.checkpointUser !== binding.checkpoint.user)) throw new Error("Recovery must restore the trusted checkpoint boundary; resolve it with work_resume afterward")
       if (result.checkpointRequired) binding.checkpoint = { at: result.checkpointAt ?? null, user: result.checkpointUser ?? null }
       else delete binding.checkpoint
+      retainBoundary(binding, result)
       binding.invalid = false
       if (binding.trackingError?.startsWith("Ledger invalid:")) binding.trackingError = null
       return result
     } catch (error) {
+      if (!binding.invalid) observability?.emit({ type: "andmar.runtime", sessionID: [...bindings].find(([, value]) => value === binding)?.[0], payload: {
+        action: "internal_failure", component: "lifecycle", transition: "ledger.validate", category: "invalid-ledger", error: String(error), severe: true,
+        workId: binding.workId, workUnit: binding.lastValid?.workUnit ?? "", lastSuccess: binding.lastTransition ?? "work.bind", expected: binding.lastValid?.next ?? "validate → resume",
+      } })
       binding.invalid = true
       binding.trackingError = `Ledger invalid: ${String(error)}`
       throw error
@@ -205,6 +216,7 @@ export async function setupWorkTracking({ ctx, observability }: CapabilityRuntim
           if (ledger?.checkpointRequired) throw new Error("Resolve checkpoint through work_resume before mutations")
           const result = await runWork(input.op, binding.directory, input.payload)
           if (result.changed) binding.reader.invalidate()
+          if (result.status) retainBoundary(binding, result)
           notify(context.sessionID, binding, `work.${input.op}`)
           return { content: JSON.stringify(result) }
         } catch (error) { return { content: JSON.stringify({ ok: false, recoveryRequired: true, diagnostic: String(error) }) } }
@@ -222,6 +234,7 @@ export async function setupWorkTracking({ ctx, observability }: CapabilityRuntim
           const checkpointUser = (await users(context.sessionID)).at(-1)?.id
           const result = await runWorkUnitLifecycle("amend", binding.directory, undefined, { discovery: input, ...(checkpointUser ? { checkpointUser } : {}) })
           binding.reader.invalidate()
+          retainBoundary(binding, result)
           notify(context.sessionID, binding, result.checkpointRequired ? "checkpoint.required" : "work.amended")
           return { content: JSON.stringify({ changed: result.changed, ...compactStatus(result), continue: result.continue, reasons: result.reasons, ...(result.unit ? { unit: result.unit } : {}) }) }
         } catch (error) { return { content: `refused: ${String(error)}` } }
@@ -246,6 +259,7 @@ export async function setupWorkTracking({ ctx, observability }: CapabilityRuntim
           }
           const result = await runWorkUnitLifecycle("resume", binding.directory, unit.id, { ...input, expectedCheckpoint: boundary })
           binding.reader.invalidate()
+          retainBoundary(binding, result)
           notify(context.sessionID, binding, "work.resumed")
           return { content: JSON.stringify({ changed: result.changed, ...compactStatus(result), ...(result.unit ? { unit: result.unit } : {}) }) }
         } catch (error) { return { content: `refused: ${String(error)}` } }
@@ -258,7 +272,7 @@ export async function setupWorkTracking({ ctx, observability }: CapabilityRuntim
     if (!ctx.vcs?.status) throw new Error("Native VCS status unavailable; shell touches require reconciliation")
     const output = await ctx.vcs.status({ location: { directory: workspace } })
     if (!Array.isArray(output?.data)) throw new Error("Native VCS status returned unsupported file data")
-    const paths = normalizeFiles(output.data.map((item: any) => item.file), workspace).filter((file) => !file.startsWith(".andmar/work/"))
+    const paths = normalizeFiles(output.data.map((item: any) => item.file), workspace).filter((file) => !/^\.andmar\/(?:work|learning|incidents)\//.test(file))
     if (paths.length > 500) throw new Error("Touch observation exceeded 500 dirty paths; reconcile scope through native VCS")
     const result = new Map<string, string>()
     let bytes = 0
@@ -296,12 +310,12 @@ export async function setupWorkTracking({ ctx, observability }: CapabilityRuntim
         try { if (await realpath(absolute) !== absolute) repair = false }
         catch (error: any) { if (error.code !== "ENOENT") repair = false }
       }
-      const control = tool === "work_status" || tool === "work_context" || tool === "work" && event.input?.op === "validate"
+      const control = tool === "incident" || tool === "learning" && !["promote", "merge"].includes(event.input?.op) || tool === "work_status" || tool === "work_context" || tool === "work" && event.input?.op === "validate"
       if (CHECKPOINT_READ_TOOLS.has(tool) || repair || control || tool === "execute") return
       throw new Error(`AndMar recovery required: product mutations and completion refused; native read/search and Ledger-only repairs remain available. ${binding.trackingError}`)
     }
     if (ledger.status === "completed") { binding.closed = true; return }
-    const checkpointControl = CHECKPOINT_CONTROL_TOOLS.has(tool) && (tool !== "work" || event.input?.op === "validate")
+    const checkpointControl = tool === "incident" || tool === "learning" && !["promote", "merge"].includes(event.input?.op) || CHECKPOINT_CONTROL_TOOLS.has(tool) && (tool !== "work" || event.input?.op === "validate")
     // Transport only; every native child re-enters with its own tool name.
     // V2.0.20 shares the outer call ID with those child hooks.
     if (tool === "execute") return

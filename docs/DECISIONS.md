@@ -412,3 +412,19 @@ cheap stamps. Invalid state blocks product mutation/completion while repair stay
 possible. Known material checkpoints survive recovery. Exact-revision native
 Verification and one Completion Gate remain unchanged. Native acceptance uses
 real tools/hooks/storage with a deterministic model driver, not synthetic events.
+
+## D-033 — Proposal-only Learning and separate fail-open Runtime Incidents
+
+**Decision:** One isolated capability shares bounded file/hygiene infrastructure
+but keeps project lesson and internal incident semantics/destinations separate.
+Only observed native failure/correction/success proposes a lesson automatically.
+Foreground explicitly promotes ordinary OpenCode skills. Internal owners supply
+incident signals; a generic setup adapter observes unexpected owned hook/tool
+exceptions without swallowing or changing their authority. No LLM call, gate,
+memory replacement, remote recorder, dependency or state machine is introduced.
+
+**Consequence:** Diagnostic state cannot invalidate product revision evidence.
+Rebind explains unfinished observed work with unknown cause until diagnosed.
+Cancellation/external/project outcomes require explicit evidence; recovery updates
+the same incident. Finite retention and UI-dependent stderr visibility are explicit
+limits, not hidden promises. See LEARNING-INCIDENTS.md for the full contract.

@@ -2,6 +2,17 @@
 
 All notable changes to AndMar AI are recorded here. The package version in `package.json` is the single source of truth for the current version; runtime version code is generated from it.
 
+## [0.18.0] — 2026-10-03
+
+- Add bounded deterministic Project Learning with explicit foreground promotion,
+  merge/drop audit, write-path sanitation and conventional OpenCode skills.
+- Add separate Runtime Incidents with internal boundary detection, recovery,
+  recurrence fingerprints, regression flags and unfinished-work explanations.
+- Keep diagnostics fail-open and available during Ledger recovery/checkpoints;
+  exclude diagnostic records from revision and WU product fingerprints.
+- Expose only `andmar_learning` and `andmar_incident`; no model calls, Review,
+  background agents, new runtime dependencies or authority changes.
+
 ## [0.17.0]
 
 ### Changed

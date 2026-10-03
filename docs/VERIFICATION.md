@@ -241,3 +241,8 @@ Serializa únicamente el registro de metadata, no la ejecución de herramientas.
 El wrapper `execute` no constituye evidencia. Ninguna nueva observación puede
 sobrescribir una ejecución anterior o su revisión. La resolución sigue exigiendo
 sesión, comando, resultado y revisión compatibles; el agente no proporciona IDs.
+
+Learning/Incident diagnostic sidecars `.andmar/learning/**` and
+`.andmar/incidents/**` are excluded from working-state revision and checkpoint
+product comparison, like `.andmar/work/**`. Their writes cannot invalidate
+receipts. Promoted `.opencode/skills/**` files remain product changes.
