@@ -141,3 +141,12 @@ failures. Core shared Task Contract/Verification read contracts remain deliberat
 read RPC/projections, observe public events, act through public tools. No AndMar
 plugin framework or consumer is created. Ordinary future work stays within these
 ownership surfaces.
+
+## Learning and Runtime Incident diagnostics
+
+One isolated `learning` capability shares capture/hygiene/atomic files while
+keeping Project Learning and Runtime Incidents in separate modules and portable
+registries. Foreground alone promotes native skills. Internal owner signals and
+the generic setup exception observer supply diagnostic events. These are never
+completion authority; no state machine, memory provider or model is added.
+See [LEARNING-INCIDENTS.md](LEARNING-INCIDENTS.md).

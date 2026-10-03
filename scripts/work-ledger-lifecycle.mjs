@@ -429,7 +429,7 @@ async function mutateWorkUnitLifecycle(command, targetDir, unitArg, options = {}
     // not move these touches onto the next unit. Done/blocked units may receive
     // already-in-flight observations, but no new work is authorized here.
     if (current === "pending") throw new Error("touch requires a started Work Unit");
-    const files = normalizeFiles(options.files ?? [], workspaceForLedger(resolvedTarget)).filter((file) => !file.startsWith(".andmar/work/"));
+    const files = normalizeFiles(options.files ?? [], workspaceForLedger(resolvedTarget)).filter((file) => !/^\.andmar\/(?:work|learning|incidents)\//.test(file));
     const previous = parseFileField(getUnitField(lines, unitId, "Touched Files"));
     const touched = [...new Set([...previous, ...files])].sort();
     if (JSON.stringify(touched) === JSON.stringify(previous)) return { changed: false, ...summary() };

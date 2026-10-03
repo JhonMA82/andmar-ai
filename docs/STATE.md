@@ -173,3 +173,12 @@ hooks confirm current state against changed stamps. Recovery preserves native
 read/search/question and Ledger-only repair while product mutation/completion
 remain refused. Repair cannot silently clear a previously trusted checkpoint.
 Restart derives everything durable from the repository, not a Ledger mirror.
+
+### Portable Learning and Incident sidecars
+
+`learning` owns `.andmar/learning/records.json` (candidate/decision/skill ownership)
+and `.andmar/incidents/records.json` (internal failures/recovery/work references).
+These separate version-1 schemas are Git-readable files, not general memory or
+`ctx.storage`. Capture windows are transient. Work Ledger remains work authority;
+Verification remains receipt authority. See [LEARNING-INCIDENTS.md](LEARNING-INCIDENTS.md)
+for bounded retention, corrupt recovery and interruption semantics.

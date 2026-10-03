@@ -3,10 +3,11 @@ import delegation from "../capabilities/delegation/index.ts"
 import delivery from "../capabilities/delivery/index.ts"
 import development_metrics from "../capabilities/development-metrics/index.ts"
 import intake from "../capabilities/intake/index.ts"
+import learning from "../capabilities/learning/index.ts"
 import lifecycle from "../capabilities/lifecycle/index.ts"
 import routing from "../capabilities/routing/index.ts"
 import system from "../capabilities/system/index.ts"
 import task_contract from "../capabilities/task-contract/index.ts"
 import verification from "../capabilities/verification/index.ts"
 
-export const capabilities = [delegation, delivery, development_metrics, intake, lifecycle, routing, system, task_contract, verification] as const
+export const capabilities = [delegation, delivery, development_metrics, intake, learning, lifecycle, routing, system, task_contract, verification] as const

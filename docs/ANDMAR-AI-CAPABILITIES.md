@@ -474,3 +474,29 @@ worker self-report treated as completion proof
 The governing rule remains:
 
 > Add only the next capability that resolves a measured friction.
+
+### `learning`
+
+Owns bounded Project Learning candidates and a **separate** Runtime Incident
+registry. `andmar_learning(op)` provides pending/status/note/promote/merge/drop;
+`andmar_incident(op)` provides status/list/record/resolve/outcome. No new option,
+model, memory provider, reviewer, daemon or background agent exists.
+
+Native structured tool failure → native edit → exact command exit 0 proposes
+`RECOVERED_FAILURE`. Unresolved `TOOL_FAILURE` stays transient. Explicit
+foreground-validated conclusions may propose `USER_CORRECTION`, `TECHNIQUE`,
+or `SKILL_WRONG`. Only foreground promote/merge writes an ordinary
+`.opencode/skills/<name>/SKILL.md`; drop tombstones suppress equivalent candidates
+within bounded retention. All writes sanitize and screen, not only capture.
+
+Owned hook/tool exceptions, invalid Ledger transitions and disappeared execution
+backing a stored passed receipt record incidents. Normal missing receipts,
+nonzero project checks and deliberate checkpoint refusals do not. Recovery updates
+the same incident. Explicit outcomes explain cancellation, external blockage,
+project or internal failure; completed is observed from the owning Ledger only.
+
+See [LEARNING-INCIDENTS.md](LEARNING-INCIDENTS.md) for ownership, limits, examples,
+recovery, regression flags and native acceptance. Nothing here grants completion
+or prevents Ledger repair. A single small generic hook/tool exception observation
+adapter in capability setup exposes previously invisible owned failures without
+changing their original throw/refusal behavior.

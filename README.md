@@ -11,7 +11,7 @@ platform.
 The name is a compound of **Andrea + Mario**; it is deliberately broader than
 "AndMar Harness", because the harness is the first product.
 
-> Baseline: **v0.17.0** — the planned core evolution (Intake → Work Ledger →
+> Baseline: **v0.18.0** — the planned core evolution (Intake → Work Ledger →
 > work-unit lifecycle → checkpoints → Completion → development metrics →
 > Delivery) is **complete**. Further additions need measured friction, not a new
 > phase.
@@ -257,3 +257,8 @@ See [architecture](docs/ARCHITECTURE.md) and [Ledger API](docs/WORK-LEDGER.md).
 Run `bun run acceptance` for deterministic checks plus the actual installed
 OpenCode runtime boundary. Future independently installed presentation/UX
 plugins consume public RPC/events/tools; see [docs/PLUGINS.md](docs/PLUGINS.md).
+
+Project Learning now proposes bounded recovery candidates; foreground promotion
+writes normal OpenCode skills. Separate Runtime Incidents explain internal
+failures and recovery without adding gates. Use `andmar_learning` /
+`andmar_incident` on demand; see [Learning and Incidents](docs/LEARNING-INCIDENTS.md).
