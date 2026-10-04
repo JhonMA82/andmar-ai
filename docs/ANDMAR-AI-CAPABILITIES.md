@@ -285,6 +285,12 @@ known limitations.
   into `structure` with `preserveSource=true`. Empty/oversized requests and the trivial
   bypass (short UI/text change, no migration/security/external/bug signals)
   never call Jev. `routeSignals` reuse the `ChangeKind`/`Risk` taxonomy.
+  `workProjection` is derived from the mode and then escalated as a floor: a
+  decision reporting `productDecisionMissing: true` projects `structured` even
+  when the mode is `enrich`, because obligations that are not yet determined
+  are exactly what a portable Ledger exists to keep from being improvised at
+  commit time. The reported `mode` is never rewritten by that escalation, and
+  the continuation fast path deliberately passes no escalation signal.
   After a `completed` contract, obvious operational continuations bypass Jev
   via `deterministicContinuation` into `mode=direct`; ambiguous ones use the same single Jev
   call with three conditional continuation questions (D-020).
@@ -354,7 +360,12 @@ known limitations.
   without a reason refused; trivial tasks skip the contract entirely
   (proportional escape hatch). With non-empty `requiredChecks`, completion
   derives pass/fail from stored verification; the caller cannot declare a
-  passing check.
+  passing check. Invoking `close` and `andmar_completion_gate` in the same
+  batch is an ordering artifact, not a state disagreement: `close` reads the
+  pre-gate status, so it can refuse with `closing as blocked requires a reason`
+  while the gate reports `contractClosed: true`. The gate is authoritative and
+  owns the completion transition, so a successful completion needs no `close`
+  call at all.
 - **Security / trust:** evidence stores pointers, never content. No child
   session is created by this capability.
 - **Testing contract:** deterministic unit tests for creation, steering,
@@ -375,7 +386,7 @@ known limitations.
 - **Purpose:** gate one named post-completion delivery operation with traceable current-user authorization and completion readiness.
 - **Public primitive:** `andmar_delivery` with `operation = commit | push | pull-request | merge | tag | version | publish | release`.
 - **Execution boundary:** never executes Git, provider APIs, PRs, tags, publishing or releases; OpenCode owns native execution.
-- **Authorization:** reads the latest raw user request directly from the OpenCode session. The caller cannot assert authorization. Authorization is operation-specific; explicit negation fails closed.
+- **Authorization:** reads the latest raw user request directly from the OpenCode session. The caller cannot assert authorization. Authorization is operation-specific; explicit negation fails closed. Matching is a deterministic vocabulary over the current request: operation nouns are plural-tolerant and a verb-phrase match tolerates a short determiner/quantifier run before the noun, so an explicit counted request such as "haz los 3 commits" authorizes `commit` exactly as "haz un commit" does. The gap never crosses a clause boundary, so per-clause negation still governs, and a bare abbreviation such as "pr" authorizes nothing without an explicit open/create verb.
 - **Readiness:** an active/blocked Task Contract denies delivery. A completed Task Contract is ready. With no Task Contract, only an explicitly requested operational/trivial continuation can proceed and the agent must inspect native repository state before execution.
 - **State:** none. It reads `task-contract/<sessionID>` through the shared Task Contract key contract and stores no prompt/request content.
 - **Failure behavior:** missing raw request, missing operation-specific authorization, or unfinished Task Contract -> deny. Ambiguous target/scope remains a native user-question concern.

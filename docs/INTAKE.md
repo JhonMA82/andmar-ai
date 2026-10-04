@@ -98,6 +98,13 @@ The request already contains abundant information, requirements, or constraints.
 ### Work Ledger handoff
 Intake does not implement a Work Ledger capability, state machines, or Markdown persistence; the Work Ledger already exists as repository-native project state (see [WORK-LEDGER.md](WORK-LEDGER.md)) and is deliberately not a capability. Intake produces the `workProjection` contract (`mode: "none" | "lightweight" | "structured"`, `preserveSource: boolean`) so the primary agent selects the appropriate Work Ledger representation.
 
+The projection is derived from `mode` and then escalated as a floor: when the decision reports `productDecisionMissing: true`, `workProjection.mode` becomes `structured` even if `mode` is `enrich`. A missing material product decision means the obligations are not yet determined, and the projection must never contradict the payload that carries it — an agent reading the projection alone would otherwise skip the Ledger and improvise Work Unit boundaries and evidence at commit time. Two properties keep this from being a silent mode rewrite:
+
+- `mode` is never changed by the escalation, so the `direct`/`enrich`/`structure` contract stays stable for consumers.
+- The continuation fast path passes no escalation signal: an operational or metadata-only follow-up to a completed task needs no Ledger.
+
+Risk level is deliberately **not** an escalation signal. The reproduced incident carried `riskLevel: "medium"`, so `productDecisionMissing` is the demonstrated signal; escalating on risk would be speculative policy.
+
 ### No hidden context
 > «AndMar may use available context but must never depend on invisible context.»
 Every assertion added during `enrich` or `structure` must proceed strictly from:
