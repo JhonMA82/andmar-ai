@@ -133,6 +133,53 @@ test("vague request is not trivial and needs Jev", () => {
   assert.deepEqual(decision.brief.sections, ["Intent", "Relevant context", "Constraints", "Acceptance criteria", "Risks / external contracts", "Unresolved product decisions"]);
 });
 
+// Regression for runtime incident INC-b8de3520: the work projection was derived
+// from the intake mode alone, so a payload could report
+// productDecisionMissing: true, specificationSufficiency: 2 and
+// needsRefinement: true next to a lightweight projection — and the agent read
+// the projection alone and skipped the Work Ledger.
+test("missing product decision escalates the work projection to structured", () => {
+  const parsed = parseJevAnswers(jevAnswers({
+    task_kind: { type: "choice", choice: "migration" },
+    needs_refinement: { type: "noul", noul: 0.85 },
+    specification_sufficiency: { type: "score", score: 2 },
+    product_decision_missing: { type: "noul", noul: 0.95 },
+    request_shape: { type: "choice", choice: "underspecified" },
+  }));
+  const decision = decisionFromJev(parsed, { jevModel: DEFAULT_JEV_MODEL, latencyMs: 84, requestLength: 300 });
+  assert.equal(decision.productDecisionMissing, true);
+  assert.equal(decision.mode, "enrich");
+  assert.equal(decision.workProjection.mode, "structured");
+  assert.equal(decision.workProjection.preserveSource, true);
+});
+
+test("escalating the projection does not rewrite the reported intake mode", () => {
+  const parsed = parseJevAnswers(jevAnswers({
+    needs_refinement: { type: "noul", noul: 0.2 },
+    specification_sufficiency: { type: "score", score: 4 },
+    product_decision_missing: { type: "noul", noul: 0.9 },
+  }));
+  const decision = decisionFromJev(parsed, { jevModel: DEFAULT_JEV_MODEL, latencyMs: 84, requestLength: 300 });
+  assert.equal(decision.mode, "direct");
+  assert.equal(decision.workProjection.mode, "structured");
+});
+
+test("work projection is unchanged when no product decision is missing", () => {
+  assert.equal(workProjectionFor("direct").mode, "none");
+  assert.equal(workProjectionFor("enrich").mode, "lightweight");
+  assert.equal(workProjectionFor("structure").mode, "structured");
+  assert.equal(workProjectionFor("enrich", { productDecisionMissing: false }).mode, "lightweight");
+
+  const parsed = parseJevAnswers(jevAnswers({
+    needs_refinement: { type: "noul", noul: 0.91 },
+    specification_sufficiency: { type: "score", score: 1 },
+  }));
+  const decision = decisionFromJev(parsed, { jevModel: DEFAULT_JEV_MODEL, latencyMs: 84, requestLength: 50 });
+  assert.equal(decision.productDecisionMissing, false);
+  assert.equal(decision.mode, "enrich");
+  assert.equal(decision.workProjection.mode, "lightweight");
+});
+
 test("migration detects external contract", () => {
   const parsed = parseJevAnswers(jevAnswers({
     task_kind: { type: "choice", choice: "migration" },

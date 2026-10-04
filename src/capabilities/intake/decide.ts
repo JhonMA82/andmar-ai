@@ -38,7 +38,24 @@ export interface WorkProjection {
 export type RequestShape = "compact" | "underspecified" | "structured";
 export const ALLOWED_SHAPES: readonly RequestShape[] = ["compact", "underspecified", "structured"];
 
-export function workProjectionFor(mode: IntakeMode): WorkProjection {
+export interface WorkProjectionSignals {
+  productDecisionMissing?: boolean;
+}
+
+/**
+ * Derive the Work Ledger projection for one intake mode.
+ *
+ * `productDecisionMissing` escalates the projection to `structured` as a floor.
+ * A missing material product decision means the obligations are not yet
+ * determined, and a portable Ledger is exactly what keeps Work Unit boundaries
+ * and per-unit evidence from being improvised at commit time. Intake `mode` is a
+ * weaker signal that cannot express this on its own, so it is deliberately left
+ * unchanged: escalating the projection never rewrites the reported mode.
+ */
+export function workProjectionFor(mode: IntakeMode, signals?: WorkProjectionSignals): WorkProjection {
+  if (signals?.productDecisionMissing === true) {
+    return { mode: "structured", preserveSource: true };
+  }
   switch (mode) {
     case "direct":
       return { mode: "none", preserveSource: false };
@@ -358,6 +375,10 @@ export function withContinuationDecision(
     continuation.mutation === "operational_only" ||
     continuation.mutation === "metadata_and_operational";
   const mode: IntakeMode = "direct";
+  // No escalation signal here on purpose: a fast-path continuation is an
+  // operational or metadata-only follow-up to a task that already completed,
+  // so no Ledger is warranted even if the earlier decision carried a missing
+  // product decision.
   const workProjection = workProjectionFor(mode);
   return {
     ...decision,
@@ -480,7 +501,12 @@ export function decisionFromJev(
     specificationSufficiency: parsed.specificationSufficiency,
     requestShape: parsed.requestShape,
   });
-  const workProjection = workProjectionFor(mode);
+  // A missing product decision is only observable from Jev, so this is the one
+  // site that can escalate the projection. Without it the payload could report
+  // productDecisionMissing: true next to a lightweight projection.
+  const workProjection = workProjectionFor(mode, {
+    productDecisionMissing: parsed.productDecisionMissing,
+  });
   const needsRefinement = mode !== "direct";
   return {
     mode,
