@@ -23,15 +23,67 @@ const OPERATIONS: readonly DeliveryOperation[] = [
   "release",
 ]
 
+// A verb-phrase match tolerates a short determiner/quantifier run between the
+// verb and the operation noun, so an explicit counted request such as
+// "haz los 3 commits" authorizes `commit` exactly as "haz un commit" does.
+// The gap never crosses CLAUSE_BREAK, so per-clause negation still governs.
+// Nouns are matched plural-tolerantly because an explicit request to commit
+// three times is still an explicit request to commit.
+const OBJECT_GAP = "[^.;\\n]{0,24}?"
+const NOUN: Record<DeliveryOperation, string> = {
+  commit: "commits?",
+  push: "push(?:es)?",
+  "pull-request": "pull\\s+requests?",
+  merge: "merges?",
+  tag: "tags?",
+  version: "versi[oó]n(?:es)?",
+  publish: "publish(?:es)?",
+  release: "releases?",
+}
+
 const POSITIVE: Record<DeliveryOperation, readonly RegExp[]> = {
-  commit: [/\bcommit\b/i, /\bcommite(?:a|ar)\b/i, /\b(?:haz|hacer|crea|crear|make|create)\s+(?:un\s+|a\s+)?commit\b/i],
-  push: [/\bpush\b/i, /\bsube\s+(?:los\s+)?cambios\b/i, /\bsube\s+(?:la\s+)?rama\b/i, /\bsube\s+(?:al|a\s+github|al\s+remoto)\b/i, /\bpush\s+it\b/i],
-  "pull-request": [/\bpull\s+request\b/i, /\b(?:abre|abrir|crea|crear|open|create)\s+(?:un\s+|a\s+)?pr\b/i],
-  merge: [/\bmerge\b/i, /\bmerge(?:a|ar)\b/i, /\bfusiona(?:r)?\b/i],
-  tag: [/\btag\b/i, /\b(?:crea|crear|create)\s+(?:un\s+|a\s+)?tag\b/i, /\betiqueta\s+git\b/i],
-  version: [/\bversiona(?:r)?\b/i, /\bversion\s+bump\b/i, /\bbump\s+(?:the\s+)?version\b/i, /\b(?:incrementa|actualiza|sube)\s+(?:la\s+)?versi[oó]n\b/i],
-  publish: [/\bpublish\b/i, /\bpublica(?:r)?\s+(?:el\s+)?(?:paquete|package)\b/i, /\bpublica(?:r)?\s+en\s+(?:npm|registry)\b/i],
-  release: [/\brelease\b/i, /\b(?:crea|crear|create|publish)\s+(?:un\s+|a\s+)?release\b/i, /\blanzamiento\b/i],
+  commit: [
+    new RegExp(`\\b${NOUN.commit}\\b`, "i"),
+    /\bcommite(?:a|ar)\b/i,
+    new RegExp(`\\b(?:haz|hacer|crea|crear|make|create)\\b${OBJECT_GAP}\\b${NOUN.commit}\\b`, "i"),
+  ],
+  push: [
+    new RegExp(`\\b${NOUN.push}\\b`, "i"),
+    /\bpushea(?:r)?\b/i,
+    /\bsube\s+(?:los\s+)?cambios\b/i,
+    /\bsube\s+(?:la\s+)?rama\b/i,
+    /\bsube\s+(?:al|a\s+github|al\s+remoto)\b/i,
+    /\bpush\s+it\b/i,
+  ],
+  "pull-request": [
+    new RegExp(`\\b${NOUN["pull-request"]}\\b`, "i"),
+    // A bare "pr"/"prs" is deliberately NOT an authorization on its own: it is
+    // an abbreviation that appears in unrelated text. It only counts after an
+    // explicit open/create verb, as before.
+    new RegExp(`\\b(?:abre|abrir|crea|crear|open|create)\\b${OBJECT_GAP}\\bprs?\\b`, "i"),
+  ],
+  merge: [new RegExp(`\\b${NOUN.merge}\\b`, "i"), /\bmerge(?:a|ar)\b/i, /\bfusiona(?:r)?\b/i],
+  tag: [
+    new RegExp(`\\b${NOUN.tag}\\b`, "i"),
+    new RegExp(`\\b(?:crea|crear|create)\\b${OBJECT_GAP}\\b${NOUN.tag}\\b`, "i"),
+    /\betiqueta\s+git\b/i,
+  ],
+  version: [
+    /\bversiona(?:r)?\b/i,
+    /\bversion\s+bump\b/i,
+    /\bbump\s+(?:the\s+)?version\b/i,
+    new RegExp(`\\b(?:incrementa|actualiza|sube)\\b${OBJECT_GAP}\\b${NOUN.version}\\b`, "i"),
+  ],
+  publish: [
+    new RegExp(`\\b${NOUN.publish}\\b`, "i"),
+    /\bpublica(?:r)?\s+(?:el\s+)?(?:paquete|package)\b/i,
+    /\bpublica(?:r)?\s+en\s+(?:npm|registry)\b/i,
+  ],
+  release: [
+    new RegExp(`\\b${NOUN.release}\\b`, "i"),
+    new RegExp(`\\b(?:crea|crear|create|publish)\\b${OBJECT_GAP}\\b${NOUN.release}\\b`, "i"),
+    /\blanzamiento\b/i,
+  ],
 }
 
 const NEGATION = /\b(?:no|nunca|never|don['’]?t|do\s+not|without|sin|evita(?:r)?)\b/i

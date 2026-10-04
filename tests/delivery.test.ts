@@ -54,6 +54,38 @@ test("delivery authorization respects explicit negation", () => {
   assert.equal(deliveryAuthorization("Do not merge; create a PR instead", "pull-request").authorized, true)
 })
 
+// Regression for runtime incident INC-89d495c7: the harness's own question
+// option label "Sí, haz los 3 commits (Recomendado)" was refused because the
+// commit vocabulary required the noun immediately after the verb and could not
+// match the plural. An explicit counted request is still an explicit request.
+test("delivery authorization accepts plural and quantified commit phrasing", () => {
+  for (const text of [
+    "Sí, haz los 3 commits (Recomendado)",
+    "sí, haz los 3 commits",
+    "haz los commits",
+    "crea 3 commits",
+    "haz los commits ahora",
+    "please make the commits",
+    "commits",
+  ]) {
+    assert.equal(deliveryAuthorization(text, "commit").authorized, true, `expected commit authorized for ${text}`)
+  }
+})
+
+// The widened vocabulary must not become a blanket allow: a request that names
+// no delivery operation still fails closed, negation still wins, and a bare
+// "pr" abbreviation still authorizes nothing on its own.
+test("widened delivery vocabulary stays fail-closed and operation-specific", () => {
+  assert.equal(deliveryAuthorization("Termina la feature", "commit").reason, "operation-not-requested")
+  assert.equal(deliveryAuthorization("Termina la feature", "push").reason, "operation-not-requested")
+  assert.equal(deliveryAuthorization("Haz commit y push", "release").reason, "operation-not-requested")
+  assert.equal(deliveryAuthorization("No hagas los 3 commits", "commit").reason, "explicit-negation")
+  assert.equal(deliveryAuthorization("No commits, por favor", "commit").reason, "explicit-negation")
+  assert.equal(deliveryAuthorization("revisar el pr pendiente", "merge").reason, "operation-not-requested")
+  assert.equal(deliveryAuthorization("revisar el pr pendiente", "push").reason, "operation-not-requested")
+  assert.equal(deliveryAuthorization("revisar el pr pendiente", "pull-request").reason, "operation-not-requested")
+})
+
 test("delivery readiness fails closed while Task Contract is unfinished", async () => {
   const state: any = createMemoryState()
   const created = createTaskContract("ses-1", { taskKind: "feature", goal: "x", requirements: ["y"] })
