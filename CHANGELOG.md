@@ -4,6 +4,8 @@ All notable changes to AndMar AI are recorded here. The package version in `pack
 
 ## [0.18.0] — 2026-10-03
 
+### Added
+
 - Add bounded deterministic Project Learning with explicit foreground promotion,
   merge/drop audit, write-path sanitation and conventional OpenCode skills.
 - Add separate Runtime Incidents with internal boundary detection, recovery,
@@ -12,6 +14,28 @@ All notable changes to AndMar AI are recorded here. The package version in `pack
   exclude diagnostic records from revision and WU product fingerprints.
 - Expose only `andmar_learning` and `andmar_incident`; no model calls, Review,
   background agents, new runtime dependencies or authority changes.
+
+### Fixed
+
+- Delivery authorization now accepts plural and quantified operation phrasing.
+  An explicit request such as `"haz los 3 commits"` — the exact shape of a
+  `question` option label the harness itself generated — authorized nothing and
+  returned `operation-not-requested`, because operation nouns were not
+  plural-tolerant and a verb phrase required the noun immediately after the
+  verb. Operation nouns are now plural-tolerant and a verb phrase tolerates a
+  short determiner/quantifier run before the noun. The run never crosses a
+  clause boundary, so per-clause negation still governs, `operation-not-requested`
+  is unchanged for requests naming no operation, and a bare `pr` abbreviation
+  still authorizes nothing without an explicit open/create verb. An active Task
+  Contract still denies delivery: Work Unit checkpoint commits keep their
+  independent `delivery.workUnitCommits` path.
+- The Intake work projection is no longer derived from the intake mode alone. A
+  decision reporting `productDecisionMissing: true` now projects `structured`
+  even when `mode` is `enrich`; previously such a payload could report a missing
+  product decision, `specificationSufficiency: 2` and `needsRefinement: true`
+  beside a `lightweight` projection, and an agent reading the projection alone
+  skipped the Work Ledger. The reported `mode` is never rewritten, and the
+  continuation fast path deliberately passes no escalation signal.
 
 ## [0.17.0]
 
@@ -31,26 +55,6 @@ All notable changes to AndMar AI are recorded here. The package version in `pack
 - Native OpenCode 2.0.21 acceptance proves exit 0 receipts/gate, nonzero refusal, stale working-state rejection, native skills loading and three corrupt-Ledger recoveries in one session. No empty required checks or synthesized hook events.
 
 ## [Unreleased]
-
-### Fixed
-
-- Delivery authorization now accepts plural and quantified operation phrasing.
-  An explicit request such as `"haz los 3 commits"` — the exact shape of a
-  `question` option label the harness itself generated — authorized nothing and
-  returned `operation-not-requested`, because operation nouns were not
-  plural-tolerant and a verb phrase required the noun immediately after the
-  verb. Operation nouns are now plural-tolerant and a verb phrase tolerates a
-  short determiner/quantifier run before the noun. The run never crosses a
-  clause boundary, so per-clause negation still governs, `operation-not-requested`
-  is unchanged for requests naming no operation, and a bare `pr` abbreviation
-  still authorizes nothing without an explicit open/create verb.
-- The Intake work projection is no longer derived from the intake mode alone. A
-  decision reporting `productDecisionMissing: true` now projects `structured`
-  even when `mode` is `enrich`; previously such a payload could report a missing
-  product decision, `specificationSufficiency: 2` and `needsRefinement: true`
-  beside a `lightweight` projection, and an agent reading the projection alone
-  skipped the Work Ledger. The reported `mode` is never rewritten, and the
-  continuation fast path deliberately passes no escalation signal.
 
 ### Changed
 
